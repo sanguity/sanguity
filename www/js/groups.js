@@ -87,7 +87,8 @@ const SG_PAGES = {
      finds: [["Birth date, sex and height", "about", "age birthday date of birth dob born child baby due date growth tall cm inches maximum heart rate measured bpm early add blood type group abo rh emergency contacts ice phone"], ["Targets of your own", "targets", "goals"]]},
     {id: "labs", title: "Labs and ranges", icon: "ruler", part: "This person", has: ["sec-names", "labmatches", "sec-ranges"], words: "reference ranges normal high low add",
      finds: [["Names", "sec-names", "nicknames rename lab names result sources records shown"],
-       ["Lab name matches", "labmatches", "same test match matched charted with keep separate own test move results add change remove forget aliases import results"]]},   // Names on Dashboard before #402; matches #1097
+       ["Lab name matches", "labmatches", "same test match matched charted with keep separate own test move results add change remove forget aliases import results " +
+        "mapping server install admin"]]},   // Names on Dashboard before #402; matches #1097, with Install's for every profile (#1114)
     {id: "milestones", title: "Milestones", icon: "flag", part: "This person", has: ["sec-milestones"], words: "diagnosis surgery treatment named dates"},
     {id: "activity", title: "Workouts", icon: "dumbbell", part: "This person", has: ["sec-health"], words: "visits exercise body and activity title contains count"},   // visits counted as workouts (#43)
     {id: "profile", title: "Rename or delete", icon: "user-pen", part: "This person", has: ["profileCard"], needs: "owner",   // on Sharing before #402
@@ -134,7 +135,6 @@ const SG_PAGES = {
        "new return address redirect uri sandbox use add another notes name people see fhir base how signs scopes ask", finds: [["Sync defaults", "sec-sync", "attachments"]]},   // (#506: a source's buttons; #510: its form's; #515: delete; #519: its return address)
     {id: "directory", title: "Provider directory", icon: "book-user", part: "Install", admin: true, cs: true, has: ["directory"], place: "admin", words: "providers epic oracle cerner hospitals lists add the update now download keep them up to date weekly"},
     {id: "outside", title: "Outside connections", icon: "globe", part: "Install", admin: true, has: ["outside"], place: "admin", words: "network internet"},
-    {id: "labmaps", title: "Lab name matches", icon: "arrow-right-left", part: "Install", admin: true, has: ["labmaps"], place: "admin", words: "aliases mapping reported goes series change remove forget"},   // (#532: its rows' Change and Remove; #1097: a profile's own are This person's)
     {id: "more", title: "More", icon: "folder", has: [], rest: true},   // a section no group names yet
   ]},
 };

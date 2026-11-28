@@ -3562,14 +3562,14 @@ def main():
         # Settings → Install (#167; the Admin page before #991): Settings' sidebar in three parts, Install's each drawn by
         # its own script
         strict.goto(base + "/settings.html?profile=1#accounts")
-        for sel in ("#userList table", "#sec-sync .set", "#sourceList", "#dirSources ul", "#labmapList", "#outsideBody h3", "#acctLog tbody tr", "#bkStatus .kv"):
+        for sel in ("#userList table", "#sec-sync .set", "#sourceList", "#dirSources ul", "#outsideBody h3", "#acctLog tbody tr", "#bkStatus .kv"):
             strict.wait_for_selector(sel, state="attached", timeout=10000)
         groups = strict.evaluate("[...document.querySelectorAll('#setNav .set-nav-part, #setNav a')].map(x => (x.matches('.set-nav-part') ? '§' : '') + x.textContent)")
         check("under the CSP: Install's scripts run on Settings, its sidebar in three parts, This person, You and Install (#266, #991)", groups ==
               ["§This person", "Dashboard", "About this person", "Labs and ranges", "Milestones", "Workouts", "Rename or delete",
                "§You", "Sign-in and security", "This device", "Display",
                "§Install", "General", "Accounts", "Install activity", "Backups", "Connected-source apps", "Provider directory",
-               "Outside connections", "Lab name matches"], groups)
+               "Outside connections"], groups)   # (#1114: Lab name matches, the profile's card alone)
         check("…and your menu offers Settings, opening You, and no Account, Display or Admin (#991)",
               strict.evaluate("document.getElementById('settingsLink').getAttribute('href')") == "settings.html?profile=1#you"   # (#397)
               and not strict.evaluate("!!document.querySelector('#accountLink, #displayLink, #adminLink')"))
@@ -3985,7 +3985,7 @@ def main():
               not bad494 and all(v["rows"] for v in con494.values()), bad494 or {k: v["rows"] for k, v in con494.items()})
         empty494 = {}
         for path, sel in (("sharing.html?profile=1#links", "#links .share-list"), ("settings.html?profile=1#security", "#pkList"),
-                          ("settings.html?profile=1#backups", "#bkList"), ("settings.html?profile=1#labmaps", "#labmapList")):
+                          ("settings.html?profile=1#backups", "#bkList")):
             strict.goto(f"{base}/{path}")
             strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
             strict.wait_for_timeout(1200)
@@ -4001,7 +4001,7 @@ def main():
             e.node.querySelector('.set-line:not(.set-head) .btn').click();
             r.push(s.checkVisibility(), document.activeElement === e.node.querySelector('.set-add button'));
             e.node.remove(); return r; })""")
-        check("…every list, empty, says so through emptyState() (#494): Share links, Passkeys, Backups and Lab name matches (or lists them), "
+        check("…every list, empty, says so through emptyState() (#494): Share links, Passkeys and Backups (or lists them), "
               "Milestones and Result sources (their columns' names once a row is added, and back to the sentence, focus on Add a row, as it's removed)",
               all(v and (v[0] or v[1]) and not v[2] for k, v in empty494.items() if k.startswith("#"))
               and [r[:2] for r in empty494["milestones, result sources"]] == [["No milestones yet: each one is marked on every chart.", False],
@@ -19914,7 +19914,7 @@ def main():
                     dbm992.meta_set(db992, k, None)
                 db992.close()
                 js("loadDirectory()")
-            for gid in ("general", "accounts", "backups", "apps", "directory", "labmaps", "outside", "installLog"):
+            for gid in ("general", "accounts", "backups", "apps", "directory", "outside", "installLog"):   # (#1114: no labmaps)
                 page.click(f"#setNav a[data-group={gid}]")
                 page.set_viewport_size({"width": 375, "height": 800})
                 settle(150)
@@ -24564,7 +24564,7 @@ def main():
                            "parts": {"This person": person991 + (["Rename or delete"] if r in ("admin", "owner") else []),
                                      "You": ["Sign-in and security", "This device", "Display"],
                                      "Install": ["General", "Accounts", "Install activity", "Backups", "Connected-source apps", "Provider directory",
-                                                 "Outside connections", "Lab name matches"] if r == "admin" else []},
+                                                 "Outside connections"] if r == "admin" else []},   # (#1114: Lab name matches, the profile's card)
                            "install": None if r == "admin" else [403] * 6} for r in ("admin", "owner", "editor", "viewer")}   # (the admin's: refused too here, till they have a second factor, #75)
             check("one Settings page (#991): for an admin, an owner, an editor and a viewer, the profile menu has Sources, Sharing and New profile, your "
                   "menu Settings, Getting started, the theme and Log out (no Account, Display, Admin, About this person or Edit tabs…); Settings "
@@ -28781,7 +28781,7 @@ def main():
                 page.wait_for_selector(f"{nav} a[data-group]", timeout=10000)
                 settle(1200)   # (You's and Install's groups, once this person's are drawn)
                 icons_in([f"{nav} a[data-group]"])
-            want = {"#setNav a[data-group]": 17, "#srcNav a[data-group]": 7, "#shrNav a[data-group]": 6,
+            want = {"#setNav a[data-group]": 16, "#srcNav a[data-group]": 7, "#shrNav a[data-group]": 6,   # (#1114: Install's Lab name matches gone)
                     "#profileMenuList [role=menuitem]": 3, "#addMenuList [role=menuitem]": 7, "#userMenuList [role=menuitem]": 4}
             check("icons (#354): one Lucide icon, hidden from screen readers and drawn from a symbol the sprite has, in each link of the "
                   "three sidebars, each kind chip (its kind's), each Timeline row and each item of the profile menu, the Add menu and your menu",
@@ -29281,7 +29281,7 @@ def main():
             page.goto(base + "/settings.html?profile=1#security")
             page.wait_for_function("document.querySelectorAll('#sessList tbody tr').length > 0", timeout=10000)
             check("Sign-in and security lists devices, and shows nothing of the server's (#167, Install's) or of profiles (#168)",
-                  js("['users', 'labmaps', 'secNotice', 'backupNotice', 'sec-overview'].every(id => !document.getElementById(id).checkVisibility())")
+                  js("['users', 'secNotice', 'backupNotice', 'sec-overview'].every(id => !document.getElementById(id).checkVisibility())")
                   and js("!document.getElementById('tab-admin') && !document.getElementById('acctTabs') && !document.getElementById('profiles') && !document.getElementById('profList')"))
             # #515: at 320 px each time in Where you're signed in keeps its AM or PM, and its date the comma after it ("Nov 21, /
             # 2026, 8:37 / AM"), so it's two lines at most: the date, then the time
@@ -29463,17 +29463,8 @@ def main():
             # hears as the hidden headings are hidden from it too; axe-core clean, light and dark
             page.set_viewport_size({"width": 375, "height": 800})
             cl_seen, cl_bad, cl_axe = {}, [], []
-            # (#1097: Install lists only the matches for every profile, a review's being its profile's: one for every
-            # profile made up here for its table, gone after)
-            from server import crypto as crypto320, labmap as labmap320
-            lmdb320 = dbm.connect()
-            lm320 = lmdb320.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, checked) VALUES(?, 'csv', ?, ?, NULL, ?, ?, ?)",
-                                    (labmap320.lookup("csv", "Ferritin 320", "ng/mL", None), crypto320.enc(json.dumps({"name": "Ferritin 320", "unit": "ng/mL", "loinc": None})),
-                                     crypto320.enc("Ferritin"), USER, dbm.now(), dbm.now())).lastrowid
-            if js("typeof loadLabmaps === 'function'"):   # (this page's Install, loaded before it: drawn again with it)
-                js("loadLabmaps()")
             for path, ready in (("/settings.html?profile=1#sessions", "#sessList tbody tr"), ("/settings.html?profile=1#users", "#userList tbody tr"),
-                                ("/settings.html?profile=1#labmaps", "#labmapList tbody tr"), ("/settings.html?profile=1#installLog", "#acctLog tbody tr"),
+                                ("/settings.html?profile=1#installLog", "#acctLog tbody tr"),
                                 ("/sharing.html?profile=1#people", "#memberList tbody tr"), ("/sharing.html?profile=1#activity", "#actBody tbody tr")):
                 page.goto(base + path)
                 page.wait_for_selector(ready, timeout=10000)
@@ -29485,166 +29476,192 @@ def main():
                     page.emulate_media(color_scheme=theme)
                     cl_axe += axe_check(page, f"{path} at 375 px, {theme}")[0]
                 page.emulate_media(color_scheme=None)
-            lmdb320.execute("DELETE FROM labmaps WHERE id=?", (lm320,))
-            lmdb320.close()
-            check("at 375 px every account page's table labels each cell with its column's name: Settings' You (sessions) and Install (accounts, lab "
-                  "names, activity), Sharing (people, activity), its headings hidden from screen readers too (#320)",
+            check("at 375 px every account page's table labels each cell with its column's name: Settings' You (sessions) and Install (accounts, "
+                  "activity; its lab name matches went to the profile's card, #1114), Sharing (people, activity), its headings hidden from screen readers too (#320)",
                   not cl_bad and all(cl_seen.values()), cl_bad[:6] or cl_seen)
             check("…and axe-core finds nothing serious or critical there, light and dark (#320)", not cl_axe, cl_axe[:6])
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/account.html#users")   # the old Admin tab's addresses open Settings → Install (#991)
             page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#users$"), timeout=10000)
             page.wait_for_function("!document.getElementById('users').hidden && document.querySelectorAll('#userList tbody tr').length > 0", timeout=10000)
-            check("the old Admin tab's address opens Settings → Install, on Accounts", js(display, "users") != "none" and js(display, "labmaps") == "none")
-            page.goto(base + "/account.html#labmaps")
-            page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#labmaps$"), timeout=10000)
-            page.wait_for_function("document.getElementById('labmapList').childElementCount", timeout=10000)
-            lm = js("[...document.querySelectorAll('#labmapList tr[data-labmap]')].map(tr => tr.textContent)")
-            check("Install lists only the lab name matches for every profile: a profile's own (Hemoglobin Lvl, a review's, #927) is "
-                  "its Settings' (#1097), as Install's words say", not any("Hemoglobin Lvl" in t for t in lm)
-                  and js("[...document.querySelectorAll('.about-words')].some(w => w.textContent.includes(\"Each profile's own matches are its owners'\"))")   # (behind its ⓘ, #280: moved beside the heading)
-                  and js(display, "labmaps") != "none", lm)
-            # #528: at 375×667 a match's Save (by Enter in its box) leaves focus on its Change, and Remove → Forget match on the
-            # next match's Remove, in sight (it fell to the page); one removed elsewhere, then saved, is drawn away, “No such
-            # lab name match.” where it was, focus beside it (it stayed, said under the list). Two made up here, gone after
+            check("the old Admin tab's address opens Settings → Install, on Accounts", js(display, "users") != "none" and js(display, "installLog") == "none")
+            # #1114 (the owner's decision): lab name matches in one place, the profile's card (This person → Labs and
+            # ranges): Install's page of them is gone, and the matches for every profile (an admin's, from before #927)
+            # are listed on the card under their own heading, an admin's to Keep, Change and Remove there, each with an
+            # Undo, read by everyone else. Made up here (as an admin would have before #927) and gone after
             from server import crypto as crypto528, labmap as labmap528
             lmdb528 = dbm.connect()
-            for n in ("Ferritin 528", "Glucose 528", "Iron 528"):   # (#1097: Iron, beside the one removed elsewhere, as a review's was before)
-                lmdb528.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, checked) VALUES(?, 'manual', ?, ?, NULL, ?, ?, ?)",
-                                (labmap528.lookup("manual", n, "g/dL", None), crypto528.enc(json.dumps({"name": n, "unit": "g/dL", "loinc": None})),
-                                 crypto528.enc("Hemoglobin"), USER, dbm.now(), dbm.now()))   # (checked: not one to check, #569)
-            js("loadLabmaps()")
-            page.wait_for_function("document.getElementById('labmapList').textContent.includes('Glucose 528')", timeout=10000)
-            vp528, had528 = page.viewport_size, len(problems)
-            page.set_viewport_size({"width": 375, "height": 667})
-            SEENLM528 = """e => { if (!e) return false; const r = e.getBoundingClientRect(), p = getComputedStyle(document.documentElement);
-              return r.height > 0 && r.top >= parseFloat(p.scrollPaddingTop) - 1 && r.bottom <= innerHeight - parseFloat(p.scrollPaddingBottom) + 1; }"""
-            LM528 = f"""(() => {{ const a = document.activeElement, m = document.querySelector('#labmapList .row-msg');
-              return [a.textContent, a.closest('tr')?.querySelector('b')?.textContent ?? null, ({SEENLM528})(a), m && m.textContent, !!m && ({SEENLM528})(m)]; }})()"""
-            lmrow528 = lambda n: page.locator("#labmapList tr[data-labmap]", has_text=n)  # noqa: E731
-            lm528 = []
-            lmrow528("Ferritin 528").get_by_role("button", name="Change").click()
-            lmrow528("Ferritin 528").locator("input").fill("Ferritin")
-            lmrow528("Ferritin 528").locator("input").press("Enter")
-            page.wait_for_function("document.getElementById('labmapMsg').textContent.startsWith('“Ferritin 528” is now')", timeout=10000)
-            settle(300)
-            lm528.append(js(LM528))
-            lmrow528("Ferritin 528").get_by_role("button", name="Remove").click()
-            answer_ask(page)
-            page.wait_for_function("!document.getElementById('labmapList').textContent.includes('Ferritin 528')", timeout=10000)
-            settle(300)
-            lm528.append(js(LM528)[:3])
-            lmrow528("Glucose 528").get_by_role("button", name="Change").click()
-            lmdb528.execute("DELETE FROM labmaps WHERE id=?", (int(lmrow528("Glucose 528").get_attribute("data-labmap")),))
-            lmdb528.close()
-            page.keyboard.press("Enter")
-            page.wait_for_selector("#labmapList .row-msg", timeout=10000)
-            settle(300)
-            lm528.append(js(LM528) + [js("[...document.querySelectorAll('#labmapList b')].some(b => b.textContent === 'Glucose 528')")])
-            problems[had528:] = [x for x in problems[had528:] if not re.search(r"HTTP 404: .*/api/labmaps/\d+$|status of 404", x)]   # (the point)
-            page.set_viewport_size(vp528)
-            check("…(#528) at 375×667 a match's Save leaves focus on its Change, Remove on the next match's Remove, in sight (it fell to the "
-                  "page); one removed elsewhere, then saved, is drawn away, “No such lab name match.” where it was, focus on a Change beside it",
-                  lm528[0] == ["Change", "Ferritin 528", True, None, False] and lm528[1][0] == "Remove" and lm528[1][1] and lm528[1][2]
-                  and lm528[2][0] == "Change" and lm528[2][2:] == [True, "No such lab name match.", True, False], lm528)
-            lmdb1097 = dbm.connect()
-            lmdb1097.execute("DELETE FROM labmaps WHERE lookup=?", (labmap528.lookup("manual", "Iron 528", "g/dL", None),))
-            lmdb1097.close()
-            # #532: at 320 and 375 px, and with a row's Change open, no word of the matches is broken across lines (“Chan/ge”,
-            # “Remo/ve”, “Glucos/e”: its first column was 55 px). One with a long name, made up here and gone after
-            lmdb532 = dbm.connect()
-            lm532 = lmdb532.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, checked) VALUES(?, 'manual', ?, ?, NULL, ?, ?, ?)",
-                                    (labmap528.lookup("manual", "Glucose fasting 532", "mg/dL", None), crypto528.enc(json.dumps({"name": "Glucose fasting, a long name from an outside lab 532", "unit": "mg/dL", "loinc": None})),
-                                     crypto528.enc("Glucose"), USER, dbm.now(), dbm.now())).lastrowid
-            # (#1097: the review's Hemoglobin Lvl is its profile's now, not Install's: one for every profile in its place, gone after #536's)
-            lm1097i = lmdb532.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, checked) VALUES(?, 'csv', ?, ?, NULL, ?, ?, ?)",
-                                      (labmap528.lookup("csv", "Hemoglobin Lvl", "g/dL", None), crypto528.enc(json.dumps({"name": "Hemoglobin Lvl", "unit": "g/dL", "loinc": None})),
-                                       crypto528.enc("Hemoglobin"), USER, dbm.now(), dbm.now())).lastrowid
-            BROKEN532 = """(() => { const out = [], w = document.createTreeWalker(document.getElementById('labmapList'), NodeFilter.SHOW_TEXT);
-              for (let n; (n = w.nextNode());) if (n.parentElement.checkVisibility()) for (const m of n.textContent.matchAll(/\\S+/g)) {
-                const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
-                if (new Set([...r.getClientRects()].filter(x => x.width).map(x => Math.round(x.top))).size > 1) out.push(m[0]); }
-              return out; })()"""
-            broken532 = {}
+            ALL1114 = []
+
+            def every1114(n, target, unit="g/dL", checked=True, importer="manual", shown=None):   # one for every profile, made up
+                ALL1114.append(lmdb528.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created, checked) VALUES(?, ?, ?, ?, NULL, ?, ?, ?)",
+                                               (labmap528.lookup(importer, n, unit, None), importer, crypto528.enc(json.dumps({"name": shown or n, "unit": unit, "loinc": None})),
+                                                crypto528.enc(target), USER, dbm.now(), dbm.now() if checked else None)).lastrowid)
+                return ALL1114[-1]
+            for n in ("Ferritin 528", "Glucose 528", "Iron 528"):   # (#528's: Iron beside the one removed elsewhere)
+                every1114(n, "Hemoglobin")
+            every1114("Hemoglobin Lvl", "Hemoglobin", importer="csv")   # (#1097: a review's of that name is its profile's own)
+            EVERY = "[...document.querySelectorAll('#lmEvery [data-every]')].map(r => [r.querySelector('h3').textContent, r.querySelector('.muted').textContent, [...r.querySelectorAll('button')].map(b => b.textContent).join('|')])"
+            lmrow528 = lambda n: page.locator("#lmEvery [data-every]", has_text=n)  # noqa: E731
+            LMMSG = "document.getElementById('labmatchesMsg').textContent"
+
+            def pick1114(to):   # the card's picker, answered: the test it's charted with ("": Keep as its own test)
+                box = page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+                box.query_selector("select[id$=t]").select_option(value=to)
+                moves = bool(box.query_selector("select[id$=m]"))
+                box.query_selector(".sg-ask-acts button:last-child").click()
+                page.wait_for_function("e => !e.isConnected", arg=box, timeout=10000)
+                return moves
             try:
-                js("loadLabmaps()")
-                page.wait_for_function("document.getElementById('labmapList').textContent.includes('outside lab 532')", timeout=10000)
+                # the old addresses (Admin's #labs, Install's #labmaps) open the card; Install lists no Lab name matches
+                for old in ("/account.html#labmaps", "/admin.html#labs", "/settings.html?profile=1#labmaps"):
+                    page.goto(base + old)
+                    page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#labmatches$"), timeout=10000)
+                page.wait_for_function("document.getElementById('lmEvery')?.textContent.includes('Glucose 528')", timeout=10000)
+                lm = js(EVERY)
+                old1114 = [js("document.querySelector('#setNav a[aria-current=page]')?.textContent"),
+                           js("[...document.querySelectorAll('#setNav a')].some(a => a.textContent === 'Lab name matches')"),
+                           js("!!document.getElementById('labmaps')"), js("SG_PAGES.settings.groups.some(g => g.id === 'labmaps')")]
+                check("Lab name matches in one place (#1114): Install has no page of them, and its old addresses open the profile's card, "
+                      "which lists the matches for every profile under For every profile on this server, the profile's own (Hemoglobin Lvl, a "
+                      "review's, #927) not among them, as the card's words say", old1114 == ["Labs and ranges", False, False, False]
+                      and js("document.getElementById('lmEveryHd').textContent") == "For every profile on this server"
+                      and sum(r[0].startswith("Hemoglobin Lvl") for r in lm) == 1   # (the one made up here only)
+                      and js("[...document.querySelectorAll('#labmatches .about-words')].some(w => w.textContent.replace(/\\s+/g, ' ').includes('For every profile on this server'))")
+                      and all(r[2] == "Change…|Remove" and not re.search(r"\d+ (result|import)", r[1]) for r in lm), [old1114, lm])
+                # the palette's “lab name matches” is the card's, and opens it
+                page.goto(base + "/index.html?profile=1")
+                page.wait_for_selector("#barSearch", timeout=10000)
+                js("SgPalette.open()")
+                page.wait_for_selector("dialog.palette[open]", timeout=5000)
+                settle(1500)   # (who you are: an admin)
+                page.fill("#palQ", "lab name matches")
+                settle(300)
+                pal1114 = js("[...document.querySelectorAll('#palList [role=option]')].map(o => o.textContent).filter(t => t.startsWith('Lab name matches'))")
+                page.keyboard.press("Enter")
+                page.wait_for_url(re.compile(r"/settings\.html(\?[^#]*)?#labmatches$"), timeout=10000)
+                page.wait_for_function("document.getElementById('lmEvery')?.textContent.includes('Glucose 528')", timeout=10000)
+                check("…the palette's “lab name matches” finds the profile's card alone, and Enter opens it (#1114)",
+                      pal1114 == ["Lab name matches, Settings › Labs and ranges"], pal1114)
+                # Change (no results moved: whose would they be), Undo; Remove, Undo: each put back as it was
+                vp528, had528 = page.viewport_size, len(problems)
+                lmrow528("Iron 528").get_by_role("button", name="Change the match").click()
+                moves1114 = pick1114("")
+                page.wait_for_function(f"{LMMSG}.includes('kept as its own test for every profile')", timeout=10000)
+                page.locator(".sg-toast").last.get_by_role("button", name="Undo").click()
+                page.wait_for_function(f"{LMMSG}.startsWith('Undone')", timeout=10000)
+                page.wait_for_function("document.getElementById('lmEvery').textContent.includes('Iron 528 (g/dL) → , charted with Hemoglobin')", timeout=10000)
+                lmrow528("Iron 528").get_by_role("button", name="Remove the match").click()
+                page.wait_for_function(f"{LMMSG}.startsWith('Removed the match for “Iron 528” for every profile')", timeout=10000)
+                gone1114 = js("!document.getElementById('lmEvery').textContent.includes('Iron 528')")
+                page.locator(".sg-toast").last.get_by_role("button", name="Undo").click()
+                page.wait_for_function(f"{LMMSG}.startsWith('Undone')", timeout=10000)
+                page.wait_for_function("document.getElementById('lmEvery').textContent.includes('Iron 528 (g/dL) → , charted with Hemoglobin')", timeout=10000)
+                check("…an admin's Change… there has no results to move (none are counted), and its Undo puts it back; Remove asks nothing, "
+                      "and its Undo brings it back (#1114)", not moves1114 and gone1114, [moves1114, gone1114])
+                # someone who isn't an admin reads them: no buttons, and says who changes them (the server's answer as theirs)
+                def as_member(route):
+                    r = route.fetch()
+                    route.fulfill(response=r, json={**r.json(), "can_change_every": False})
+                page.route("**/api/profiles/1/labmaps", as_member)
+                page.reload()
+                page.wait_for_function("document.getElementById('lmEvery')?.textContent.includes('Glucose 528')", timeout=10000)
+                ro1114 = [js("document.querySelectorAll('#lmEvery button').length"), js("document.querySelector('#lmEvery > p.hint').textContent")]
+                page.unroute("**/api/profiles/1/labmaps", as_member)
+                page.reload()
+                page.wait_for_function("document.getElementById('lmEvery')?.textContent.includes('Glucose 528')", timeout=10000)
+                check("…and for someone who isn't an admin they're listed with no Keep, Change or Remove, saying an admin changes them (#1114)",
+                      ro1114[0] == 0 and ro1114[1].endswith("An admin changes them."), ro1114)
+                # #528: at 375×667 a match's Change… leaves focus on its Change…, and Remove on the next match's first button, in
+                # sight (it fell to the page); one removed elsewhere, then changed, is drawn away, “No such lab name match.”
+                # said, focus on a button beside where it was
+                page.set_viewport_size({"width": 375, "height": 667})
+                SEENLM528 = """e => { if (!e) return false; const r = e.getBoundingClientRect(), p = getComputedStyle(document.documentElement);
+                  return r.height > 0 && r.top >= parseFloat(p.scrollPaddingTop) - 1 && r.bottom <= innerHeight - parseFloat(p.scrollPaddingBottom) + 1; }"""
+                LM528 = f"""(() => {{ const a = document.activeElement;
+                  return [a.textContent, a.closest('[data-every]')?.querySelector('h3').textContent.split(' (')[0] ?? null, ({SEENLM528})(a)]; }})()"""
+                lm528 = []
+                lmrow528("Ferritin 528").get_by_role("button", name="Change the match").click()
+                pick1114("")
+                page.wait_for_function(f"{LMMSG}.startsWith('“Ferritin 528” is kept as its own test')", timeout=10000)
+                settle(300)
+                lm528.append(js(LM528))
+                lmrow528("Ferritin 528").get_by_role("button", name="Remove the match").click()
+                page.wait_for_function("!document.getElementById('lmEvery').textContent.includes('Ferritin 528')", timeout=10000)
+                settle(300)
+                lm528.append(js(LM528))
+                lmrow528("Glucose 528").get_by_role("button", name="Change the match").click()
+                lmdb528.execute("DELETE FROM labmaps WHERE id=?", (int(lmrow528("Glucose 528").get_attribute("data-every")),))
+                pick1114("")
+                page.wait_for_function(f"{LMMSG} === 'No such lab name match.'", timeout=10000)
+                settle(300)
+                lm528.append(js(LM528) + [js(f"{LMMSG}"), js("document.getElementById('lmEvery').textContent.includes('Glucose 528')")])
+                problems[had528:] = [x for x in problems[had528:] if not re.search(r"HTTP 404: .*/api/labmaps/\d+(\?profile=\d+)?$|status of 404", x)]   # (the point)
+                page.set_viewport_size(vp528)
+                check("…(#528) at 375×667 a match's Change… leaves focus on its Change…, Remove on the next match's first button, in sight (it "
+                      "fell to the page); one removed elsewhere, then changed, is drawn away, “No such lab name match.” said, focus on a button beside it",
+                      lm528[0] == ["Change…", "Ferritin 528", True] and lm528[1][1] and lm528[1][1] != "Ferritin 528" and lm528[1][2]
+                      and lm528[2][1] and lm528[2][2] and lm528[2][3:] == ["No such lab name match.", False], lm528)
+                # #532: at 320 and 375 px no word of the matches for every profile is broken across lines (“Chan/ge”, “Remo/ve”,
+                # “Glucos/e”: Install's first column was 55 px). One with a long name
+                every1114("Glucose fasting 532", "Glucose", unit="mg/dL", shown="Glucose fasting, a long name from an outside lab 532")
+                BROKEN532 = """(() => { const out = [], w = document.createTreeWalker(document.getElementById('lmEvery'), NodeFilter.SHOW_TEXT);
+                  for (let n; (n = w.nextNode());) if (n.parentElement.checkVisibility()) for (const m of n.textContent.matchAll(/\\S+/g)) {
+                    const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+                    if (new Set([...r.getClientRects()].filter(x => x.width).map(x => Math.round(x.top))).size > 1) out.push(m[0]); }
+                  return out; })()"""
+                broken532 = {}
+                page.reload()
+                page.wait_for_function("document.getElementById('lmEvery')?.textContent.includes('outside lab 532')", timeout=10000)
                 for w in (320, 375):
                     page.set_viewport_size({"width": w, "height": 667})
                     settle(200)
                     broken532[w] = js(BROKEN532)
-                    for n in ("outside lab 532", "Hemoglobin Lvl"):
-                        lmrow528(n).get_by_role("button", name="Change").click()
-                        settle(200)
-                        broken532[f"{w} {n}"] = js(BROKEN532)
-                        lmrow528(n).get_by_role("button", name="Cancel").click()
-                        settle(200)
-            finally:
-                lmdb532.execute("DELETE FROM labmaps WHERE id=?", (lm532,))
-                lmdb532.close()
                 page.set_viewport_size(vp528)
-                js("loadLabmaps()")
-            check("…(#532) at 320 and 375 px, and with a match's Change open, no word in Lab name matches is broken across lines (“Chan/ge”, "
-                  "“Glucos/e”: its first column was 55 px)", len(broken532) == 6 and not any(broken532.values()), broken532)
-            # #536: with a match's Change open, from 700 to 820 px every 4 px, nothing of Lab name matches past its card's
-            # right edge and no sideways scroll (at 762–804 its five columns ended at 775 px, Change and Remove outside)
-            out536 = {}
-            try:
-                page.wait_for_selector("#labmapList tr[data-labmap]", timeout=10000)
-                lmrow528("Hemoglobin Lvl").get_by_role("button", name="Change").click()
+                check("…(#532) at 320 and 375 px no word of the matches for every profile is broken across lines (“Chan/ge”, “Glucos/e”)",
+                      len(broken532) == 2 and not any(broken532.values()), broken532)
+                # #536: from 700 to 820 px every 4 px, nothing of them past the card's right edge, and no sideways scroll (at
+                # 762–804 Install's five columns ended at 775 px, Change and Remove outside)
+                out536 = {}
                 for w in range(700, 821, 4):
                     page.set_viewport_size({"width": w, "height": 800})
                     settle(60)
-                    o = js("""(() => { const r = document.getElementById('labmaps').getBoundingClientRect().right;
-                      return [document.documentElement.scrollWidth - innerWidth, ...[...document.querySelectorAll('#labmaps *')]
+                    o = js("""(() => { const r = document.getElementById('labmatches').getBoundingClientRect().right;
+                      return [document.documentElement.scrollWidth - innerWidth, ...[...document.querySelectorAll('#lmEvery *')]
                         .filter(e => e.checkVisibility() && e.getBoundingClientRect().right > r + 0.5).map(e => e.tagName).slice(0, 3)]; })()""")
                     if o[0] > 0 or len(o) > 1:
                         out536[w] = o
-                edit536 = js("!!document.querySelector('#labmapList .lm-edit input')")
-                lmrow528("Hemoglobin Lvl").get_by_role("button", name="Cancel").click()
-            finally:
                 page.set_viewport_size(vp528)
-                lmdb1097i = dbm.connect()
-                lmdb1097i.execute("DELETE FROM labmaps WHERE id=?", (lm1097i,))
-                lmdb1097i.close()
-                js("loadLabmaps()")
-            check("…(#536) with a match's Change open, from 700 to 820 px every 4 px, Lab name matches stays in its card, with no sideways "
-                  "scroll (at 762–804 px Change and Remove were past it)", edit536 and not out536, out536)
-            # #569: a match remembered before #546 that its rule wouldn't make (Vitamin B6 filled in as Vitamin B1; checked
-            # NULL) is to check: listed first, marked, with Keep and Forget, axe clean in light and dark; kept, it's an
-            # ordinary match, focus on its Change. Made up here and gone after
-            lmdb569 = dbm.connect()
-            lm569 = lmdb569.execute("INSERT INTO labmaps(lookup, importer, source, target, created_by, created_name, created) VALUES(?, 'csv', ?, ?, NULL, ?, 1)",
-                                    (labmap528.lookup("csv", "Vitamin B6 569", "nmol/L", None), crypto528.enc(json.dumps({"name": "Vitamin B6 569", "unit": "nmol/L", "loinc": None})),
-                                     crypto528.enc("Vitamin B1"), USER)).lastrowid
-            LM569 = """[...document.querySelectorAll('#labmapList tr[data-labmap]')].map(tr => [tr.querySelector('b').textContent,
-              !!tr.querySelector('.lm-check'), [...tr.querySelectorAll('td.acts button')].map(b => b.textContent).join('|')])"""
-            try:
-                js("loadLabmaps()")
-                page.wait_for_function("document.getElementById('labmapList').textContent.includes('Vitamin B6 569')", timeout=10000)
-                rows569, said569 = js(LM569), js("document.querySelector('#labmapList > p.howto')?.textContent || ''")
+                check("…(#536) from 700 to 820 px every 4 px, the matches for every profile stay in the card, with no sideways scroll", not out536, out536)
+                # #569: one remembered before #546 that its rule wouldn't make (Vitamin B6 filled in as Vitamin B1; checked NULL)
+                # is to check: listed first, said so, with Keep and Forget, axe clean in light and dark; kept, it's an ordinary
+                # match, focus on its Change…
+                lm569 = every1114("Vitamin B6 569", "Vitamin B1", unit="nmol/L", checked=False, importer="csv")
+                page.reload()
+                page.wait_for_function("document.getElementById('lmEvery')?.textContent.includes('Vitamin B6 569')", timeout=10000)
+                rows569 = js(EVERY)
                 theme569, axe569 = js("document.documentElement.dataset.theme || null"), []
+                page.locator("#lmEvery").scroll_into_view_if_needed()
                 for theme in ("light", "dark"):
                     js("t => { document.documentElement.dataset.theme = t; }", theme)
                     settle(300)
-                    axe569 += axe_check(page, f"Lab name matches with one to check, {theme}")[0]
+                    axe569 += axe_check(page, f"Lab name matches for every profile, with one to check, {theme}")[0]
                 js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme569)
-                lmrow528("Vitamin B6 569").get_by_role("button", name="Keep").click()
-                page.wait_for_function("document.getElementById('labmapMsg').textContent.startsWith('Kept: “Vitamin B6 569”')", timeout=10000)
+                lmrow528("Vitamin B6 569").get_by_role("button", name="Keep the match").click()
+                page.wait_for_function(f"{LMMSG}.startsWith('Kept: “Vitamin B6 569”')", timeout=10000)
                 settle(300)
-                kept569 = [js(LM569), js("[document.activeElement.textContent, document.activeElement.closest('tr')?.querySelector('b')?.textContent]"),
-                           js("!!document.querySelector('#labmapList > p.howto')"),
-                           lmdb569.execute("SELECT checked IS NOT NULL FROM labmaps WHERE id=?", (lm569,)).fetchone()[0]]
+                kept569 = [js(EVERY), js("[document.activeElement.textContent, document.activeElement.closest('[data-every]')?.querySelector('h3').textContent.split(' (')[0]]"),
+                           lmdb528.execute("SELECT checked IS NOT NULL FROM labmaps WHERE id=?", (lm569,)).fetchone()[0]]
+                check("…a match for every profile remembered before #546 that its rule wouldn't make is listed first, said to check, with Keep and "
+                      "Forget, axe clean in light and dark; kept, it's an ordinary match with Change… and Remove, focus on its Change… (#569)",
+                      rows569[0][0].startswith("Vitamin B6 569") and "to check" in rows569[0][1] and rows569[0][2] == "Keep|Forget"
+                      and all("to check" not in r[1] and r[2] == "Change…|Remove" for r in rows569[1:]) and not axe569
+                      and any(r[0].startswith("Vitamin B6 569") and "to check" not in r[1] and r[2] == "Change…|Remove" for r in kept569[0])
+                      and kept569[1] == ["Change…", "Vitamin B6 569"] and kept569[2] == 1, [rows569, axe569[:4], kept569])
             finally:
-                lmdb569.execute("DELETE FROM labmaps WHERE id=?", (lm569,))
-                lmdb569.close()
-                js("loadLabmaps()")
-            check("Install lists a match remembered before #546 that its rule wouldn't make first, marked to check, with Keep and Forget, "
-                  "axe clean in light and dark; kept, it's an ordinary match with Change and Remove, focus on its Change (#569)",
-                  rows569[0] == ["Vitamin B6 569", True, "Keep|Change|Forget"] and all(not r[1] and r[2] == "Change|Remove" for r in rows569[1:])
-                  and said569.startswith("1 match to check") and not axe569
-                  and ["Vitamin B6 569", False, "Change|Remove"] in kept569[0] and kept569[1] == ["Change", "Vitamin B6 569"]
-                  and kept569[2] is False and kept569[3] == 1, [rows569, said569, axe569[:4], kept569])
+                for x in ALL1114:
+                    lmdb528.execute("DELETE FROM labmaps WHERE id=?", (x,))
+                lmdb528.close()
             # #1097: a profile's own lab name matches, in This person → Labs and ranges, and Labs' Same test as…
             errs1097 = lab_matches_check(browser, base, [c for c in page.context.cookies() if c["name"] == "sg_session"], check)
             check("…and no script fails there (#1097)", not errs1097, errs1097)
@@ -29725,7 +29742,7 @@ def main():
             # no longer the only account: admin actions now wait for the admin's own second factor (issue #75)
             check("with a second account, the admin is asked for a second factor",
                   js("!document.getElementById('adminTf').hidden && document.getElementById('adminTools').hidden"))
-            check("…and every other part of Install the server now refuses says so", js("['gen-host', 'gen-security', 'gen-signin', 'gen-backups', 'gen-phone', 'gen-demo', 'gen-about', 'backups', 'admin', 'sec-sync', 'directory', 'labmaps', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
+            check("…and every other part of Install the server now refuses says so", js("['gen-host', 'gen-security', 'gen-signin', 'gen-backups', 'gen-phone', 'gen-demo', 'gen-about', 'backups', 'admin', 'sec-sync', 'directory', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
             # two-factor sign-in: turn it on from the key shown, confirm with a code, get recovery codes
             from server import twofactor
             import time as _time
