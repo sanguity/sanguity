@@ -70,7 +70,7 @@ const SG_PAGES = {
     {id: "summary", title: "Visit summary", icon: "file-text", has: ["summaryIntro", "build", "preview", "sumTicked"],   // sumTicked: from Settings → Dashboard (#402)
      words: "doctor appointment print pdf download questions changes since another lab trend", finds: [["Measures ticked at first", "sumTicked", "home readings watch"]]},
     {id: "emergency", title: "Emergency card", icon: "id-card", has: ["emergency"],   // #1126 (emergency.js)
-     words: "emergency ice in case of emergency wallet card lock screen image phone allergies blood type contacts medications print pdf png ambulance paramedic"},
+     words: "emergency ice in case of emergency wallet card lock screen image phone allergies blood type contacts medications print printable pdf png download ambulance paramedic"},
     {id: "export", title: "Export everything", icon: "download", has: ["export"], needs: "editor", why: "A profile's owners and editors can export it.",
      words: "download backup zip copy"},
     {id: "activity", title: "Activity", icon: "scroll-text", has: ["activity"], needs: "owner", why: "A profile's activity is for its owners.",
@@ -84,9 +84,10 @@ const SG_PAGES = {
      finds: [["Overview tiles", "sec-overview", "key labs home readings start from a condition choose conditions preset use most measured add"], ["Tabs", "sec-tabs", "edit order hide show", "editor"],
        ["Lab charts", "sec-trends", "labs selected at first saved views add view no default"]]},
     {id: "about", title: "About this person", icon: "user", part: "This person", has: ["about", "targets"],   // #194, #234; on Sharing before #267
-     finds: [["Birth date, sex and height", "about", "age birthday date of birth dob born child baby due date growth tall cm inches maximum heart rate measured bpm early add blood type group abo rh emergency contacts ice phone"], ["Targets of your own", "targets", "goals"]]},
+     finds: [["Birth date, sex and height", "about", "age birthday date of birth dob born child baby due date growth tall cm inches maximum heart rate measured bpm early add blood type group abo rh emergency contacts ice phone number relationship optional"], ["Targets of your own", "targets", "goals"]]},   // (an emergency contact's fields, #524)
     {id: "insurance", title: "Insurance cards", icon: "wallet-cards", part: "This person", has: ["insurance"],   // #1137
-     words: "health plan insurer member id group number card photo front back phone add change remove"},
+     words: "health plan insurer member id group number card photo front back phone add change take off",
+     finds: [["Remove a plan", "insurance", "delete"]]},   // (its own: in the group's words, "remove member" found it before Who has access, #510)
     {id: "labs", title: "Labs and ranges", icon: "ruler", part: "This person", has: ["sec-names", "labmatches", "sec-ranges"], words: "reference ranges normal high low add",
      finds: [["Names", "sec-names", "nicknames rename lab names result sources records shown"],
        ["Lab name matches", "labmatches", "same test match matched charted with keep separate own test move results add change remove forget aliases import results " +
@@ -118,7 +119,8 @@ const SG_PAGES = {
        ["Backups and logging", "gen-backups", "backups folder encryption key file keys logs log output docker security activity kept days how long delete older"],   // (the schedule's Backups', #532: it only links there)
        ["Phone receiver", "gen-phone", "upload address watch scale health connect receiver port time zone unclaimed restore replaced"],
        ["Notifications", "gen-notify", "notification server ntfy topic push access token test send"],   // (#1130)
-       ["Needs a restart", "gen-restart", "restart now upload limits file size files journal photo sync attachment pulls timeout health links password checks at once hash parallel trusted proxies forwarded time zone unclaimed restore replaced kept server-settings"],   // (#1121)
+       ["Needs a restart", "gen-restart", "restart now upload limits file size files journal photo sync attachment pulls timeout health links password checks at once hash parallel trusted proxies forwarded time zone unclaimed restore replaced kept server-settings " +
+        "ones most unpacked records fetches data wait vendor answer each request what brings between connection"],   // (#1121; its rows' labels, #524: "ones", so "one" is found but "one-time password" stays Accounts', #502)
        ["Experimental", "gen-experimental", "connected sources portals health plans fhir epic mychart sync find your provider turn on off"],   // (#1096)
        ["Text recognition", "gen-ocr", "ocr tesseract scanned documents scans searchable search text languages language file traineddata import download tessdata"],   // (#1129)
        ["Demo profile", "gen-demo", "demo sample example fictional made-up look around try add remove demo"],   // (#1101)
