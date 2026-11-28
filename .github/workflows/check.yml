@@ -220,7 +220,7 @@ jobs:
       - name: Visit summary PDF (every section read back with pypdf, each result against its own report's range, questions draft, roles, nothing on disk, two pages at most)
         run: python tests/test_summary.py
 
-      - name: Emergency card (what goes on it: hidden medications out, allergies' wording, blood type from labs or typed; the PDF on Letter and A4 with the title alone; roles; #1126)
+      - name: "Emergency card (what goes on it: hidden medications out, allergies' wording, blood type from labs or typed; the PDF on Letter and A4 with the title alone; roles; #1126)"
         run: python tests/test_emergency.py
 
       - name: Key documents (marked by owners and editors, sealed, found again after a re-import, in the export, on the emergency card; #1135)
