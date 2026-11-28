@@ -154,6 +154,7 @@ Everything on `main` so far; it becomes the first tagged release.
 - CI upgrades the previous release's data to the current code on every pull request.
 
 ### Changed
+- The static files' budget (stylesheets, fonts and icons as sent) is 320 KB, up from 310 KB, to give 0.2.0's new features room for their styles.
 - A new top bar on every page: the records' tabs, an **Add** menu (import records, connect a source, type records
   in, a journal entry) and your own menu (visit summary, share links, settings, account, light or dark, log out),
   in one row; the build and sync line moved to the page's foot. Settings is now a sidebar of groups (this
