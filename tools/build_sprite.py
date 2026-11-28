@@ -43,7 +43,7 @@ ICONS = [
     "bed",                   # a hospital stay
     "stethoscope",           # a visit
     "clipboard",             # chart activity: a chart review, a call, a fax
-    "test-tube-diagonal",    # labs (and Settings' Labs and ranges, Admin's Lab name matches)
+    "test-tube-diagonal",    # labs (and Settings' Labs and ranges)
     "scan-line",             # imaging
     "bandage",               # a procedure
     "syringe",               # an immunization
@@ -81,8 +81,8 @@ ICONS = [
     "layout-list", "layout-dashboard",  # Sources' Overview, Settings' Dashboard
     "ruler", "dumbbell", "folder",  # Settings: Labs and ranges, Workouts, More
     "send", "scroll-text",   # Sharing: Share links (and New share link), Activity
-    "user-cog", "logs", "app-window", "arrow-right-left",  # Admin: Accounts, Install activity, Connected-source apps,
-                             # Lab name matches
+    "user-cog", "logs", "app-window",  # Admin: Accounts, Install activity, Connected-source apps (Lab name matches'
+                             # arrow-right-left went with its page, #1114)
 ]
 
 

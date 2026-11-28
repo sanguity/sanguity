@@ -5,7 +5,7 @@
      Workouts, Rename or delete; settings.js, about.js, profile-card.js);
    - You: Sign-in and security and This device (account.js, pwa.js; the Account page before), and Display;
    - Install, for admins only: General (#998), Accounts, Install activity, Backups, Connected-source apps, the Provider
-     directory, Outside connections and Lab name matches (admin.js and the scripts after it; the Admin page before),
+     directory and Outside connections (admin.js and the scripts after it; the Admin page before),
      with the admins' notices (NOTICES) over each.
    The old Account and Admin pages' addresses open their group here (moved.js), each part with the id it had.
 
