@@ -15,7 +15,7 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from . import config, connections, settings, watch_keys
+from . import config, connections, server_settings, settings, watch_keys
 from .main import _foreign_host, _request_host, _same_site, admin, get_db
 from .routes_settings import Value
 
@@ -97,8 +97,9 @@ def host(request: Request, origin: str = "", s=Depends(admin), db=Depends(get_db
                         "forwarded_proto": h.get("x-forwarded-proto"), "accepted_by": by},
             "passkeys": [dict(r) for r in db.execute("SELECT rp_id AS name, COUNT(*) AS count FROM passkeys GROUP BY rp_id ORDER BY rp_id")],
             "apps": _apps(db), "phones": watch_keys.with_secret(db),
-            # the process's own environment (python -m server, server/__main__.py), read here only
-            "proxies": os.environ.get("FORWARDED_ALLOW_IPS", "127.0.0.1"), "port": os.environ.get("PORT", "8000"),
+            # the address it binds is the process's own environment; whose forwarded headers it believes, the environment's or
+            # else the file's, as python -m server gave uvicorn at start (server_settings.py, #1121)
+            "proxies": server_settings.lookup("FORWARDED_ALLOW_IPS")[1], "port": os.environ.get("PORT", "8000"),
             "bind": os.environ.get("HOST", "0.0.0.0")}
 
 
@@ -107,17 +108,7 @@ def phone(request: Request, s=Depends(admin), db=Depends(get_db)):
     """General → Phone receiver's read-only rows: the addresses phones are given now, how many profiles' phones upload
     with a secret, and the receiver's own settings as it reads them: every deployment passes TZ and SLOT_GRACE_DAYS to
     the app as to the receiver (#998: compose and CasaOS both, TrueNAS its TZ to every container, the all-in-one image
-    its environment), so their values here are the receiver's, its defaults where they're unset."""
+    its environment), so their values here are the receiver's: else the ones changed on Needs a restart, copied for the
+    receiver at Restart now (#1121), else its defaults."""
     return {"upload": watch_keys.addresses(_request_host(request)), "phones": watch_keys.with_secret(db),
-            "tz": os.environ.get("TZ") or "UTC", "slot_grace_days": _receiver_days("SLOT_GRACE_DAYS", 7)}
-
-
-def _receiver_days(name, default):
-    """A number of days as the receiver reads it (watch/receiver.py's _days): its default when unset, unreadable or
-    below zero."""
-    try:
-        v = float(os.environ.get(name) or default)
-    except ValueError:
-        v = default
-    v = v if 0 <= v < float("inf") else default   # (NaN isn't >= 0; nor is a number JSON can't say shown)
-    return int(v) if float(v).is_integer() else v
+            "tz": server_settings.lookup("TZ")[1], "slot_grace_days": server_settings.lookup("SLOT_GRACE_DAYS")[1]}

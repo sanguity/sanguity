@@ -3996,6 +3996,14 @@ Everything on `main` so far; it becomes the first tagged release.
   says why, with Try again. Before, it showed only the card's heading: no list, no Add and no message. The list and
   Add are drawn separately. A browser that can't make passkeys at an https:// address now says that, not "open its
   https:// address".
+- **Settings that need a restart, kept safely** (#1121): the upload, connected-source and Health Link limits, the
+  password checks at once, the trusted proxies, the receiver's time zone and unclaimed data's days and how long what a
+  restore replaced is kept are read at start from `server-settings.json` in the data folder (0600; the environment
+  still wins), each bounded. A change is tried at the next start and kept once the server has answered its health
+  check for 30 seconds; a start that stops before that, or isn't healthy in 3 minutes, falls back to the last values
+  that worked and records why. `POST /api/settings/install/restart` (admins, the fresh check, logged) stops the app for
+  Docker to start again, the receiver restarts itself on its own change, `server.manage config show|reset` covers them,
+  and `deploy/check.py` checks every template restarts unless stopped (Unraid's now passes `--restart unless-stopped`).
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

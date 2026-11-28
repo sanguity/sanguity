@@ -308,6 +308,8 @@ def truenas(want, lib_dir):
         for name, svc in rendered["services"].items():
             image_ok(f"truenas: {name}", svc["image"])
             check(f"truenas: {name} runs as the run-as user", svc.get("user") == "568:568", svc.get("user"))
+            if name != "setup":   # (ix_values.yaml's setup_container_name; it runs once)
+                check(f"truenas ({t}): {name} restarts unless stopped (#1121)", svc.get("restart") == "unless-stopped", svc.get("restart"))
         compare(f"truenas ({t})", want, shape(rendered), TRUENAS_SAME)
         env = rendered["services"]["receiver"]["environment"]
         check("truenas: the receiver gets the time zone", env.get("TZ_DEFAULT") == "Etc/UTC", env.get("TZ_DEFAULT"))
@@ -462,6 +464,27 @@ def deployments():
     check("the released image sets SANGUITY_VERSION, the version About shows", "SANGUITY_VERSION=${VERSION}" in docker)
 
 
+# ---------------------------------------------------------------- restart policies (#1121)
+
+def restart_policies():
+    """Restart now (Settings → General → Needs a restart) stops the app, and the receiver stops itself when its settings
+    change: Docker's restart policy, unless-stopped, starts each again, in every template. setup runs once ("no", or
+    TrueNAS's on-failure)."""
+    for name in ("compose.yaml", "compose.release.yaml", os.path.join("deploy", "casaos", "Sanguity", "docker-compose.yml")):
+        services = load_yaml(os.path.join(ROOT, name))["services"]
+        for svc in ("app", "web", "receiver"):
+            check(f"{name}: {svc} restarts unless stopped (#1121)", services[svc].get("restart") == "unless-stopped",
+                  services[svc].get("restart"))
+    template = open(os.path.join(HERE, "truenas", "sanguity", "templates", "docker-compose.yaml"), encoding="utf-8").read()
+    policies = re.findall(r"{%\s*do\s+(\w+)\.restart\.set_policy\(\"([\w-]+)\"", template)
+    # (the app library's containers restart unless stopped unless set otherwise: only setup's is)
+    check("truenas: only setup has a restart policy of its own; the rest restart unless stopped (#1121)",
+          all(c == "setup" or p == "unless-stopped" for c, p in policies), policies)
+    root = ET.parse(os.path.join(HERE, "unraid", "sanguity.xml")).getroot()
+    check("unraid: the container restarts unless stopped (ExtraParams --restart unless-stopped, #1121)",
+          re.search(r"--restart[ =]unless-stopped\b", root.findtext("ExtraParams") or "") is not None, root.findtext("ExtraParams"))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--truenas-lib")
@@ -478,6 +501,7 @@ def main():
         unraid(want)
         casaos(want)
         deployments()
+        restart_policies()
     except Exception as e:   # report what was caught so far instead of a bare traceback
         failed.append(f"stopped: {type(e).__name__}: {e}")
     for x in passed:
