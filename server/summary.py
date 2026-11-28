@@ -345,7 +345,9 @@ def _medications(data, now):
     rows = []
     for m in data.get("medications") or []:
         s = (m.get("spans") or [None])[-1]
-        if not s or s.get("stopped") or (s.get("to") and s["to"] < now):
+        # (#1161) within the time it's taken: not yet started again, nor stopped by today (a stop to come is current till then)
+        if not s or (s.get("stopped") and not (s.get("to") and s["to"] > now and s["to"] != s.get("from"))) \
+                or (s.get("to") and s["to"] < now) or str(s.get("from") or "") > now:
             continue
         status = str(s.get("status") or "").strip().lower()
         if status and status not in ACTIVE:

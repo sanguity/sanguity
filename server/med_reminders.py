@@ -335,11 +335,12 @@ def first_day(start, days):
     return start
 
 
-def recurrence(r, at, last_day, zone):
+def recurrence(r, at, last_day, zone, first=None):
     """[DTSTART, DTEND, RRULE] content lines of one time of day of a reminder, or None when it never happens (its end
-    is before its first day). at: "HH:MM"; last_day: date or None; zone: ZoneInfo, or None for floating times."""
+    is before its first day). at: "HH:MM"; last_day: date or None; zone: ZoneInfo, or None for floating times; first:
+    a date it starts on instead of its from, when later (a time the medication was taken again, #1161)."""
     days = r.get("days") or list(DAYS)
-    d0 = first_day(date.fromisoformat(r["from"]), days)
+    d0 = first_day(max(date.fromisoformat(r["from"]), first or date.min), days)
     if last_day and last_day < d0:
         return None
     h, m = (int(x) for x in at.split(":"))
@@ -387,12 +388,18 @@ def feed_events(db, pid, full, today):
         at_times = {}
         for at, x in zip(r["times"], r["amounts"]):
             at_times.setdefault(at, []).append(said(x))
+        # (#1161) one event for each time it was taken, the days between them left out: those not over
+        ps = medications.periods(m)
+        windows = [(None, last_day)] if len(ps) < 2 else [
+            (date.fromisoformat(a), min([x for x in (last_day, date.fromisoformat(b) if b else None) if x], default=None))
+            for a, b in ps if not b or date.fromisoformat(b) >= today]
         for at, amounts in at_times.items():
-            lines = recurrence(r, at, last_day, zone)
-            if lines is None:
-                continue
-            amount = together(amounts)
-            summary = ((m.get("name") or r["name"] or "Medication") + (f" · {amount}" if amount else "")) if full else "Medication"
-            events.append({"ident": f"reminder|{r['id']}|{at}", "summary": summary, "dose": dose if full else "",
-                           "amount": amount if full else "", "lines": lines})
+            for first, until in windows:
+                lines = recurrence(r, at, until, zone, first)
+                if lines is None:
+                    continue
+                amount = together(amounts)
+                summary = ((m.get("name") or r["name"] or "Medication") + (f" · {amount}" if amount else "")) if full else "Medication"
+                events.append({"ident": f"reminder|{r['id']}|{at}" + (f"|{first.isoformat()}" if first else ""), "summary": summary,
+                               "dose": dose if full else "", "amount": amount if full else "", "lines": lines})
     return events, zones

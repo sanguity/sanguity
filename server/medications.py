@@ -566,6 +566,35 @@ def set_change(db, pid, who, key, was, fields=None, hidden=None):
     return before, _save(db, pid, who, body, eid)
 
 
+def _shift(day, n):
+    from datetime import date, timedelta
+    return (date.fromisoformat(day) + timedelta(days=n)).isoformat()
+
+
+def periods(m):
+    """(#1161) The times medication m (history()'s, with_entries()') was taken, as [(from, to or None while it's
+    taken)]: its spans run together, a new one where a span that stopped is followed by one starting after it (Started
+    again, or records that list it again after it ended)."""
+    out = []
+    for s in m.get("spans") or []:
+        a = s.get("from")
+        if not isinstance(a, str) or not _DAY.match(a):
+            continue
+        b = None if s.get("open") else (s.get("to") or a)
+        if out and (out[-1][1] is None or a <= _shift(out[-1][1], 1)):
+            out[-1][1] = None if b is None or out[-1][1] is None else max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return [tuple(x) for x in out]
+
+
+def gaps(m):
+    """(#1161) The days between those times, when it wasn't taken: [(first day, last day)]. Its schedule gives no dose
+    on them (med_log.scheduled): none counted as missed, none on Today, in the calendar feed or notified."""
+    ps = periods(m)
+    return [(_shift(a[1], 1), _shift(b[0], -1)) for a, b in zip(ps, ps[1:]) if a[1] is not None]
+
+
 def check_again(v):
     """(#1161) Started again's periods as kept ([{from, to, reason}], in order, none before the one before it ended),
     or EntryError."""

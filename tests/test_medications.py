@@ -597,6 +597,55 @@ class InTheRecords(unittest.TestCase):
         finally:
             db.close()
 
+    def test_the_days_between_the_times_it_was_taken(self):   # #1161
+        """Started again after it stopped: the days between give no dose. Its schedule's counts don't take them as
+        missed, the doses a day gives are none on them, the calendar feed starts its event on the day it was started
+        again, and the visit summary lists it only while it's taken (not before a Started again to come)."""
+        from datetime import date, datetime
+        from server import med_log, med_reminders, profiles
+        db = dbm.connect()
+        uid = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()[0]
+        pid = profiles.create_profile(db, "The days between (fictional)", owner_id=uid)
+        db.close()
+        p = f"/api/profiles/{pid}"
+        r = self.c.post(p + "/medications/own", headers=H, json={"name": "Calmora", "dose": "1 tablet", "start": "2026-10-01", "status": "Active"})
+        self.assertEqual(r.status_code, 201, r.text)
+        key = r.json()["key"]
+        r = self.c.post(p + "/medications/reminders", headers=H, json={"med": key, "times": ["21:00"], "days": ["mo", "tu", "we", "th", "fr", "sa", "su"],
+                                                                        "start": "2026-10-01", "tz": "UTC"})
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual(self.c.post(p + "/medications/stopped", headers=H, json={"key": key, "day": "2026-10-10"}).status_code, 200)
+        self.assertEqual(self.c.post(p + "/medications/again", headers=H, json={"key": key, "day": "2026-10-20"}).status_code, 200)
+        d = self.c.get(p + "/data").json()
+        (m,) = d["medications"]
+        lines = [x for x in d["reminders"] if x["med"] == key]
+        db = dbm.connect()
+        try:
+            events, _ = med_reminders.feed_events(db, pid, False, date(2026, 11, 20))
+        finally:
+            db.close()
+        self.assertEqual([[x for x in e["lines"] if x.startswith("DTSTART")] for e in events], [["DTSTART;TZID=UTC:20261020T210000"]],
+                         "the feed's event starts on the day it was started again, the time before over")
+        self.assertEqual((medications.periods(m), medications.gaps(m)), ([("2026-10-01", "2026-10-10"), ("2026-10-20", None)], [("2026-10-11", "2026-10-19")]))
+        gaps = medications.gaps(m)
+        self.assertEqual([len(med_log.scheduled(lines, date(2026, 10, n), m.get("stop"), gaps)) for n in (10, 11, 19, 20)], [1, 0, 0, 1])
+        days = [date(2026, 10, n) for n in range(1, 32)]
+        n = med_log.schedule_counts(lines, [{"t": "2026-10-05T21:00", "status": "taken"}], days, datetime(2026, 10, 31, 22, 0), m.get("stop"), gaps)
+        self.assertEqual((n["scheduled"], n["taken"]), (31 - 9, 1), "the nine days between aren't counted as missed")
+        # a Started again to come: today falls between, so it's not current on the summary
+        self.assertEqual(self.c.post(p + "/medications/stopped", headers=H, json={"key": key, "day": "2026-10-25"}).status_code, 200)
+        self.assertEqual(self.c.post(p + "/medications/again", headers=H, json={"key": key, "day": "2099-01-01"}).status_code, 200)
+        r = self.c.post(p + "/summary/preview", headers=H, json={"sections": ["medications"]})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertNotIn("Calmora", json.dumps(r.json()), "not taken today")
+        db = dbm.connect()
+        try:
+            (e,) = med_reminders.feed_events(db, pid, False, date(2026, 11, 20))[0]
+            self.assertIn("DTSTART;TZID=UTC:20990101T210000", e["lines"], "the feed: from the day it's taken again")
+            profiles.delete_profile(db, pid)
+        finally:
+            db.close()
+
     def test_a_rename_takes_what_hangs_on_its_medication(self):   # #921, #954
         """A rename groups a medication as it's shown (as before #921): it joins a medication of its new name, or
         leaves one it shared a key with. What hangs on a medication's key goes with it in the same save (#954): its
