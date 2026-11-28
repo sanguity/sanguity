@@ -490,6 +490,9 @@ const planMeter = (label, got, of, note) => el("div", {class: "ov-row still"}, e
   el("span", {class: "s cost-bars"}, el("span", {class: "cost-bar-run", "aria-hidden": "true"},
     el("span", {class: "cost-bar", style: {width: (of > 0 ? Math.min(1, Math.max(0, got / of)) * 100 : got > 0 ? 100 : 0) + "%", background: "var(--measure)"}})),
     note ? el("span", {class: "cost-bar-note", text: note}) : null));
+const UNSAID = "Your claims don't say how much went to the deductible";   // (#1163: only some claims files do)
+const planUnsaid = label => el("div", {class: "ov-row still"}, el("span", {class: "n", text: label}), el("span", {class: "v", text: "Not said"}),
+  el("span", {class: "s cost-bars"}, el("span", {class: "cost-bar-note", text: UNSAID})));
 function planForm(p) {   // a plan year typed: new (p null) or changed
   const msg = el("p", {class: "hint", id: "planMsg"}), id = f => "plan-" + f;
   const f = (k, label, v, type = "text") => el("label", {for: id(k)}, el("span", {text: label}),
@@ -524,13 +527,16 @@ function planCard() {
     el("summary", {text: `${ys.length - 3} earlier year${ys.length === 4 ? "" : "s"}`})) : null;
   ys.forEach((y, n) => {
     const p = y.plan != null ? byId_.get(y.plan) : null, part = el("div", {id: p ? "plan-" + p.id : null, class: "mt-3"});
-    const split = y.noSplit ? `${y.noSplit} of ${y.claims.length} claim${y.claims.length === 1 ? " gives" : "s give"} no deductible part` : "";
+    // (#1163) no claim of the year says what went to the deductible: no meter at $0, the claims' silence said instead
+    const none = y.claims.length > 0 && y.noSplit === y.claims.length;
+    const split = y.noSplit && !none ? `${y.noSplit} of ${y.claims.length} claims don't say how much went to the deductible` : "";
     part.append(el("h3", {class: "sub", text: p ? `Plan year ${fmtD(dayTs(y.start))} to ${fmtD(dayTs(y.end))}` : plans.length ? `${y.start.slice(0, 4)}, outside the plan years typed in` : y.start.slice(0, 4)}));
     if (p) {
-      part.append(planMeter("Deductible", y.towardDeductible, p.deductible, split), planMeter("Out-of-pocket max", y.share, p.oop));
-      if (p.familyDeductible != null) part.append(planMeter("Family deductible", y.towardDeductible, p.familyDeductible, "this profile's claims only"));
+      part.append(none ? planUnsaid("Deductible") : planMeter("Deductible", y.towardDeductible, p.deductible, split), planMeter("Out-of-pocket max", y.share, p.oop));
+      if (p.familyDeductible != null) part.append(none ? planUnsaid("Family deductible") : planMeter("Family deductible", y.towardDeductible, p.familyDeductible, "this profile's claims only"));
       if (p.familyOop != null) part.append(planMeter("Family out-of-pocket max", y.share, p.familyOop, "this profile's claims only"));
-    } else part.append(el("p", {text: `${usd(y.towardDeductible)} toward the deductible · ${usd(y.share)} your share of claims`}), split ? el("p", {class: "hint", text: split + "."}) : null);
+    } else part.append(el("p", {text: (none ? "" : `${usd(y.towardDeductible)} toward the deductible · `) + `${usd(y.share)} your share of claims`}),
+      none || split ? el("p", {class: "hint", text: (none ? UNSAID : split) + "."}) : null);
     const cs = y.claims.map(i => claimOf.get(i)).filter(Boolean);
     if (cs.length) part.append(el("details", {class: "more"}, el("summary", {text: `The ${cs.length} claim${cs.length === 1 ? "" : "s"} counted`}),
       scrollBox({class: "tablewrap", "aria-label": "Claims counted"}, stacked(el("table", {class: "data"},

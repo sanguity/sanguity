@@ -304,7 +304,7 @@ class Manual(unittest.TestCase):
             {"kind": "immunization", "date": "2026-05-04", "vaccine": "Influenza vaccine", "dose": "1", "site": "Left arm",
              "lot": "FICT-0099", "who": "Sam Ortega, RN (fictional)", "where": "Lakeside Clinic (fictional)"},
             {"kind": "claim", "date": "2026-05-04", "provider": "Lakeside Clinic (fictional)", "title": "Office visit",
-             "billed": "$240.00", "paid": "180", "owe": "60", "status": "Paid", "insurer": "Example Health (fictional)"},
+             "billed": "$240.00", "paid": "180", "owe": "60", "ded": "45", "status": "Paid", "insurer": "Example Health (fictional)"},
             {"kind": "payment", "date": "2026-06-01", "payee": "Lakeside Clinic (fictional)", "amount": "60", "group": "Medical bills"},
             {"kind": "upcoming", "date": "2026-12-03", "time": "10:00", "title": "Follow-up visit", "who": "Dr. Ada Quill (fictional)",
              "where": "Lakeside Clinic (fictional)"},
@@ -358,6 +358,8 @@ class Manual(unittest.TestCase):
                           "owe": 60.0, "status": "Paid", "cat": "Doctor visits", "prov": "Lakeside Clinic (fictional)", "title": "Office visit"})
         self.assertEqual((det("claim")["type"], det("claim")["kind"], det("claim")["visit"]),
                          ("claim", "Medical", {"date": "2026-05-04", "provider": "Lakeside Clinic (fictional)"}))
+        # #1163: the part toward the deductible, typed: the Costs row's ded, as an EOB gives it; the fill typed none
+        self.assertEqual((costs["medical"]["ded"], det("claim")["deductible"], "ded" in costs["pharmacy"]), (45.0, 45.0, False))
         # #179: an immunization typed in has the detail the C-CDA and FHIR importers give one
         self.assertEqual((ev["immunization"]["t"], ev["immunization"]["title"], ev["immunization"]["sub"]),
                          ("2026-05-04T12:00:00", "Influenza vaccine", "Dose 1 · Sam Ortega, RN (fictional) · Lakeside Clinic (fictional)"))

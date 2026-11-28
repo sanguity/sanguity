@@ -19370,9 +19370,12 @@ def main():
             settle(300)
             y1127 = js("DATA.oop.years[0]")
             cal1127 = js("[...document.querySelectorAll('#planCard h3.sub')].map(h => h.textContent)")
+            # (#1163) the demo's claims, as UHC's, say nothing of the deductible: that's said, not "$0 toward the deductible"
             check("Costs sums each calendar year's claims toward the deductible and out of pocket, with no plan year typed (#1127)",
-                  bool(cal1127) and cal1127[0] == y1127["start"][:4] and js("v => `${usd(v[0])} toward the deductible · ${usd(v[1])} your share of claims`",
-                  [y1127["towardDeductible"], y1127["share"]]) in page.inner_text("#planCard"), [cal1127, y1127])
+                  bool(cal1127) and cal1127[0] == y1127["start"][:4] and y1127["noSplit"] == len(y1127["claims"]) > 0
+                  and js("v => `${usd(v)} your share of claims`", y1127["share"]) in page.inner_text("#planCard")
+                  and "Your claims don't say how much went to the deductible." in page.inner_text("#planCard")
+                  and "toward the deductible ·" not in page.inner_text("#planCard"), [cal1127, y1127])
             page.click("#planAdd")
             page.wait_for_selector("#planEdit", timeout=5000)
             focus1127 = js("document.activeElement.id")
@@ -19389,12 +19392,19 @@ def main():
             page.click("#planEdit button:text-is('Save')")
             page.wait_for_function("(DATA.oop.plans || []).length === 1 && !document.getElementById('planEdit')", timeout=10000)
             settle(300)
-            rows1127 = js("[...document.querySelectorAll('#planCard .ov-row')].map(r => [r.querySelector('.n').textContent, r.querySelector('.v').textContent, r.querySelector('.cost-bar-run').getAttribute('aria-hidden')])")
+            ROWS1127 = "[...document.querySelectorAll('#planCard .ov-row')].map(r => [r.querySelector('.n').textContent, r.querySelector('.v').textContent, r.querySelector('.cost-bar-run')?.getAttribute('aria-hidden') ?? null, r.querySelector('.cost-bar-note')?.textContent ?? ''])"
+            rows1127 = js(ROWS1127)
             yp1127 = js("DATA.oop.years.find(y => y.plan != null)")
+            # (#1163) and with claims that say what went to the deductible (one year's, as the server would count them)
+            said1163 = js(f"""(() => {{ const y = DATA.oop.years.find(y => y.plan != null), had = [y.noSplit, y.towardDeductible];
+                y.noSplit = 1; y.towardDeductible = 420; renderCosts(); const out = {ROWS1127}; [y.noSplit, y.towardDeductible] = had; renderCosts(); return out; }})()""")
             check("…a plan year typed in: its deductible, out-of-pocket max and family deductible met so far as text, each bar hidden from screen readers (#1127)",
                   [r[0] for r in rows1127] == ["Deductible", "Out-of-pocket max", "Family deductible"]
-                  and rows1127[0][1] == js("v => usd(v) + ' of $3,000'", yp1127["towardDeductible"])
-                  and rows1127[1][1] == js("v => usd(v) + ' of $7,500'", yp1127["share"]) and all(r[2] == "true" for r in rows1127), rows1127)
+                  and rows1127[0][1:] == ["Not said", None, "Your claims don't say how much went to the deductible"] and rows1127[2][1] == "Not said"
+                  and rows1127[1][1] == js("v => usd(v) + ' of $7,500'", yp1127["share"]) and rows1127[1][2] == "true", rows1127)
+            check("…known for some claims, the deductible's meter: met so far of $3,000, how many claims don't say under it (#1163)",
+                  said1163[0][1] == "$420 of $3,000" and said1163[0][2] == "true" and said1163[0][3].endswith("claims don't say how much went to the deductible")
+                  and said1163[2][1] == "$420 of $6,000", said1163)
             check("…an out-of-pocket max under the deductible refused, said beside the form; Add a plan year focused the form, and has focus back after the save",
                   "at least the deductible" in said1127 and focus1127 == "plan-start" and js("document.activeElement.id") == "planAdd",
                   [said1127, focus1127, js("document.activeElement.id")])

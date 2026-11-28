@@ -36,7 +36,7 @@
       ["dose", "Dose number", "text", OPT], ["site", "Site", "text", "Left arm"], ["lot", "Lot number", "text", OPT],
       ["who", "Given by", "text", OPT], ["where", "Where", "text", "Clinic or pharmacy"]]],
     claim: ["Insurance claim", [["date", "Date of service", "date"], ["provider", "Provider"], ["title", "Service", "text", "Office visit"],
-      ["billed", "Billed", "money"], ["paid", "Plan paid", "money"], ["owe", "You owe", "money"],
+      ["billed", "Billed", "money"], ["paid", "Plan paid", "money"], ["owe", "You owe", "money"], ["ded", "Toward the deductible", "money", OPT],
       ["status", "Status", "select", [["", "–"], ["Paid", "Paid"], ["Processed", "Processed"], ["Pending", "Pending"], ["Denied", "Denied"]]],
       ["insurer", "Insurer"], ["claim", "Claim #", "text", OPT], ["category", "Type of care", "select", [["", "Work it out"], ...CATS.map(c => [c, c])]]]],
     payment: ["Out-of-pocket payment", [["date", "Date", "date"], ["payee", "Paid to"], ["amount", "Amount", "money"],

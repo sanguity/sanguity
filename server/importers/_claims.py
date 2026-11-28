@@ -157,9 +157,12 @@ class Claims:
         self.events.append(e)
         return i
 
-    def cost(self, eid, date, insurer, billed, paid, owe, status, kind, cat, prov, title):
+    def cost(self, eid, date, insurer, billed, paid, owe, status, kind, cat, prov, title, ded=None):
+        """A Costs row; ded, the part of the share toward the deductible, only where the file gives one (#1163), as the
+        FHIR claims' (_fhir_claims.py): costplan.py counts it, and a claim without says nothing of the deductible."""
         self.costs.append({"id": eid, "d": date[:10], "ins": insurer, "billed": billed, "paid": paid, "owe": owe,
-                           "status": status, "kind": kind, "cat": cat, "prov": (prov or "").strip().title(), "title": title})
+                           "status": status, "kind": kind, "cat": cat, "prov": (prov or "").strip().title(), "title": title,
+                           **({"ded": ded} if ded is not None else {})})
 
     def category(self, title, lines, prov, date):
         return care_category("medical", title, lines, prov, date, self.events)
@@ -175,6 +178,18 @@ class Claims:
         return {"data": {"events": [self.events[n] for n in order], "details": self.details, "labs": [],
                          "costs": self.costs},
                 "warnings": self.warnings}
+
+
+def deductible(*places, keys=("deductible", "deductibleAmount", "appliedToDeductible", "amountAppliedToDeductible",
+                               "memberDeductible", "memberDeductibleAmount", "deductibleApplied")):
+    """The part toward the deductible a claim's JSON gives (#1163: UHC's and BCBS's, where their files carry it): the
+    first of keys in the first of places (dicts) that has one, as money() reads it; None when none does."""
+    for d in places:
+        if isinstance(d, dict):
+            for k in keys:
+                if d.get(k) not in (None, ""):
+                    return money(d[k])
+    return None
 
 
 def load_json(files, rel):
@@ -197,4 +212,4 @@ def head(path, n=64 * 1024):
         return f.read(n).decode("utf-8", "replace")
 
 
-__all__ = ["money", "code_category", "care_category", "nice_drug", "hkey", "claim_keys", "Claims", "iso", "is_facility"]
+__all__ = ["money", "deductible", "code_category", "care_category", "nice_drug", "hkey", "claim_keys", "Claims", "iso", "is_facility"]
