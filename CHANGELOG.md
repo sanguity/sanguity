@@ -122,6 +122,11 @@ Everything on `main` so far; it becomes the first tagged release.
 - A visit summary to bring to an appointment: one or two printable pages (PDF) with results out of range since
   the last visit (each against its own report's range), trends of the key labs, current medications, upcoming
   appointments and your own questions, kept as a draft per profile (#48).
+- An emergency card (#1126), on Sharing → Emergency card and in the profile menu: a printable one-page card (PDF,
+  Letter or A4, with a wallet-size cut-out) of the allergies with their reactions, current medications, active
+  problems, blood type and emergency contacts, and a short lock-screen image (PNG) of the name, allergies, blood type
+  and contacts; files you carry, never a link. Blood type (from a lab result when there is one) and emergency
+  contacts are new fields under This person → About.
 - Install as a phone app: a web app manifest and home-screen icons, and a service worker that keeps the app's
   pages so it opens offline. Offline records are opt-in per device (Account), read-only, and deleted on sign-out,
   when the sign-in ends, or when turned off (#56). Needs HTTPS (or localhost).

@@ -4,6 +4,8 @@
      rate, saved together; the height history, each entry added or removed on its own; and the heights a clinic
      recorded in the records, beside it, each offered for the history (person.js, server/person.py).
    - Targets of your own for home readings: targetsCard (targets.js).
+   - For the emergency card (#1126): a blood type typed in (a lab result's shown instead) and emergency contacts, in order
+     (aboutEmergency, at the end).
    Owners and editors change them; viewers see them as text. The details and each target are fields ([data-field]):
    one changed is marked "not saved" and counted in its card's data-dirty, for the group's bar (sidebar.js, #272) to
    save them all in one go (aboutSave) or put them back (aboutDiscard); what's typed and not saved stays as typed
@@ -73,7 +75,7 @@ function typedBack(list) {
   aboutCount();
 }
 /* a field's values for PUT person: one of the details, or a target ({targets: {[k]: target}}, null to clear it) */
-const DETAIL = {birthDate: "Birth date", dueDate: "Due date, if born early", sex: "Sex used for reference ranges", maxHr: "Maximum heart rate"};
+const DETAIL = {birthDate: "Birth date", dueDate: "Due date, if born early", sex: "Sex used for reference ranges", maxHr: "Maximum heart rate", bloodType: "Blood type"};   // bloodType: #1126
 function fieldValue(f) {
   const k = f.dataset.field, v = n => f.querySelector(`[name="${n}"]`)?.value ?? "";
   if (k === "sex") return {sex: f.querySelector("input:checked")?.value ?? ""};
@@ -263,6 +265,7 @@ function showAbout(p, a, drop = []) {
         el("thead", {}, el("tr", {}, ...["Date", "Height", "From", ""].map(thOf))), el("tbody", {}, ...rows)),
       all ? el("div", {class: "about-row"}, all) : null]));
   }
+  parts.push(...aboutEmergency(p, a, edit, notSaved, saveBar, send, undo));   // #1126
   $("#aboutBody").replaceChildren(...parts.filter(Boolean));
   $("#targetsBody").replaceChildren(targetsCard(p, a, UNITS_PREF, (path, method, payload, said, focus, quiet) => send(path, method, payload, said, focus, $("#targetsMsg"), quiet),
     (left, path, method, payload, said, since, focus) => undo(left, path, method, payload, said, since, focus, $("#targetsMsg")), saveBar, notSaved));   // #234
@@ -270,3 +273,48 @@ function showAbout(p, a, drop = []) {
   typedBack(keep);
 }
 
+
+/* For the emergency card (#1126, emergency.js): the blood type and the emergency contacts, under the rest (nothing
+   above moves). A blood type lab result in the records is shown, and used, instead of one typed; with none, owners
+   and editors choose one, a field the group's bar saves (bloodType). The contacts are a list in order, each added,
+   moved or removed at once (PUT person with the whole list), a removal with an Undo. */
+function aboutEmergency(p, a, edit, notSaved, saveBar, send, undo) {
+  const out = [], lab = a.bloodLab, list = a.contacts || [], path = `profiles/${p.id}/person`;
+  const blood = lab ? `${lab.said}, from your lab result of ${aboutDay(lab.date)}` : a.bloodType ? a.bloodTypes[a.bloodType] : "Not set";
+  if (edit && !lab) out.push(setRow([el("label", {for: "aboutBlood"}, "Blood type", notSaved()),
+    el("p", {class: "hint", text: "For the emergency card. Once the records have a blood type result, it's used instead."})],
+    el("form", {class: "about-row", onsubmit: saveBar}, el("select", {id: "aboutBlood", name: "bloodType"},
+      ...[["", "Not set"], ...Object.entries(a.bloodTypes)].map(([v, l]) => el("option", {value: v, text: l, selected: (a.bloodType || "") === v})))),
+    {class: "about-field", "data-field": "bloodType"}));
+  else out.push(setRow([el("p", {class: "set-row-name", text: "Blood type"}), el("p", {class: "hint", text: "For the emergency card."})],
+    el("p", {id: "aboutBloodSaid", text: blood})));
+  const said = c => c.name + (c.relationship ? ` (${c.relationship})` : "");
+  const put = (contacts, text, focus, quiet) => send(path, "PUT", {contacts}, text, focus, $("#aboutMsg"), quiet);
+  const move = (i, by) => { const l = [...list]; [l[i], l[i + by]] = [l[i + by], l[i]];
+    return put(l, `Moved ${said(list[i])} ${by < 0 ? "up" : "down"}.`, `contact${by < 0 ? "Up" : "Down"}-${i + by}`); };
+  async function remove(i) {
+    const left = list.filter((_, n) => n !== i), done = await put(left, `Removed ${said(list[i])} from the emergency contacts.`, "aboutContactsHd", true);
+    if (done) toast(done, {action: "Undo", onAction: () => undo(got => same(got.contacts, left), path, "PUT", {contacts: list},
+      `Undone: ${said(list[i])} is back.`, "The emergency contacts were changed since: they're left as they are.", "aboutContactsHd")});
+  }
+  const ctl = [list.length ? el("table", {class: "tbl about-heights", id: "aboutContacts"},
+    el("thead", {}, el("tr", {}, ...["Name", "Phone", ""].map(thOf))),
+    el("tbody", {}, ...list.map((c, i) => el("tr", {}, el("td", {text: said(c)}), el("td", {text: c.phone}),
+      el("td", {class: "acts"}, ...edit ? [
+        i > 0 ? el("button", {class: "btn small", type: "button", id: `contactUp-${i}`, "aria-label": `Move ${c.name} up`, onclick: () => move(i, -1)}, icon("arrow-up")) : null,
+        i < list.length - 1 ? el("button", {class: "btn small", type: "button", id: `contactDown-${i}`, "aria-label": `Move ${c.name} down`, onclick: () => move(i, 1)}, icon("arrow-down")) : null,
+        el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove ${c.name}`, onclick: () => remove(i)})] : [])))))
+    : el("p", {class: "muted", id: "aboutNoContacts", text: "No emergency contacts yet."})];
+  if (edit && list.length < a.mostContacts) {
+    const f = (id, label, attrs) => el("label", {class: "about-num"}, label, el("input", {id, maxlength: 80, ...attrs}));
+    ctl.push(el("form", {class: "about-add", id: "contactAdd", onsubmit: ev => { ev.preventDefault();
+      const v = id => $("#" + id).value.trim(), c = {name: v("contactName"), relationship: v("contactRel"), phone: v("contactPhone")};
+      put([...list, c], `Added ${said(c)} to the emergency contacts.`, "contactName"); }},
+      f("contactName", "Name", {required: true, autocomplete: "off"}), f("contactRel", "Relationship (optional)", {maxlength: 40, autocomplete: "off"}),
+      f("contactPhone", "Phone", {type: "tel", required: true, maxlength: 40, autocomplete: "off"}),
+      el("button", {class: "btn", type: "submit", text: "Add contact"})));
+  } else if (edit) ctl.push(el("p", {class: "hint", text: `At most ${a.mostContacts}: remove one to add another.`}));
+  out.push(setRow([el("h3", {class: "sub", id: "aboutContactsHd", tabindex: -1, text: "Emergency contacts"}),
+    el("p", {class: "hint", text: "For the emergency card, in order: the first is the one to call first."})], ctl));
+  return out;
+}

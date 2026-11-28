@@ -33,6 +33,8 @@ Profile events (profile_id set), readable by the profile's owners:
                 "spot.untag"; never its name)
   summary       {"sections", "since", "for", "pages", "questions"}: made a visit summary PDF (summary.py, #48; the
                 sections and dates only, never the questions or any result)
+  emergency     {"file": "pdf" | "png", "paper"?, "wallet"?}: made the emergency card's PDF or lock-screen image
+                (emergency.py, #1126; never what's on it)
   watch.secret  {"ended", "maker"} (actor ACCESS_ENDED): the secret its maker made went with their access (#929)
   watch.secret  {"rotated"}: made the profile's watch receiver secret, or a new one in place of the old (#46; never
                 the secret)
@@ -98,7 +100,7 @@ import json
 from . import config, crypto, db as dbm
 
 PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit", "outside",
-                   "settings", "connect", "disconnect", "calendar", "journal", "summary", "watch.secret", "source", "link", "cycle",
+                   "settings", "connect", "disconnect", "calendar", "journal", "summary", "emergency", "watch.secret", "source", "link", "cycle",
                    "medication", "labmap", "family")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset", "2fa.stopped",

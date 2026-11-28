@@ -859,6 +859,10 @@ define("person.maxHr", "person", "Maximum heart rate", 0, _max_hr_check, kind="m
 
 define("person.dueDate", "person", "Due date, if born early", "", _person_check(_person.check_due), kind="duedate", screen=False,
        help="For a baby born early, the day they were due: growth charts use the corrected age before 2 years (#196).")
+define("person.bloodType", "person", "Blood type", "", _person_check(_person.check_blood), kind="bloodtype", screen=False,
+       help="As typed, for the emergency card; a blood type lab result in the records is used instead (#1126).")
+define("person.contacts", "person", "Emergency contacts", [], _person_check(_person.check_contacts), kind="contacts", screen=False,
+       help="Name, relationship and phone of each, in order, for the emergency card (#1126).")
 from . import targets as _targets   # #234: targets of your own for home readings, as the care team gave them
 
 

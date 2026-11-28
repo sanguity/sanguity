@@ -113,6 +113,8 @@ ROUTES = {
     ("GET", "/api/profiles/{pid}/person"): (USER, "viewer"),           # about this person (#194)
     ("GET", "/api/profiles/{pid}/summary"): (USER, "viewer"), ("PUT", "/api/profiles/{pid}/summary/questions"): (USER, "viewer"),
     ("POST", "/api/profiles/{pid}/summary/preview"): (USER, "viewer"), ("POST", "/api/profiles/{pid}/summary/pdf"): (USER, "viewer"),
+    ("GET", "/api/profiles/{pid}/emergency"): (USER, "viewer"), ("POST", "/api/profiles/{pid}/emergency/pdf"): (USER, "viewer"),   # #1126
+    ("POST", "/api/profiles/{pid}/emergency/image"): (USER, "viewer"),
     ("DELETE", "/api/profiles/{pid}/members/{uid}"): (USER, "owner"),  # anyone may remove themself (leave)
     # editors
     ("GET", "/api/profiles/{pid}/export"): (USER, "editor"),

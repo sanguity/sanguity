@@ -13,9 +13,13 @@ together here, each optional:
               the birth date.
   dueDate     "" (not set) or YYYY-MM-DD (#196): for a baby born early, the day they were due, after the birth date
               and at most 20 weeks after it. Growth charts use it for the corrected age before 2 years.
+  bloodType   "" (not set) or one of BLOOD_TYPES ("A+", "O-", ...), as the person typed it (#1126, the emergency
+              card): a blood type lab result in the records (emergency.blood_from_labs) is shown instead when there's one
+  contacts    [{name, relationship, phone}], in order (#1126): emergency contacts, for the emergency card. A name and a
+              phone each, the relationship optional; at most MOST_CONTACTS
 
 Stored as profile settings (server/settings.py, section "person", not on the Settings screen): person.birthDate,
-person.sex, person.heights and person.dueDate (#196), sealed (encrypted) like every setting that can hold health information. So they are
+person.sex, person.heights, person.dueDate (#196), person.bloodType and person.contacts (#1126), sealed (encrypted) like every setting that can hold health information. So they are
 in the merged settings every page loads (CFG.person on the records page), exported with the profile's settings.json
 and loaded back with it, and backed up with the database. Owners and editors change them, on Settings → About this
 person (routes_person.py, which also checks the three agree: no height before the birth date); viewers see them.
@@ -50,6 +54,12 @@ CM_MIN, CM_MAX = 20, 272
 MOST = 400                # height entries
 DUE_MOST = 140            # days a due date may be after the birth date (20 weeks: born at 20 weeks or later), #196
 IN_CM = 2.54
+# #1126: blood types as typed, and as said on the emergency card
+BLOOD_TYPES = {"A+": "A positive", "A-": "A negative", "B+": "B positive", "B-": "B negative",
+               "AB+": "AB positive", "AB-": "AB negative", "O+": "O positive", "O-": "O negative"}
+MOST_CONTACTS = 5
+CONTACT_MOST = {"name": 80, "relationship": 40, "phone": 40}   # characters
+_PHONE = re.compile(r"^\+?[0-9(][0-9 ().\-/]*(?:(?:x|ext\.?)\s*[0-9]+)?$", re.I)
 
 
 class PersonError(ValueError):
@@ -130,6 +140,42 @@ def check_due(v):
     return d.isoformat()
 
 
+def check_blood(v):
+    """"" (not set) or one of BLOOD_TYPES (#1126)."""
+    if v in ("", None):
+        return ""
+    if v not in BLOOD_TYPES:
+        raise PersonError("The blood type must be A, B, AB or O, positive or negative, or not set.")
+    return v
+
+
+def check_contacts(v):
+    """The emergency contacts, cleaned (#1126): [{name, relationship, phone}], in the order given."""
+    if not isinstance(v, list):
+        raise PersonError("This must be a list of emergency contacts.")
+    if len(v) > MOST_CONTACTS:
+        raise PersonError(f"At most {MOST_CONTACTS} emergency contacts.")
+    out = []
+    for c in v:
+        if not isinstance(c, dict):
+            raise PersonError("Each emergency contact needs a name and a phone number.")
+        one = {}
+        for k, most in CONTACT_MOST.items():
+            x = c.get(k)
+            if x is not None and not isinstance(x, str):
+                raise PersonError("An emergency contact's name, relationship and phone are text.")
+            x = " ".join((x or "").split())
+            if len(x) > most:
+                raise PersonError(f"An emergency contact's {k} is at most {most} characters.")
+            one[k] = x
+        if not one["name"] or not one["phone"]:
+            raise PersonError("Each emergency contact needs a name and a phone number.")
+        if not _PHONE.match(one["phone"]) or sum(ch.isdigit() for ch in one["phone"]) < 3:
+            raise PersonError(f"{one['name']}'s phone number must be digits (spaces, dashes, brackets and a + are fine).")
+        out.append(one)
+    return out
+
+
 def check_together(birth, heights, due=""):
     """No height dated before the birth date (a typo in one or the other); a due date only with a birth date, after it
     (born early) and at most DUE_MOST days after it."""
@@ -158,10 +204,10 @@ def from_ftin(ft, inch):
 # ---------------------------------------------------------------- helpers for what is built on it
 
 def of(cfg):
-    """{"birthDate", "sex", "heights", "dueDate"} from the merged settings (settings.merged), each filled in."""
+    """{"birthDate", "sex", "heights", "dueDate", "bloodType", "contacts"} from the merged settings (settings.merged), each filled in."""
     p = (cfg or {}).get("person") or {}
     return {"birthDate": p.get("birthDate") or "", "sex": p.get("sex") or "", "heights": list(p.get("heights") or []),
-            "dueDate": p.get("dueDate") or ""}
+            "dueDate": p.get("dueDate") or "", "bloodType": p.get("bloodType") or "", "contacts": list(p.get("contacts") or [])}
 
 
 def age_on(birth, day):
