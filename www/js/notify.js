@@ -22,27 +22,30 @@ async function loadNotifyServer(note) {
   let inst, d;
   try { [inst, d] = await Promise.all([call("settings/install"), call("settings/install/notify")]); }
   catch (e) { card.replaceChildren(el("h2", {text: "Notifications"}), el("p", {class: "msg bad", text: e.message})); return; }
-  drawNotifyServer(inst.sections.find(s => s.id === "notify"), d, note);
+  drawNotifyServer(inst.sections.find(s => s.id === "notify"), d, note, inst.settings_at);
 }
 
-function drawNotifyServer(sec, d, note) {
+function drawNotifyServer(sec, d, note, at = NOTIFY?.at) {
   const card = $("#gen-notify"), st = sec.settings.find(s => s.key === "notify.url");
-  NOTIFY = {sec, st, d};
+  NOTIFY = {sec, st, d, at};
   const msg = el("span", {class: "msg set-msg"});
   const url = el("input", {id: "notifyUrl", type: "url", spellcheck: "false", autocapitalize: "none", autocomplete: "off",
     placeholder: "https://ntfy.example.com", "aria-labelledby": "notifyUrlName", "aria-describedby": "notifyUrlHint"});
   url.value = st.value;
-  const tokenHint = d.token_elsewhere ? `${d.token_env}, in the server's environment, was first sent to another server, so it isn't sent to this one: change it there to use it here.`
-    : d.token === "environment" ? `Set by ${d.token_env} in the server's environment (.env, or the app's settings on TrueNAS or Unraid), so it's changed there. Sent to the first server it's used with alone.`
+  const tokenHint = d.token_elsewhere ? `It was first sent to another server, so it isn't sent to this one.`
+    : d.token === "environment" ? "Sent to the first server it's used with alone. Never shown."
     : d.token ? "Saved, encrypted, and never shown again: sent to this server alone (its https:// or http:// address as saved). Type a new one to replace it; left empty, it's kept."
     : "Optional: an access token of your ntfy server's, where it doesn't let everyone send. Kept for this server alone.";
   const tok = el("input", {id: "notifyToken", type: "password", spellcheck: "false", autocapitalize: "none", autocomplete: "new-password",
-    placeholder: d.token ? "Saved" : "", "aria-labelledby": "notifyTokenName", "aria-describedby": "notifyTokenHint",
-    readonly: (d.token || "").startsWith("environment") || null});
-  const urlRow = setRow([el("h3", {class: "sub", id: "notifyUrlName"}, st.label, el("span", {class: "tag set-unsaved", text: "not saved"})),
-    el("div", {id: "notifyUrlHint"}, helpNodes(st.help))], url, {class: "set", "data-key": st.key});
-  const tokRow = setRow([el("h3", {class: "sub", id: "notifyTokenName"}, "Access token", el("span", {class: "tag set-unsaved", text: "not saved"})),
-    el("p", {class: "hint", id: "notifyTokenHint", text: tokenHint})], tok, {class: "set", "data-key": "notify.token"});
+    placeholder: d.token ? "Saved" : "", "aria-labelledby": "notifyTokenName", "aria-describedby": "notifyTokenHint"});
+  // (#1119) what the server's environment sets is text, never a field: the address, and the token (only that it's set)
+  const urlRow = !st.can_change ? envRow(st, at, {value: el("code", {text: st.value}), head: ["h3", {class: "sub", id: "notifyUrlName"}], helpId: "notifyUrlHint"})
+    : setRow([el("h3", {class: "sub", id: "notifyUrlName"}, st.label, el("span", {class: "tag set-unsaved", text: "not saved"})),
+      el("div", {id: "notifyUrlHint"}, helpNodes(st.help))], url, {class: "set", "data-key": st.key});
+  const tokRow = notifyEnv() ? envRow({key: "notify.token", label: "Access token", env: d.token_env, help: tokenHint}, at,
+      {value: d.token_elsewhere ? "Set there (not sent to this server)" : "Set there (never shown here)", head: ["h3", {class: "sub", id: "notifyTokenName"}]})
+    : setRow([el("h3", {class: "sub", id: "notifyTokenName"}, "Access token", el("span", {class: "tag set-unsaved", text: "not saved"})),
+      el("p", {class: "hint", id: "notifyTokenHint", text: tokenHint})], tok, {class: "set", "data-key": "notify.token"});
   const mark = () => {
     urlRow.classList.toggle("set-changed", notifyUrlDirty()); tokRow.classList.toggle("set-changed", notifyTokenDirty());
     const n = notifyUrlDirty() + notifyTokenDirty();
@@ -50,7 +53,7 @@ function drawNotifyServer(sec, d, note) {
   };
   url.oninput = tok.oninput = mark;
   const testMsg = el("span", {class: "msg", role: "status"});
-  const test = el("button", {type: "button", class: "btn", text: "Send a test", disabled: !d.url, onclick: async () => {
+  const test = el("button", {type: "button", class: "btn", text: "Send a test", onclick: async () => {
     test.disabled = true; sayIn(testMsg, "Sending…");
     try { await call("settings/install/notify/test", "POST"); sayIn(testMsg, `Sent to your own topic on ${d.host}: check that it arrived.`); }
     catch (e) { sayIn(testMsg, e.message, true); }
@@ -62,7 +65,7 @@ function drawNotifyServer(sec, d, note) {
     el("div", {class: "set-hd"}, el("h2", {id: "gen-notify-hd", tabindex: -1, text: sec.title})),
     helpNodes(sec.help), msg, notifyReauth(), urlRow, tokRow,
     ro("Test", d.url ? `Sends a test notification to your own topic there now: subscribe to it under Settings, Notifications.` : "Set the notification server, and save it, first.",
-      el("div", {class: "row"}, test, testMsg)),
+      d.url ? el("div", {class: "row"}, test, testMsg) : el("p", {text: "Not set up yet."})),   // (#1119: said, never a disabled button)
     ro("What each says", (d.click ? `Tapping one opens ${d.click}.` : "Tapping one opens nothing until a public address is set under Host.") +
       ` ${d.people ? `${plural(d.people, "person")} turned some on.` : "Nobody has turned any on yet."}`,
       el("ul", {}, ...d.texts.map(t => el("li", {text: t}))))));
@@ -73,7 +76,7 @@ function drawNotifyServer(sec, d, note) {
 /* the bar's Save: the server's address, then the token, after the fresh check */
 async function notifySave(msg, had) {
   if (!notifyUrlDirty() && !notifyTokenDirty()) return;
-  const value = $("#notifyUrl").value.trim(), token = $("#notifyToken").value.trim(), saved = [];
+  const value = $("#notifyUrl")?.value.trim(), token = $("#notifyToken")?.value.trim(), saved = [];
   try {
     if (notifyUrlDirty()) {
       if (!await confirmed(typed => fresh(() => call(`settings/install/${NOTIFY.st.key}`, "PUT", {value, was: NOTIFY.st.value, confirm: typed}), notifyReauth()))) {

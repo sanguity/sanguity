@@ -7,7 +7,7 @@ The way it's deployed: SANGUITY_DEPLOYMENT, which each of deploy/'s templates an
 some other way, or from an install from before #1004): "other", which names each place."""
 import os
 
-from . import config, crypto, settings
+from . import config, crypto, server_settings, settings
 
 # per way: its name, where the server's settings (the environment's) are set, where the app's output is read, and what
 # mounts each folder (the field, path or variable), by the folder's key in FOLDERS
@@ -122,7 +122,7 @@ def version():
 def about():
     """General → About (#1004): the version, the database's schema version, how it's deployed, the folders (where
     they are in the container, and what mounts each), who it runs as, the configuration files, the releases page (a
-    link: nothing is contacted), and the limits with their variables, read-only."""
+    link: nothing is contacted), the limits with their variables, read-only, and the server's own setup (server())."""
     from . import db as dbm
     kind = deployment()
     mounts = KINDS[kind]["mounts"]
@@ -134,7 +134,8 @@ def about():
         items = []
         for name, what, unit in rows:
             src, value = config.lookup(name)
-            items.append({"name": name, "what": what, "unit": unit, "value": value, "from": src, "default": config.VARS[name].default})
+            items.append({"name": name, "what": what, "unit": unit, "value": value, "from": src, "default": config.VARS[name].default,
+                          "restart": name in server_settings.DEFS})   # (#1121: changed under Needs a restart)
         limits.append({"group": group, "limits": items})
     return {**version(), "schema": len(dbm.SCHEMA), "deployment": kind, "deployment_name": KINDS[kind]["name"],
             "settings_at": KINDS[kind]["settings"], "releases": RELEASES,
@@ -144,4 +145,14 @@ def about():
             "runs_as": {"uid": os.getuid(), "gid": os.getgid(), "set_by": mounts.get("user")},
             "config": {"folder": os.environ.get("SANGUITY_CONFIG", "").strip() or None, "files": list(CONFIG_FILES),
                        "set_by": mounts.get("config")},
-            "limits": limits}
+            "limits": limits, "server": server()}
+
+
+def server():
+    """(#1119) What only the server's own setup sets, read-only (About's; Host's and Security's before): where it listens
+    inside its container (the process's own environment, python -m server, server/__main__.py) and the session cookie's
+    Secure flag, with where it comes from. The trusted proxies and the password checks at once are Needs a restart's
+    (server_settings.py, #1121)."""
+    src, value = config.lookup("COOKIE_SECURE")
+    return {"port": os.environ.get("PORT", "8000"), "bind": os.environ.get("HOST", "0.0.0.0"),
+            "cookie_secure": {"from": src, "value": value}}

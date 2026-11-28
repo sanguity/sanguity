@@ -4037,6 +4037,15 @@ Everything on `main` so far; it becomes the first tagged release.
   records". Open ones are a line each on the Overview's Follow-ups card, the response date is in the calendar feed as
   "Sanguity records request" unless you choose to show who it went to, and requests are encrypted (schema version 57),
   in backups and Export everything, and put back from an export. Add → Records request starts one.
+- **General: what can't be changed never looks changeable** (#1119): a setting the server's environment sets (Host's
+  public addresses, Security's, the Sign-in provider's client secret, the days of activity kept, the phone upload
+  address, connected sources, Needs a restart's) is its value as text, never a greyed or read-only field, with a "Set
+  in .env: VAR" tag, its own help, and where this install's settings are to change it or take it out; read-only facts
+  are text with "Set by: …" under them, the same on every card, the receiver's time zone and days pointing to Needs a
+  restart; the internal port and bind address and the Secure cookie moved to About (the trusted proxies and password
+  checks at once are Needs a restart's), whose limits point there and are tagged where the environment set them; Security and
+  the Sign-in provider say what applies at once and what waits for Save; and Host's Passkey names shows each name and
+  its count again (it showed "[object HTMLParagraphElement]").
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

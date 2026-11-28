@@ -25,7 +25,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from . import accounts, activity, config, crypto, db as dbm, oidc, security as sec
+from . import accounts, activity, config, crypto, db as dbm, general, oidc, security as sec
 from .main import (_audit, _client_ip, _password, _remember_device, _request_host, _same_site, _secure, _session,
                    _start_session, _verified, admin, fresh, get_db, must_change, second_step, settled)
 
@@ -232,8 +232,10 @@ def _install(db, request):
 @router.get("/api/settings/install/oidc")
 def install_get(request: Request, s=Depends(admin), db=Depends(get_db)):
     """The provider as set up, the client secret only as where it comes from (never its value), the redirect URI to
-    register, and whether this admin's own sign-in with it works yet (may_go_only)."""
-    return {**_install(db, request), "may_go_only": oidc.works_for(db, s["id"])}
+    register, whether this admin's own sign-in with it works yet (may_go_only), and where this install's environment is
+    set (#1119: named where it sets the secret)."""
+    return {**_install(db, request), "may_go_only": oidc.works_for(db, s["id"]),
+            "settings_at": general.KINDS[general.deployment()]["settings"]}
 
 
 class Provider(BaseModel):

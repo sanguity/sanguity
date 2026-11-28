@@ -5,8 +5,7 @@ upload address and how many profiles' phones need it); the change typed to confi
 wouldn't pass refused, since the cross-site check would then refuse everything it sends, putting it back included;
 then the fresh check, as every install setting has (routes_settings.py). Everything reads the value at each use, so it
 applies at once. Read-only beside it (GET /api/settings/host): the names passkeys were made at, with their counts,
-what this request carried, and the settings only the server's own setup sets (trusted proxies, the internal port and
-bind address). Admins only.
+and what this request carried (what only the server's own setup sets is About's, general.py: #1119). Admins only.
 
 General → Phone receiver (#1003): the upload address (WATCH_UPLOAD_URL, phone.uploadUrl), its change said first (how
 many profiles' phones need the new one), and read-only (GET /api/settings/phone) the receiver's own settings where the
@@ -96,11 +95,7 @@ def host(request: Request, origin: str = "", s=Depends(admin), db=Depends(get_db
     return {"request": {"host": h.get("host"), "forwarded_host": h.get("x-forwarded-host"), "scheme": request.url.scheme,
                         "forwarded_proto": h.get("x-forwarded-proto"), "accepted_by": by},
             "passkeys": [dict(r) for r in db.execute("SELECT rp_id AS name, COUNT(*) AS count FROM passkeys GROUP BY rp_id ORDER BY rp_id")],
-            "apps": _apps(db), "phones": watch_keys.with_secret(db),
-            # the address it binds is the process's own environment; whose forwarded headers it believes, the environment's or
-            # else the file's, as python -m server gave uvicorn at start (server_settings.py, #1121)
-            "proxies": server_settings.lookup("FORWARDED_ALLOW_IPS")[1], "port": os.environ.get("PORT", "8000"),
-            "bind": os.environ.get("HOST", "0.0.0.0")}
+            "apps": _apps(db), "phones": watch_keys.with_secret(db)}   # (the server's own setup: About's, general.py, #1119)
 
 
 @router.get("/api/settings/phone")
@@ -109,6 +104,8 @@ def phone(request: Request, s=Depends(admin), db=Depends(get_db)):
     with a secret, and the receiver's own settings as it reads them: every deployment passes TZ and SLOT_GRACE_DAYS to
     the app as to the receiver (#998: compose and CasaOS both, TrueNAS its TZ to every container, the all-in-one image
     its environment), so their values here are the receiver's: else the ones changed on Needs a restart, copied for the
-    receiver at Restart now (#1121), else its defaults."""
+    receiver at Restart now (#1121), else its defaults; and which of them the environment sets."""
     return {"upload": watch_keys.addresses(_request_host(request)), "phones": watch_keys.with_secret(db),
-            "tz": server_settings.lookup("TZ")[1], "slot_grace_days": server_settings.lookup("SLOT_GRACE_DAYS")[1]}
+            "tz": server_settings.lookup("TZ")[1], "slot_grace_days": server_settings.lookup("SLOT_GRACE_DAYS")[1],
+            # (#1119) which the environment sets: tagged so, where the rest point to Needs a restart
+            "from_environment": [n for n in ("TZ", "SLOT_GRACE_DAYS", "RESTORE_KEEP_DAYS") if server_settings.lookup(n)[0] == "environment"]}

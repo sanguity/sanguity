@@ -102,11 +102,15 @@ class Host(unittest.TestCase):
         self.assertEqual((same["apps"], same["phones"] > 0), (0, True))
         self.assertEqual(self.effects([OLD]).json()["phones"], 0)
         self.assertEqual(self.effects(["ftp://nope.example.test"]).status_code, 400)
-        # the read-only rows: counts, passkey names, what this request carried, the server's own setup
+        # the read-only rows: counts, passkey names, what this request carried (the server's own setup is About's, #1119)
         h = self.c.get("/api/settings/host?origin=" + OLD, headers={**BEHIND, "X-Forwarded-Proto": "https"}).json()
         self.assertEqual((h["apps"], h["phones"], h["passkeys"], h["request"]["host"], h["request"]["forwarded_host"],
-                          h["request"]["forwarded_proto"], h["request"]["accepted_by"], h["port"], h["bind"]),
-                         (1, 1, [], "app:8000", None, "https", "listed", "8000", "0.0.0.0"))
+                          h["request"]["forwarded_proto"], h["request"]["accepted_by"]),
+                         (1, 1, [], "app:8000", None, "https", "listed"))
+        self.assertFalse({"proxies", "port", "bind"} & set(h))
+        a = self.c.get("/api/settings/install/about").json()["server"]
+        self.assertEqual((a["port"], a["bind"], a["cookie_secure"]), ("8000", "0.0.0.0", {"from": "default", "value": "auto"}))
+        self.assertFalse({"proxies", "hash_parallel"} & set(a))   # (Needs a restart's, #1121)
         self.assertEqual(self.c.get("/api/settings/host?origin=http://testserver").json()["request"]["accepted_by"], "host")
 
     def test_c_guarded(self):
