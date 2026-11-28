@@ -98,7 +98,7 @@ const SG_PAGES = {
      has: ["installApp", "offlineRecords"],
      finds: [["Install on this device", "installApp", "app home screen"], ["Offline records on this device", "offlineRecords", "offline without a connection"]]},
     {id: "display", title: "Display", icon: "monitor", part: "You", has: ["sec-appearance", "sec-dates", "sec-units"],
-      finds: [["Appearance", "sec-appearance", "default use browser"],   // (not "theme": the theme is your menu's Dark or Light mode, #410)
+      finds: [["Appearance", "sec-appearance", "default use browser in range results grey gray green"],   // (not "theme": the theme is your menu's Dark or Light mode, #410; In-range results, #1108)
         ["Dates and times", "sec-dates", "time zone date format"],
         ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches lab tests"]]},
     // Install: the Admin page's groups (#167: admin.js, admin-sources.js, admin-backups.js, outside.js, activity.js),
