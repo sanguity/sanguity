@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Draws the wordmarks and the lockup in docs/logo/ as outlines in Inter SemiBold, the app's own font.
+"""Draws the wordmarks and the lockup in docs/logo/ as outlines in Source Serif 4 SemiBold, the display face the
+app and the website use for their headings, set 2.5% tight.
 
-They used to be <text> in the viewer's system font, placed for one font's widths: elsewhere the "S" fell off the
-left, the "y" was cut and the drop missed the "ı". Outlines look the same everywhere. The drops come from
-sanguity-mark.svg and sanguity-mark-dark.svg, so run this again after changing the mark.
+Outlines look the same everywhere (as <text> in the viewer's system font they didn't: the "S" fell off the left and
+the drop missed the "ı"). The drops come from sanguity-mark.svg and sanguity-mark-dark.svg, so run this again after
+changing the mark.
 
   pip install fonttools brotli uharfbuzz
   python3 tools/make_wordmark.py
@@ -11,8 +12,8 @@ sanguity-mark.svg and sanguity-mark-dark.svg, so run this again after changing t
 Writes:
   sanguity-wordmark.svg        "Sanguıty" with the drop, its line thickened and no end dot, as the "i"'s dot
   sanguity-wordmark-dark.svg   the same for dark backgrounds (the README picks it by prefers-color-scheme)
-  sanguity-wordmark-plain.svg  the drop alone, no line
-  sanguity-lockup.svg          the mark beside "Sanguity"
+  sanguity-wordmark-plain.svg  the drop alone, no line: for small uses, where the line would be a scratch
+  sanguity-lockup.svg          the mark beside "Sanguity" in the same serif
 """
 import io, os, xml.etree.ElementTree as ET
 
@@ -24,8 +25,9 @@ from fontTools.varLib.instancer import instantiateVariableFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGO = os.path.join(ROOT, "docs", "logo")
-FONT = os.path.join(ROOT, "www", "fonts", "inter-v4.001-latin.woff2")
+FONT = os.path.join(ROOT, "www", "fonts", "source-serif-4-v4.004-wght-latin.woff2")
 WEIGHT = 600
+TRACK = -0.025          # of the size: logo setting, tighter than text
 INK, INK_DARK = "#2b2826", "#ece9e4"
 SVG_NS = "http://www.w3.org/2000/svg"
 ET.register_namespace("", SVG_NS)
@@ -40,7 +42,7 @@ def font():
 
 
 def shape(data, text, size, tracking=0.0):
-    """Glyph names and pen positions (px) for text at size, kerned as Inter kerns it."""
+    """Glyph names and pen positions (px) for text at size, kerned as the font kerns it."""
     face = hb.Face(data); hfont = hb.Font(face)
     buf = hb.Buffer(); buf.add_str(text); buf.guess_segment_properties()
     hb.shape(hfont, buf, {"kern": True, "liga": True})
@@ -89,8 +91,8 @@ def svg(view, body):
 
 
 def wordmark(f, data, ink, mark, with_line):
-    size, base, scale = 48, 66, 0.48
-    glyphs, width = shape(data, "Sanguıty", size)
+    size, base, scale = 48, 66, 0.46
+    glyphs, width = shape(data, "Sanguıty", size, tracking=TRACK * size)
     paths, boxes, stem = [], [], None
     for i, (gid, x) in enumerate(glyphs):
         d, box = outline(f, gid, x, base, size)
@@ -98,7 +100,7 @@ def wordmark(f, data, ink, mark, with_line):
         if i == 5: stem = box                      # the dotless i: the drop sits over its stem
     x_height = f["OS/2"].sxHeight * size / f["head"].unitsPerEm
     # the drop's box is 64 units; its point is at y=7 and its round bottom at y=59.5, centred on x=32
-    drop_bottom = base - x_height - 4.5
+    drop_bottom = base - x_height * 1.18                # a gap of 18% of the x-height under the drop
     dx, dy = (stem[0] + stem[2]) / 2 - 32 * scale, drop_bottom - 59.5 * scale
     text = f'<path fill="{ink}" d="{" ".join(paths)}"/>'
     left = min(b[0] for b in boxes if b); right = max(b[2] for b in boxes if b)
@@ -109,8 +111,8 @@ def wordmark(f, data, ink, mark, with_line):
 
 
 def lockup(f, data):
-    size, base, x0 = 34, 47, 64
-    glyphs, width = shape(data, "Sanguity", size, tracking=-0.5)
+    size, base, x0 = 39, 48, 64                          # 39: the serif's smaller x-height, to match the mark
+    glyphs, width = shape(data, "Sanguity", size, tracking=TRACK * size)
     paths, boxes = [], []
     for gid, x in glyphs:
         d, box = outline(f, gid, x0 + x, base, size)
