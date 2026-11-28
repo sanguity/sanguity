@@ -1224,6 +1224,24 @@ SCHEMA = [
         at INTEGER NOT NULL);
     CREATE INDEX labmap_changes_profile ON labmap_changes(profile_id, series);
     """,
+    # version 49: sign in with OIDC (#1109; oidc.py). An identity at the install's sign-in provider, linked to an
+    # account by its person or an admin: the provider's issuer (without a trailing slash), the ID token's sub, the
+    # account, when it was linked and last signed in, and the name the provider gave for it (encrypted), to show. One
+    # identity is one account's. A session made by an OIDC sign-in the provider said used more than one factor
+    # (idp_mfa) counts as signed in with a second factor (accounts.signed_in_with_two).
+    """
+    CREATE TABLE oidc_identities(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        issuer TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT,
+        created INTEGER NOT NULL,
+        last_used INTEGER,
+        UNIQUE(issuer, subject));
+    CREATE INDEX oidc_identities_user ON oidc_identities(user_id);
+    ALTER TABLE sessions ADD COLUMN idp_mfa INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 

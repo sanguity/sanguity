@@ -68,6 +68,15 @@ ROUTES = {
     ("PATCH", "/api/me/passkeys/{pk}"): (SETTLED, None), ("DELETE", "/api/me/passkeys/{pk}"): (SETTLED, None),
     ("POST", "/api/me/reauth"): (USER, None), ("POST", "/api/me/reauth/passkey/options"): (USER, None),
     ("POST", "/api/me/reauth/passkey"): (USER, None),
+    # sign in with OIDC (#1109): the provider's name and the flow, for anyone; one's own identities; the provider's
+    # settings and an account's identities, an admin's
+    ("GET", "/api/login/oidc"): (NONE, None), ("POST", "/api/login/oidc/start"): (NONE, None),
+    ("POST", "/api/login/oidc/return"): (NONE, None),
+    ("GET", "/api/me/oidc"): (SETTLED, None), ("POST", "/api/me/oidc/start"): (SETTLED, None),
+    ("DELETE", "/api/me/oidc/{iid}"): (SETTLED, None),
+    ("GET", "/api/settings/install/oidc"): (ADMIN, None), ("PUT", "/api/settings/install/oidc"): (ADMIN, None),
+    ("POST", "/api/settings/install/oidc/test"): (ADMIN, None),
+    ("POST", "/api/users/{uid}/oidc"): (ADMIN, None), ("DELETE", "/api/users/{uid}/oidc/{iid}"): (ADMIN, None),
     # anyone signed in: nothing of anyone's records
     ("POST", "/api/profiles"): (USER, None), ("GET", "/api/uploads/limits"): (USER, None), ("GET", "/api/lab-names"): (USER, None),
     ("GET", "/api/lab-test-pages"): (USER, None),                     # "What is this test?" pages: the app's own table (#163)
@@ -408,6 +417,7 @@ PLAIN = {
     "labmaps": {"lookup", "importer", "created_name", "changed_name"},
     "memberships": {"role"}, "meta": {"k", "v"}, "outside_contacts": {"purpose"},
     "passkeys": {"credential_id", "public_key", "rp_id", "name", "transports"},
+    "oidc_identities": {"issuer", "subject"},   # (#1109) the provider's address and its id for the person: looked up by, as a credential id
     "profiles": {"name", "build_mtime", "watch_file"}, "recovery_codes": {"code_hash"}, "same_results": {"pair"},
     "series": {"key_hash"}, "sessions": {"token_hash", "ip", "agent"}, "settings": {"key", "value"},
     "share_links": {"created_name", "token_hash", "revoked_name"}, "signin_failures": {"ip", "step"},

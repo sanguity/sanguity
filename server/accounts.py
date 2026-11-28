@@ -99,6 +99,17 @@ def has_second_factor(db, u):
     return bool(u["totp_secret"]) or db.execute("SELECT 1 FROM passkeys WHERE user_id=? LIMIT 1", (u["id"],)).fetchone() is not None
 
 
+def idp_mfa(s):
+    """(#1109) Whether session row s was made by an OIDC sign-in whose provider said more than one factor was used:
+    that sign-in counts as one with a second factor (oidc.py), for this session only."""
+    return s is not None and "idp_mfa" in s.keys() and bool(s["idp_mfa"])
+
+
+def signed_in_with_two(db, s):
+    """The account has a second factor of its own, or this session's sign-in had the provider's (idp_mfa)."""
+    return idp_mfa(s) or has_second_factor(db, s)
+
+
 def solo_install(db):
     """One account and nobody else on the server."""
     return db.execute("SELECT COUNT(*) FROM users").fetchone()[0] <= 1
@@ -107,7 +118,7 @@ def solo_install(db):
 def admin_needs_second_factor(db, u):
     """Admin actions need the admin's own second factor (ASVS 4.3.1), except on a one-person install: there the
     admin is the only account, so the rule starts once a second account exists."""
-    return bool(u["is_admin"]) and not has_second_factor(db, u) and not solo_install(db)
+    return bool(u["is_admin"]) and not signed_in_with_two(db, u) and not solo_install(db)
 
 
 def short_password_check(db, uid):

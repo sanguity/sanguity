@@ -54,7 +54,8 @@ FIELDS = (("documents", "id", "path"), ("activity", "id", "detail"), ("users", "
           ("summary_drafts", "id", "sealed"),   # (#219)
           ("med_reminders", "id", "body"), ("med_doses", "id", "body"),   # (#162, #235)
           ("med_entries", "id", "body"),   # (#1091)
-          ("labmap_changes", "id", "value"))   # (#1097)
+          ("labmap_changes", "id", "value"),   # (#1097)
+          ("oidc_identities", "id", "name"))   # (#1109)
 
 
 def anything_encrypted(db):
@@ -140,5 +141,9 @@ def seal_everything(db):
     pepper = dbm.meta_get(db, "pepper")
     if pepper is not None and crypto.field_needs_resealing(pepper):
         dbm.meta_set(db, "pepper", crypto.enc(crypto.dec(pepper)))
+        fields += 1
+    oidc = dbm.meta_get(db, "oidc.secret")   # the sign-in provider's client secret (#1109, oidc.SECRET_META)
+    if oidc is not None and crypto.field_needs_resealing(oidc):
+        dbm.meta_set(db, "oidc.secret", crypto.enc(crypto.dec(oidc)))
         fields += 1
     return {"files": files, "fields": fields}
