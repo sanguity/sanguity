@@ -406,8 +406,34 @@ def probe(db, s, host, ip=None):
     """(#1167) Test whether a listed host is reachable: its name, a connection and (for https) TLS, through the
     outbound proxy where one is set; nothing is sent beyond the TLS handshake. Under a permit for that host alone,
     governed by the master switch and the blocks; recorded as any contact is."""
-    from . import notify
     host = net.norm(host)
-    scheme = "http" if host in notify.hosts() and notify.url().startswith("http://") else "https"
     permit = net.Permit(PROBE, {host}, _recorder(db, None, s, ip))
-    return net.probe(permit, f"{scheme}://{host}/")
+    return net.probe(permit, f"{schemes(db).get(host, 'https')}://{host}/")
+
+
+def schemes(db):
+    """{host: "https" | "http"}: the scheme each listed host is reached with, from the addresses it was configured by
+    (a connected source's issuer and the endpoints its discovery named, the sign-in provider's, the notification
+    server, the directory's lists, tessdata, GitHub's releases). A host reached both ways is https's. Its port is in
+    the host where it isn't the scheme's own (net.host_of), so the test reaches the port the feature does."""
+    from . import notify, oidc, ocr, updates
+    urls = [notify.url(), ocr.DOWNLOAD, updates.RELEASES]
+    from .directory import build
+    urls += [x["url"] for x in build.SOURCES.values() if x["url"]]
+    for r in db.execute("SELECT issuer, discovery FROM smart_clients"):
+        urls.append(r["issuer"])
+        conf = json.loads(r["discovery"]) if r["discovery"] else {}
+        urls += [v for k, v in conf.items() if k.endswith(("_endpoint", "_uri")) and isinstance(v, str)]
+    cfg = oidc.load(db)
+    if oidc.configured(cfg):
+        urls.append(cfg["issuer"])
+        with oidc._cache.lock:
+            conf = (oidc._cache.disc.get(cfg["issuer"]) or (0, None))[1] or {}
+        urls += [v for k, v in conf.items() if k.endswith(("_endpoint", "_uri")) and isinstance(v, str)]
+    out = {}
+    for u in urls:
+        scheme = str(u).split("://", 1)[0].lower() if "://" in str(u) else ""
+        if scheme in ("http", "https"):
+            h = net.host_of(u)
+            out[h] = "https" if out.get(h) == "https" else scheme
+    return out

@@ -54,7 +54,11 @@ services:
       TZ: ${TZ:-UTC}   # the containers' clock
       SANGUITY_SAVED_SETTINGS: ${SANGUITY_SAVED_SETTINGS:-}   # off: the values saved in the app left out (#1006)
       SANGUITY_DEPLOYMENT: release   # how it's deployed, named on Settings → General → About (#1004)
-    # no ports: only nginx (web) reaches it, over the compose network
+    # no ports: only nginx (web) reaches it, over the compose network. Built-in HTTPS (#1159; Settings → General → Needs a
+    # restart, a certificate and key in the data folder) is the app's own port 8443: to use it, uncomment these two
+    # lines (HTTPS_PORT in .env picks this machine's port). Nothing listens there until a certificate is set.
+    # ports:
+    #   - "${HTTPS_PORT:-8443}:8443"
     read_only: true
     tmpfs:
       - /tmp
@@ -76,7 +80,8 @@ services:
     image: *image
     user: "${PUID:-1000}:${PGID:-1000}"
     restart: unless-stopped
-    command: ["nginx", "-e", "stderr", "-g", "daemon off;"]
+    # nginx under the URL base the app runs with (#1159): read from the settings file, reloaded when it changes
+    command: ["python3", "-I", "/app/docker/web.py"]
     depends_on:
       app:
         condition: service_started
@@ -85,6 +90,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      - ${DATA_DIR:-./data}:/data:ro   # only server-settings.json is read: the URL base (docker/web.py)
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
       interval: 60s

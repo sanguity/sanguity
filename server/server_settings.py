@@ -332,8 +332,8 @@ def proxy_bypass(v):
 
 define("URL_BASE", "Address", "URL base", url_base, kind="text", default="", read=url_base,
        help="Serve Sanguity under a path of your domain, such as /sanguity, behind a reverse proxy that forwards that "
-            "path with it taken off (nginx's proxy_pass with a trailing /, Traefik's StripPrefix). Every page, address "
-            "the app gives out and cookie uses it. Empty: at the address's root.")
+            "path, as it is or with it taken off. Every page, address the app gives out and cookie uses it; the "
+            "container's nginx serves under it, and sends its root there. Empty: at the address's root.")
 define("HTTPS_CERT", "Built-in HTTPS", "Certificate file", data_file("The certificate"), kind="path", default="",
        read=data_file("The certificate"),
        help="A PEM certificate (with its chain) in the data folder, such as tls/cert.pem: with its key, Sanguity also "

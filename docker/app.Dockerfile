@@ -50,7 +50,7 @@ RUN apk add --no-cache nginx tzdata \
  && rm -rf /etc/nginx/http.d /var/lib/nginx/html
 COPY build.py lab-aliases.json condition-presets.json lab-test-pages.json sources.example.json corrections.example.json settings.example.json /app/
 COPY demo/generate.py /app/demo/generate.py
-COPY docker/setup.py docker/allinone.py /app/docker/
+COPY docker/setup.py docker/allinone.py docker/web.py /app/docker/
 COPY watch/receiver.py /app/receiver.py
 COPY www/ /usr/share/nginx/html/
 COPY nginx.conf /etc/sanguity/nginx.d/default.conf
@@ -71,7 +71,7 @@ LABEL org.opencontainers.image.title="Sanguity" \
       org.opencontainers.image.source="https://github.com/sanguity/sanguity" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later" \
       org.opencontainers.image.version="${VERSION}"
-EXPOSE 8080 8081
+EXPOSE 8080 8081 8443
 # With no command: everything in one container (setup, then the app, nginx and the watch receiver), for installs
 # that run a single container (Unraid). compose.release.yaml gives each service its own command instead.
 CMD ["python3", "-I", "/app/docker/allinone.py"]

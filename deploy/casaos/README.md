@@ -22,6 +22,11 @@ The setup code is in the logs of `sanguity-app`, and in `/DATA/AppData/sanguity/
 In CasaOS, App Store → Custom Install → Import, paste `docker-compose.yml`, and install. CasaOS fills in the
 variables as it would for a store app.
 
+Built-in HTTPS (Settings → General → Needs a restart, a certificate and key in the data folder) is the app's own port
+8443, which isn't published by default: uncomment the app's `ports:` lines in `docker-compose.yml` (or add the port in
+CasaOS's settings for the app) once a certificate is set. A URL base needs nothing here: the web container reads it
+from the data folder and serves under it.
+
 ## Submitting it to the AppStore
 
 1. Tag a release first (the image must exist), and make the GHCR package public (see [`../README.md`](../README.md)).

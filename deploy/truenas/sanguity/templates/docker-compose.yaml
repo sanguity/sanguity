@@ -49,6 +49,8 @@
 {# the receiver's published port, for the phone upload address (#1007): the app can't see what's published #}
 {% do app.environment.add_env("RECEIVER_PORT", values.network.receiver_port.port_number) %}
 {% do app.environment.add_user_envs(values.sanguity.additional_envs) %}
+{# built-in HTTPS (#1159): the app's own port 8443, published only when its field is set to #}
+{% do app.add_port(values.network.https_port, {"container_port": 8443}) %}
 {% do app.add_storage("/tmp", app_tmp) %}
 {% do app.add_storage(values.consts.key_path, key_ro) %}
 {% do app.add_storage("/data", values.storage.data) %}
@@ -66,11 +68,13 @@
 {% set web = tpl.add_container(values.consts.web_container_name, "image") %}
 {% do web.set_user(values.run_as.user, values.run_as.group) %}
 {% do web.set_read_only(true) %}
-{% do web.set_command(["nginx", "-e", "stderr", "-g", "daemon off;"]) %}
+{# nginx under the URL base the app runs with (#1159): docker/web.py reads it from the settings file #}
+{% do web.set_command(["python3", "-I", "/app/docker/web.py"]) %}
 {% do web.depends.add_dependency(values.consts.app_container_name, "service_started") %}
 {% do web.healthcheck.set_test("wget", {"port": 8080, "path": "/healthz", "busybox": true, "spider": false}) %}
 {% do web.add_port(values.network.web_port, {"container_port": 8080}) %}
 {% do web.add_storage("/tmp", tmp) %}
+{% do web.add_storage("/data", dict(values.storage.data, read_only=true)) %}
 
 {# receiver: the phone app posts watch and scale data here #}
 {% set receiver = tpl.add_container(values.consts.receiver_container_name, "image") %}

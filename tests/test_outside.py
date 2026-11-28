@@ -722,6 +722,30 @@ class View(unittest.TestCase):
         self.assertIn("blocked under Outside connections", r.text, r.status_code)
         self.assertEqual(netguard.take(), [])
 
+    def test_the_sign_in_page_without_the_provider_while_its_off(self):   # #1167
+        """Switched off (or every outside connection, or its issuer blocked), the sign-in page has no button; with Sign
+        in with OIDC only on, it says why and how an admin gets back in."""
+        from server import oidc
+        from tests.fakeoidc import FakeOIDC
+        with FakeOIDC() as idp:
+            try:
+                r = self.robin.put("/api/settings/install/oidc", json={"issuer": idp.issuer, "client_id": idp.client_id}, headers=H)
+                self.assertEqual(r.status_code, 200, r.text)
+                self.assertNotIn("off", client().get("/api/login/oidc").json())
+                for key, value in (("outside.signIn", False), ("outside.none", True), ("outside.blocked", [net.host_of(idp.issuer)])):
+                    before = outside.settings.install_value(key)
+                    self.setting(key, value)
+                    p = client().get("/api/login/oidc").json()
+                    self.setting(key, before)
+                    self.assertIn("under Outside connections", p.get("off", ""), key)
+                    self.assertIn("python -m server.manage config set outside.signIn true", p["off"])
+                self.assertNotIn("off", client().get("/api/login/oidc").json(), "back on")
+            finally:
+                db = dbm.connect()
+                db.execute("DELETE FROM meta WHERE k='oidc'")
+                db.close()
+                oidc._cache.clear()
+
     def test_test_a_host_filter_and_clear_the_log(self):   # #1167
         from server import notify
         url = self.srv.base + "/topics"
@@ -733,6 +757,15 @@ class View(unittest.TestCase):
         steps = r.json()["steps"]
         self.assertEqual([(x["step"], x["ok"]) for x in steps], [("name", True), ("connect", True), ("tls", False)], steps)
         self.assertIn("certificate", steps[2]["said"], "its own test certificate, not one this server trusts")
+        sid = self.source()   # a plain-HTTP source on this machine (the test's fake): tested at its own scheme and port
+        own = net.host_of(self.fake.fhir_base)
+        db = dbm.connect()
+        self.assertEqual((outside.schemes(db)[own], outside.schemes(db)[host]), ("http", "https"))
+        db.close()
+        steps = self.robin.post("/api/outside/test", json={"host": own}, headers=H).json()["steps"]
+        self.assertEqual([(x["step"], x["ok"]) for x in steps], [("name", True), ("connect", True)], steps)
+        self.assertIn(f"port {self.fake.port}", steps[1]["said"])
+        self.robin.delete(f"/api/connect/sources/{sid}", headers=H)
         self.assertEqual(self.robin.post("/api/outside/test", json={"host": "elsewhere.example.org"}, headers=H).status_code, 404)
         self.assertEqual(self.lee.post("/api/outside/test", json={"host": host}, headers=H).status_code, 403)
         self.setting("outside.blocked", [host])

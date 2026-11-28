@@ -17,6 +17,9 @@ network:
   receiver_port:
     bind_mode: published
     port_number: 8731
+  https_port:
+    bind_mode: ''
+    port_number: 8443
 
 run_as:
   user: 568

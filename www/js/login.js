@@ -94,6 +94,14 @@ const OIDC_SAID = "sgOidcSaid", OIDC_LINK = "sgOidcLink", OIDC_BACK = "sgOidcBac
 let oidcOnly = false, oidcP = null;
 function oidcShow(p) {
   if (!p || !p.label) return;
+  if (p.off) {   // (#1167) switched off under Outside connections: no button; with OIDC only (nothing else signs in), why, and how an admin gets back in
+    if (p.only && !ticket) {
+      for (const id of ["u", "step1"]) document.getElementById(id).hidden = true;
+      document.querySelector('label[for="u"]').hidden = btn.hidden = pkBox.hidden = true;
+      oidcBox.replaceWith(el("p", {class: "warn", id: "oidcOff", role: "alert", text: p.off}));
+    }
+    return;
+  }
   oidcP = p;
   oidcBtn.textContent = `Sign in with ${p.label}`;
   oidcBox.hidden = !!ticket;   // (not beside a second step)

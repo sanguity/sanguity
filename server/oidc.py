@@ -667,7 +667,15 @@ def brief(db):
     """What every page may know (/api/me, the sign-in page): the button's name and whether it's the only way in; None
     while no provider is set up."""
     cfg = load(db)
-    return {"label": cfg["label"], "only": bool(cfg["only"])} if configured(cfg) else None
+    if not configured(cfg):
+        return None
+    # (#1167) switched off under Outside connections (or every outside connection, or its issuer blocked): no button,
+    # and with Sign in with OIDC only on, the sign-in page says so and how an admin gets back in
+    why = outside.refusal(PURPOSE, net.host_of(cfg["issuer"]))
+    return {"label": cfg["label"], "only": bool(cfg["only"]),
+            **({"off": why + " An admin turns it back on from the server's command line: python -m server.manage config "
+                "set outside.signIn true (and outside.none false, or unblocks its host), or python -m server.manage "
+                "oidc-only off lets passwords and passkeys sign in again."} if why else {})}
 
 
 def current_count(db, uid):

@@ -6,8 +6,11 @@ It does what compose.release.yaml's four services do: setup (secrets, folders an
 can hand every file to PUID:PGID), then the app, nginx and the watch receiver as PUID:PGID. If any of them stops,
 the others are stopped too and the container exits, so Docker's restart policy starts it all again.
 
-  Port 8080   the web app (nginx; /api/ goes to the app on 127.0.0.1:8000, which is not published)
+  Port 8080   the web app (nginx, under the URL base the settings file gives: docker/web.py; /api/ goes to the app on
+              127.0.0.1:8000, which is not published)
   Port 8081   the watch receiver the phone app uploads to
+  Port 8443   built-in HTTPS (#1159), served by the app itself once a certificate is set (Settings → General → Needs a
+              restart): publish it to use it; nothing listens there until then
 
 Folders (mount each one; see deploy/unraid/README.md):
   /data                    the database and each profile's files
@@ -35,17 +38,9 @@ def log(msg):
     print(f"[all-in-one] {msg}")
 
 
-def nginx_config():
-    """The image's nginx configuration, with the backend on this container's loopback instead of the app service."""
+def nginx_folder():
+    """nginx's folder in /tmp, for PUID:PGID: docker/web.py writes its configuration there."""
     os.makedirs(NGINX_TMP, exist_ok=True)
-    site = open("/etc/sanguity/nginx.d/default.conf", encoding="utf-8").read()
-    if "http://app:8000" not in site:
-        sys.exit("nginx.conf no longer proxies to http://app:8000; update docker/allinone.py to match")
-    with open(os.path.join(NGINX_TMP, "default.conf"), "w", encoding="utf-8") as f:
-        f.write(site.replace("http://app:8000", "http://127.0.0.1:8000"))
-    main = open("/etc/nginx/nginx.conf", encoding="utf-8").read()
-    with open(os.path.join(NGINX_TMP, "nginx.conf"), "w", encoding="utf-8") as f:
-        f.write(main.replace("/etc/sanguity/nginx.d/*.conf", os.path.join(NGINX_TMP, "default.conf")))
     for root, dirs, files in os.walk(NGINX_TMP):
         for n in [root] + [os.path.join(root, x) for x in files]:
             os.chown(n, UID, GID)
@@ -62,14 +57,15 @@ def main():
     r = subprocess.run([sys.executable, "-I", "/app/docker/setup.py"], env={**os.environ, "PUID": str(UID), "PGID": str(GID)})
     if r.returncode:
         sys.exit(r.returncode)
-    nginx_config()
+    nginx_folder()
 
     base = {k: v for k, v in os.environ.items() if k not in ("HOST", "PORT")}
     services = {
         # SANGUITY_DEPLOYMENT: how it's deployed, for Settings → General → About (#1004); Unraid's template sets its own.
         # the receiver's time zone is the app's to give it (receiver-settings.json, #1158), never its own environment's
         "app": (["python3", "-m", "server"], {"SANGUITY_DEPLOYMENT": "allinone", **base, "HOST": "127.0.0.1", "PORT": "8000"}),
-        "web": (["nginx", "-e", "stderr", "-c", os.path.join(NGINX_TMP, "nginx.conf"), "-g", "daemon off;"], base),
+        # nginx under the URL base (#1159), with the backend on this container's loopback instead of the app service
+        "web": (["python3", "-I", "/app/docker/web.py", "--backend", "http://127.0.0.1:8000"], base),
         "receiver": (["python3", "-I", "/app/receiver.py"], {**base, "DATA": WATCH, "PORT": "8081",
                                                           "SECRET_FILE": os.path.join(AUTH, "watch_secret")}),
     }

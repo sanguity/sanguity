@@ -216,6 +216,46 @@ def image_and_allinone():
     check("the released image sets no server setting (#1120, #1158)", not named, named)
 
 
+WEB = ["python3", "-I", "/app/docker/web.py"]
+
+
+def web_and_https():
+    """(#1159) nginx is written under the URL base from the settings file (docker/web.py), in every template; built-in
+    HTTPS is the app's port 8443, which compose.release.yaml documents as a mapping to uncomment."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("sanguity_web", os.path.join(ROOT, "docker", "web.py"))
+    web = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(web)
+    conf = open(os.path.join(ROOT, "nginx.conf"), encoding="utf-8").read()
+    check("docker/web.py: no URL base leaves nginx.conf as it is", web.site(conf, "") == conf)
+    got = web.site(conf, "/health.lab", "http://127.0.0.1:8000")
+    check("docker/web.py: under a URL base, <base>/… is served as /…, the base alone and / (unless a proxy in front took "
+          "the base off) redirect to <base>/, the backend replaced",
+          "rewrite ^/health\\.lab(/.*)$ $1 break;" in got and "rewrite ^/health\\.lab$ /health.lab/ redirect;" in got
+          and "map $request_uri $sg_based { ~^/health\\.lab(/|\\?|$) 1; default 0; }" in got
+          and "if ($sg_to_base) { return 302 /health.lab/; }" in got and "http://app:8000" not in got
+          and got.index("map $request_uri") < got.index("\nserver {") < got.index("rewrite ^/health"), got[:400])
+    check("docker/web.py: balanced braces in what it writes", got.count("{") == got.count("}"))
+    bad = [b for b in ("/a b", "/x;}", "/../etc", "api") if web.url_base({"good": {"URL_BASE": b}})]
+    check("docker/web.py: a base that isn't one is never written into nginx's config", not bad, bad)
+    check("docker/web.py: the base the app tries, else the good one's",
+          web.url_base({"good": {"URL_BASE": "/a"}, "pending": {"URL_BASE": "/b"}}) == "/a"
+          and web.url_base({"good": {"URL_BASE": "/a"}, "pending": {"URL_BASE": "/b"}, "trying": {"at": 1}}) == "/b"
+          and web.url_base({}) == "")
+    for label, path in (("compose.release.yaml", os.path.join(ROOT, "compose.release.yaml")),
+                        ("casaos", os.path.join(HERE, "casaos", "Sanguity", "docker-compose.yml"))):
+        svc = load_yaml(path)["services"]["web"]
+        check(f"{label}: web runs docker/web.py with the data folder read-only (#1159)",
+              svc.get("command") == WEB and any(target(v) == "/data" and read_only(v) for v in svc.get("volumes", [])), svc.get("command"))
+        text = open(path, encoding="utf-8").read()
+        check(f"{label}: built-in HTTPS's mapping documented, commented out (#1159)", re.search(r"#\s*-\s*\"[^\"]*:8443\"", text) is not None)
+    allinone = open(os.path.join(ROOT, "docker", "allinone.py"), encoding="utf-8").read()
+    check("the all-in-one container runs nginx through docker/web.py, and says 8443 is HTTPS's",
+          '"/app/docker/web.py", "--backend", "http://127.0.0.1:8000"' in allinone and "Port 8443" in allinone)
+    docker = open(os.path.join(ROOT, "docker", "app.Dockerfile"), encoding="utf-8").read()
+    check("the image has docker/web.py and exposes 8443", "docker/web.py" in docker and re.search(r"EXPOSE [^\n]*\b8443\b", docker) is not None)
+
+
 def release_shape():
     compose = load_yaml(os.path.join(ROOT, "compose.release.yaml"))
     check("compose.release.yaml: four services", set(compose["services"]) == SERVICES, sorted(compose["services"]))
@@ -306,6 +346,12 @@ def truenas(want, lib_dir):
     check("truenas: the legacy fields say so, and are empty (auto) by default (#1158)",
           len(legacy) == 2 and all("Legacy:" in a.get("description", "") for a in legacy.values())
           and defaults.get("public_origins") == "" and defaults.get("cookie_secure") == "auto", sorted(legacy))
+    net = next(q for q in files["questions.yaml"]["questions"] if q["variable"] == "network")
+    https = next((a for a in net["schema"]["attrs"] if a["variable"] == "https_port"), None)
+    hd = {a["variable"]: a["schema"].get("default") for a in https["schema"]["attrs"]} if https else {}
+    check("truenas: a built-in HTTPS port field, not published by default (#1159)", hd.get("bind_mode") == "" and hd.get("port_number") == 8443, hd)
+    tpl = open(os.path.join(app_dir, "templates", "docker-compose.yaml"), encoding="utf-8").read()
+    check("truenas: the app publishes 8443 from that field", 'app.add_port(values.network.https_port, {"container_port": 8443})' in tpl)
     check("truenas: Additional Environment Variables is empty by default", defaults.get("additional_envs") == [],
           defaults.get("additional_envs"))
     if not lib_dir:
@@ -330,7 +376,8 @@ def truenas(want, lib_dir):
         app_env = env_of(rendered["services"]["app"])
         container_only(f"truenas ({t})", rendered["services"], None)
         ports = {p["published"] for s in rendered["services"].values() for p in s.get("ports", [])}
-        want_ports = {tv["network"]["web_port"]["port_number"], tv["network"]["receiver_port"]["port_number"]}
+        want_ports = {tv["network"][k]["port_number"] for k in ("web_port", "receiver_port", "https_port")
+                      if tv["network"].get(k, {}).get("bind_mode", "published") == "published"}
         check(f"truenas ({t}): published on its web and receiver ports", ports == want_ports, (ports, want_ports))
         rx = {p["published"] for p in rendered["services"]["receiver"].get("ports", [])}
         check(f"truenas ({t}): the app gets the receiver's published port, for the phone upload address (#1007)",
@@ -371,8 +418,11 @@ def unraid(want):
     for t, ro in needed.items():
         if t in paths:
             check(f"unraid: {t} is {'read-only' if ro else 'writable'}", (paths[t] == "ro") == ro, paths[t])
-    ports = {int(c.get("Target")): int(c.get("Default")) for c in configs if c.get("Type") == "Port"}
+    ports = {int(c.get("Target")): int(c.get("Default")) for c in configs if c.get("Type") == "Port" and c.get("Default")}
     check("unraid: publishes the web app on 8730 and the receiver on 8731", ports == {8080: 8730, 8081: 8731}, ports)
+    https = next((c for c in configs if c.get("Type") == "Port" and c.get("Target") == "8443"), None)
+    check("unraid: a built-in HTTPS port field (8443), empty (not published) by default (#1159)",
+          https is not None and https.get("Default") == "" and https.get("Required") == "false", https is not None and https.attrib)
     rp = next((c for c in configs if c.get("Type") == "Variable" and c.get("Target") == "RECEIVER_PORT"), None)
     check("unraid: the app gets the receiver's published port, the same default, for the phone upload address (#1007)",
           rp is not None and rp.get("Default") == str(ports.get(8081)) and rp.get("Required") == "true", rp is not None and rp.attrib)
@@ -505,6 +555,7 @@ def main():
             compose_settings(name)
         env_example()
         image_and_allinone()
+        web_and_https()
         _, want = release_shape()
         truenas(want, a.truenas_lib)
         unraid(want)

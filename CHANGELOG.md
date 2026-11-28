@@ -165,12 +165,17 @@ Everything on `main` so far; it becomes the first tagged release.
   HTTPS from a certificate and key in the data folder (checked before it's saved, its names and expiry shown, warned 30
   days ahead), each tried at the next start and kept once healthy; and, on General → This server, the server's name
   (the title and the top bar), an opt-in check for new versions (GitHub's releases only, listed under Outside
-  connections) and the time zone, date format and units new people start with.
+  connections) and the time zone, date format and units new people start with. The container's nginx serves under
+  the URL base (written from the settings file at start, and reloaded when it changes), so the reverse proxy in front
+  may forward the path as it is; built-in HTTPS is the app's port 8443, a field in the TrueNAS and Unraid templates
+  (empty: not published) and a mapping to uncomment in `compose.release.yaml` and CasaOS's.
 - Outside connections you control (#1167): a switch per kind (connected sources, Health Link fetching, the sign-in
   provider, notifications, provider directory updates, text-recognition downloads, the update check) and "No outside
   connections at all" over them, any host blocked, each listed host tested (its name, a connection and TLS, through
   the outbound proxy, which is set here), and the recent contacts filtered by kind, host and date, or cleared (asked
-  first, logged). All enforced in `server/net.py`, the one way out; a feature that can't work says why.
+  first, logged). All enforced in `server/net.py`, the one way out; a feature that can't work says why, and the
+  sign-in page drops the provider's button while it's off (with Sign in with OIDC only, it says how an admin gets back
+  in). A test reaches each host at its own scheme and port.
 
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for

@@ -39,6 +39,10 @@ services:
       SANGUITY_DEPLOYMENT: casaos   # how it's deployed, named on Settings → General → About (#1004)
       RECEIVER_PORT: "8731"   # the receiver's published port below, for the phone upload address: change both together (#1007)
       TZ: $TZ   # the containers' clock (the receiver's time zone is the app's: taken from this once, #1158)
+    # built-in HTTPS (#1159; Settings → General → Needs a restart): the app's own port 8443, not published until you add
+    # it here (deploy/casaos/README.md); nothing listens there until a certificate is set
+    # ports:
+    #   - "8443:8443"
     read_only: true
     tmpfs:
       - /tmp
@@ -61,7 +65,7 @@ services:
     image: ghcr.io/sanguity/sanguity:0.1.0
     user: $PUID:$PGID
     restart: unless-stopped
-    command: ["nginx", "-e", "stderr", "-g", "daemon off;"]
+    command: ["python3", "-I", "/app/docker/web.py"]   # nginx under the URL base the app runs with (#1159)
     depends_on:
       app:
         condition: service_started
@@ -70,6 +74,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      - /DATA/AppData/$AppID/data:/data:ro   # only server-settings.json is read: the URL base (docker/web.py)
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
       interval: 60s
