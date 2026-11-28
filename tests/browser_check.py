@@ -33353,7 +33353,7 @@ def main():
                 body: JSON.stringify({{save: true, items: [{{kind: 'visit', date: '2026-10-01', title: 'Fictional check-up', who: 'Dr. Example', where: 'Example Clinic'}}]}})}}).then(r => r.status)""")
             want = {"overview": [["Add lab results", f"sources.html?profile={pid2}#manual"]], "health": [["Connect a phone", f"sources.html?profile={pid2}#phone"]],
                     "timeline": [["Show everything", None]], "labs": [["Add lab results", f"sources.html?profile={pid2}#manual"]],
-                    "costs": [["Type in a claim or payment", f"sources.html?profile={pid2}#payment"]]}
+                    "costs": [["Type in a claim or payment", f"sources.html?profile={pid2}#payment"], ["Add a bill", None]]}   # (and a provider's bill, #1128)
             got, bad = {}, []
             fp.goto(fbase + f"/?profile={pid2}#overview")
             f_until("typeof booted !== 'undefined' && booted && EV.length > 0")
