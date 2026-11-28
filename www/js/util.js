@@ -1100,7 +1100,10 @@ const sgFoot = (() => {
     for (const e of [document.body, t?.firstElementChild, ...bars]) if (e && !seen.has(e)) { seen.add(e); ro.observe(e); }
     // the page's bar, in its column (its box's content, after a sidebar's: main.sets.with-nav's first column), and
     // the toasts over it there; with no bar, still there, never over the sidebar (#550)
-    const bar = bars.find(b => b.matches(".sg-bar-foot") && !b.hidden && !b.closest("dialog")), p = bar ? bar.parentElement : document.querySelector("main.with-nav");
+    // (only what's drawn: a bar or toasts in a hidden page or a closed popover measure 0, which read as a whole
+    // window's foot and padded the page's end by it, the footer left at the screen's top)
+    const drawn = e => e.getClientRects().length > 0;
+    const bar = bars.find(b => b.matches(".sg-bar-foot") && drawn(b) && !b.closest("dialog")), p = bar ? bar.parentElement : document.querySelector("main.with-nav");
     let l = 0, w = 0;
     if (p) {
       const s = getComputedStyle(p), cols = s.display === "grid" ? s.gridTemplateColumns.split(" ") : [];
@@ -1121,7 +1124,7 @@ const sgFoot = (() => {
       while (k < hs.length && h + gap + hs[k] <= parseFloat(s.maxHeight) - pad) h += gap + hs[k++];
       if (k && k < hs.length) placeAt(t, {"max-height": h + pad});
     }
-    const top = Math.max(under, t?.parentElement === document.body && t.querySelector(".sg-toast") ? innerHeight - t.getBoundingClientRect().top : 0);
+    const top = Math.max(under, t?.parentElement === document.body && t.querySelector(".sg-toast") && drawn(t) ? innerHeight - t.getBoundingClientRect().top : 0);
     px(html, "--sg-foot", top);
     // a review's bars: the room each takes from the foot of what scrolls, its own height and what's under it
     let room = top && top + 8;

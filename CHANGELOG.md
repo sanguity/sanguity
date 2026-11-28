@@ -3956,6 +3956,10 @@ Everything on `main` so far; it becomes the first tagged release.
 - **In-range results, grey or green** (#1108): Settings → You → Display → In-range results, each person's own: Grey
   (the default, as before) or Green for the Labs heatmap's in-range cells, from the page's first frame; green means only
   inside the range the report gave, out of range stays red with ▲/▼, and forced colours are unchanged.
+- **The records page's foot** (Fixes the owner's report): the page ends at its footer (a toast stack or a page's bar
+  not drawn no longer pads the end by a whole window); the "Not medical advice" notice is centred; the foot names the
+  version (General → About for an admin), links the source code and where to report a problem, and says when the
+  records were imported in place of the build's file name.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

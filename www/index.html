@@ -160,7 +160,11 @@
 </main>
 <footer>   <!-- the page's one contentinfo landmark (#1061: the notice and the foot were two) -->
   <div class="notice" id="notice"><strong>Not medical advice.</strong> Sanguity shows what your records say. It doesn't diagnose, interpret results or recommend treatment; your care team interprets them in context.</div>
-  <div class="pagefoot"><span class="meta" id="meta"></span></div>
+  <div class="pagefoot"><span class="meta" id="meta"></span>
+    <!-- the version (General's About, for an admin: nav.js), the source (AGPL-3.0 §13) and where to report a problem -->
+    <p class="meta"><span id="footVer">Sanguity</span> · <a href="https://github.com/sanguity/sanguity" target="_blank" rel="noopener noreferrer"
+      aria-label="Source code, on GitHub, opens in a new tab">Source code</a> · <a href="https://github.com/sanguity/sanguity/issues"
+      target="_blank" rel="noopener noreferrer" aria-label="Report a problem, on GitHub, opens in a new tab">Report a problem</a></p></div>
 </footer>
 <dialog id="drawer" class="sg-dlg sg-dlg-side" aria-labelledby="dtitle">
   <div class="dh" data-grab><span class="dkind" id="dkey"></span><div class="dtl"><h3 id="dtitle"></h3><div class="sub" id="dsub"></div></div><div class="acts"><div class="menu" id="dmore" hidden><button class="iconbtn" id="dmoreBtn" type="button" aria-label="Correct this record" data-tip="Correct this record" aria-haspopup="menu" aria-expanded="false" aria-controls="dmoreList"><svg class="icon i-ellipsis" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-ellipsis"/></svg></button><div class="menu-list" id="dmoreList" role="menu" aria-label="Correct this record" popover></div></div><button class="iconbtn" id="dwide" type="button" aria-pressed="false" aria-label="Wider panel" data-tip="Wider panel"><svg class="icon i-chevrons-left-right" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-chevrons-left-right"/></svg><svg class="icon i-chevrons-right-left" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-chevrons-right-left"/></svg></button><button class="iconbtn close" id="dclose" type="button" aria-label="Close" data-tip="Close (Esc)"><svg class="icon i-x" aria-hidden="true" focusable="false"><use href="icons/sprite.svg#i-x"/></svg></button></div></div>

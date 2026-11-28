@@ -955,6 +955,8 @@ class Settings(unittest.TestCase):
             named = kind if kind in general.KINDS else "other"
             self.assertEqual((a["deployment"], a["deployment_name"]), (named, general.KINDS[named]["name"]))
             self.assertEqual((a["version"], a["checkout"]), want, kind)
+            with mock.patch.dict(os.environ, SANGUITY_DEPLOYMENT=kind, SANGUITY_VERSION=version):   # the records page's foot, for everyone
+                self.assertEqual(self.c["robin"].get("/api/me").json()["version"], want[0], kind)
             folders = {f["key"]: f for f in a["folders"]}
             self.assertEqual(folders["data"]["path"], config.DATA_DIR)
             self.assertEqual(folders["data"]["set_by"], general.KINDS[a["deployment"]]["mounts"].get("data"))
