@@ -172,6 +172,8 @@ ROUTES = {
     ("PUT", "/api/profiles/{pid}/requests/{rid}"): (USER, "editor"), ("DELETE", "/api/profiles/{pid}/requests/{rid}"): (USER, "editor"),
     ("PUT", "/api/profiles/{pid}/requests/{rid}/import"): (USER, "editor"),
     ("PUT", "/api/profiles/{pid}/medications/listed"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/medications/hidden"): (USER, "editor"),
+    ("POST", "/api/profiles/{pid}/medications/stopped"): (USER, "editor"),    # stopped taking, started again, undo (#1161)
+    ("POST", "/api/profiles/{pid}/medications/again"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/medications/taking"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/family/own"): (USER, "editor"),             # family history of your own (#1134)
     ("PUT", "/api/profiles/{pid}/family/own/{eid}"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/family/own/{eid}"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/family/hidden"): (USER, "editor"),
