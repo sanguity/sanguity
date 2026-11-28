@@ -314,7 +314,7 @@ const SgPalette = (() => {
   const unlisted = w => w ? ` · ${w.toLocaleString("en-US")} workout${w === 1 ? "" : "s"}, not listed` : "";
 
   /* how well something matches what's typed (#403), the same in every group, lower better: 0 its title is what's typed
-     (#452: the Journal view before Add's Journal entry), .5 its title starts with it all, 1 each word typed starts a word of the title, 2 the first does, 3 only what else it's known by has them;
+     (#452: the Journal view before Add's Journal entry), or its singular ("activities" Sharing's Activity before Body and activity), .5 its title starts with it all, 1 each word typed starts a word of the title, 2 the first does, 3 only what else it's known by has them;
      -1 not at all. A word typed is found only at the start of a word, never inside one ("hem" isn't in "theme").
      Words are letters and digits: "two-factor" is "two factor", as "mg/dL" is "mg dl". A plural typed finds its
      singular too (#502: "codes" finds "code", "matches" "match"; #506: "activities" "activity"). where: where it is
@@ -337,7 +337,7 @@ const SgPalette = (() => {
     const away = words.filter(w => !at(own, w));
     if (away.length && away.length < words.length && !words.every(w => away.includes(w) || at(t, w))) return -1;
     const all = " " + typed.join(" "), less = away.length ? .5 : 0;
-    return t === all ? 0 : t.startsWith(all) ? .5 : words.every(w => at(t, w)) ? 1 : away.length && away.length < words.length ? 1 + less : (at(t, words[0]) ? 2 : 3) + less;
+    return t === all || t === " " + typed.map(singular).join(" ") ? 0 : t.startsWith(all) ? .5 : words.every(w => at(t, w)) ? 1 : away.length && away.length < words.length ? 1 + less : (at(t, words[0]) ? 2 : 3) + less;
   }
   /* between pages and settings found as well (#524): one with more of the words typed whole first ("use" is Admin's
      "Use it", not "users"), then one on this page ("Turn off" on Account is two-factor sign-in's, not cycle tracking's) */

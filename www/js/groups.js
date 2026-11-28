@@ -72,7 +72,10 @@ const SG_PAGES = {
     {id: "summary", title: "Visit summary", icon: "file-text", has: ["summaryIntro", "build", "preview", "sumTicked"],   // sumTicked: from Settings → Dashboard (#402)
      words: "doctor appointment print pdf download questions changes since another lab trend", finds: [["Measures ticked at first", "sumTicked", "home readings watch"]]},
     {id: "emergency", title: "Emergency card", icon: "id-card", has: ["emergency"],   // #1126 (emergency.js)
-     words: "emergency ice in case of emergency wallet card lock screen image phone allergies blood type contacts medications print printable pdf png download ambulance paramedic"},
+     words: "emergency ice in case of emergency wallet card lock screen image phone allergies blood type contacts medications print printable pdf png download ambulance paramedic " +
+       // (#1162) the editor's: a suggestion's Use, Save the card, its fields, a line of your own for each section, the print's
+       "use suggestion save full legal name preferred language hospital organ donor weight line own critical alerts current conditions care team devices implants insurance key documents format paper size letter a4 qr code fold",
+     finds: [["Date of birth", "emergency", "born dob age"]]},   // (the card's own: Settings' About this person's Birth date is Settings')
     {id: "export", title: "Export everything", icon: "download", has: ["export"], needs: "editor", why: "A profile's owners and editors can export it.",
      words: "download backup zip copy"},
     {id: "activity", title: "Activity", icon: "scroll-text", has: ["activity"], needs: "owner", why: "A profile's activity is for its owners.",
@@ -86,11 +89,11 @@ const SG_PAGES = {
     {id: "dashboard", title: "Dashboard", icon: "layout-dashboard", part: "This person", has: ["sec-overview", "sec-trends", "sec-health", "sec-costs", "sec-tabs", "sec-summary"],
      finds: [["Overview tiles", "sec-overview", "key labs home readings start from a condition choose conditions preset use most measured add"], ["Tabs", "sec-tabs", "edit order hide show", "editor"],
        ["Labs", "sec-trends", "lab charts labs selected at first saved views add view no default"],
-       ["Body and activity", "sec-health", "workouts visits exercise title contains count"], ["Costs", "sec-costs", "tax year month report"]]},
+       ["Body and activity", "sec-health", "workouts visits exercise title contains count"], ["Costs", "sec-costs", "tax year starts month report"]]},
     {id: "about", title: "About this person", icon: "user", part: "This person", has: ["about", "targets"],   // #194, #234; on Sharing before #267
      finds: [["Birth date, sex and height", "about", "age birthday date of birth dob born child baby due date growth tall cm inches maximum heart rate measured bpm early add blood type group abo rh emergency contacts ice phone number relationship optional"], ["Targets of your own", "targets", "goals"]]},   // (an emergency contact's fields, #524)
     {id: "insurance", title: "Insurance cards", icon: "wallet-cards", part: "This person", has: ["insurance"],   // #1137
-     words: "health plan insurer member id group number card photo front back phone add change take off",
+     words: "health plan insurer member id group number card photo front back phone add change take off show at the desk read",   // (#1168)
      finds: [["Remove a plan", "insurance", "delete"]]},   // (its own: in the group's words, "remove member" found it before Who has access, #510)
     {id: "labs", title: "Labs and ranges", icon: "ruler", part: "This person", has: ["sec-names", "labmatches", "sec-ranges"], words: "reference ranges normal high low add",
      finds: [["Names", "sec-names", "nicknames rename lab names result sources records shown"],
@@ -118,11 +121,12 @@ const SG_PAGES = {
     // Install: the Admin page's groups (#167: admin.js, admin-sources.js, admin-backups.js, outside.js, activity.js),
     // admins only. General (#998) first: the server's own settings, each of its sections (#1000-#1005) a part in its has
     {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-phone", "gen-notify", "gen-restart", "gen-ocr", "gen-demo"], place: "admin", words: "server install configuration",
-     finds: [["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names published web port forwarded request"],
+     finds: [["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names published web port forwarded request " +
+        "taken from the environment env once got"],   // (#1158: what the first start took, its Got it)
        ["Phone receiver", "gen-phone", "upload address watch scale health connect receiver port time zone unclaimed restore replaced"],
        ["Notifications", "gen-notify", "notification server ntfy topic push access token test send"],   // (#1130)
        ["Needs a restart", "gen-restart", "restart now upload limits file size files journal photo sync attachment pulls timeout health links password checks at once hash parallel trusted proxies forwarded time zone unclaimed restore replaced kept server-settings " +
-        "ones most unpacked records fetches data wait vendor answer each request what brings between connection"],   // (#1121; its rows' labels, #524: "ones", so "one" is found but "one-time password" stays Accounts', #502)
+        "ones most unpacked zip ratio records fetches data wait vendor answer each request what brings between connection"],   // (#1121; its rows' labels, #524: "ones", so "one" is found but "one-time password" stays Accounts', #502)
        ["Text recognition", "gen-ocr", "ocr tesseract scanned documents scans searchable search text languages language file traineddata import download tessdata"],   // (#1129)
        ["Demo profile", "gen-demo", "demo sample example fictional made-up look around try add remove demo"]]},   // (#1101)
     // (#1119, the owner's decision) Accounts and sign-in: People, then Sign-in rules and Sign-in provider (General's
@@ -134,7 +138,7 @@ const SG_PAGES = {
        // still found by "one-time", but not whole, so "one-time password" finds the group first, where one is made, #502)
        ["Sign-in rules", "signin-rules", "security sign-in lasts session length days hours with second factor without idle when unused sign out " +
         "who may create profiles admins only shortest password length characters two factor onetime temporary time works fresh " +
-        "check minutes"],
+        "check minutes secure cookie https"],   // (#1158: the Secure sign-in cookie a row of its own)
        ["Wrong tries before a wait", "signin-rules", "password throttle attempts one account from place address any anywhere"],   // (an entry of its own: "create account" is People's)
        ["Require two-factor sign-in", "signin-rules", "2fa everyone"],   // (#1001; #528: "require 2fa")
        ["Sign-in provider", "signin-provider", "oidc openid connect single sign-on sso issuer client id secret redirect uri scopes acr " +
