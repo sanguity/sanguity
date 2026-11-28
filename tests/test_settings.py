@@ -964,11 +964,19 @@ class Settings(unittest.TestCase):
             self.assertEqual(set(general.KINDS[kind]["mounts"]), {"data", "backups", "key", "records", "watch", "config", "user"}, kind)
         limits = {x["name"]: x for g in a["limits"] for x in g["limits"]}
         self.assertEqual(limits["SHL_MAX_MB"], {"name": "SHL_MAX_MB", "what": "What one link brings", "unit": "MB", "value": 64,
-                                                 "from": "default", "default": 64})
+                                                 "from": "default", "default": 64, "restart": True})
         with mock.patch.dict(os.environ, UPLOAD_MAX_FILES="500"):
             got = {x["name"]: x for g in ada.get("/api/settings/install/about").json()["limits"] for x in g["limits"]}["UPLOAD_MAX_FILES"]
         self.assertEqual((got["value"], got["from"]), (500, "environment"))
         self.assertEqual(a["schema"], len(dbm.SCHEMA))
+        # (#1119) the server's own setup, Host's and Security's before, with where it comes from; the limits changed
+        # under Needs a restart said so (#1121); and every card's settings say where this install's environment is set
+        with mock.patch.dict(os.environ, COOKIE_SECURE="1", SANGUITY_DEPLOYMENT="truenas"):
+            got = ada.get("/api/settings/install/about").json()
+            at = ada.get("/api/settings/install").json()["settings_at"]
+        self.assertEqual(got["server"]["cookie_secure"], {"from": "environment", "value": "1"})
+        self.assertEqual({x["name"] for g in got["limits"] for x in g["limits"] if not x["restart"]}, {"UPLOAD_MAX_ZIP_RATIO"})
+        self.assertEqual(at, general.KINDS["truenas"]["settings"])
 
     def test_rename_one_name(self):
         """#38: one name of a name map changed where it's shown, the rest of the map kept"""

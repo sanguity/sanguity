@@ -28,9 +28,10 @@ function drawGenOcr(d) {
   clearTimeout(OCR_POLL);
   const btn = (text, onclick, cls = "btn") => el("button", {type: "button", class: cls, text, onclick});
   const use = new Set(d.in_use);
+  // (#1119) the built-in language is always used: said as text, never a disabled checkbox
   const langs = d.languages.map(l => el("div", {class: "form inline"},
-    el("label", {class: "check"}, el("input", {type: "checkbox", "data-code": l.code, checked: use.has(l.code) ? "" : null, disabled: l.built_in || null,
-      onchange: ev => ocrUse(d, ev.target)}), el("span", {text: l.built_in ? `${l.name}, built in` : `${l.name} (${l.code})`})),
+    l.built_in ? el("p", {"data-code": l.code, text: `${l.name}, built in: always used`}) : el("label", {class: "check"}, el("input", {type: "checkbox", "data-code": l.code,
+      checked: use.has(l.code) ? "" : null, onchange: ev => ocrUse(d, ev.target)}), el("span", {text: `${l.name} (${l.code})`})),
     l.built_in ? null : btn("Remove", () => ocrRemove(l), "btn small")));
   const file = el("input", {type: "file", id: "ocrFile", accept: ".traineddata", "aria-labelledby": "ocrFileLbl", "aria-describedby": "ocrFileH", onchange: () => ocrImport(file)});
   const dl = el("input", {type: "checkbox", role: "switch", id: "ocrDl", checked: d.downloads ? "" : null, "aria-labelledby": "ocrDlLbl", "aria-describedby": "ocrDlH",

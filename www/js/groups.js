@@ -114,12 +114,12 @@ const SG_PAGES = {
     // Install: the Admin page's groups (#167: admin.js, admin-sources.js, admin-backups.js, outside.js, activity.js),
     // admins only. General (#998) first: the server's own settings, each of its sections (#1000-#1005) a part in its has
     {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-security", "gen-signin", "gen-backups", "gen-phone", "gen-notify", "gen-restart", "gen-experimental", "gen-ocr", "gen-demo", "gen-about"], place: "admin", words: "server install configuration",
-     finds: [["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names trusted proxies port bind forwarded"],
+     finds: [["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names published web port forwarded request"],
        // (each of its rows' labels finds it, #524; "onetime", not "one-time": a word typed is found at a word's start, so it's
        // still found by "one-time", but not whole, so "one-time password" finds Accounts first, where one is made, #502)
        ["Security", "gen-security", "sign-in lasts session length days hours with second factor without idle when unused sign out " +
         "who may create profiles admins only shortest password length characters two factor onetime temporary time works fresh " +
-        "check minutes secure cookie password checks"],
+        "check minutes"],
        ["Wrong tries before a wait", "gen-security", "password throttle attempts one account from place address any anywhere"],   // (an entry of its own: "create account" is Accounts')
        ["Require two-factor sign-in", "gen-security", "2fa everyone"],   // (#1001; #528: "require 2fa", Accounts' before)
        ["Sign-in provider", "gen-signin", "oidc openid connect single sign-on sso issuer client id secret redirect uri scopes acr " +
@@ -131,7 +131,8 @@ const SG_PAGES = {
        ["Experimental", "gen-experimental", "connected sources portals health plans fhir epic mychart sync find your provider turn on off"],   // (#1096)
        ["Text recognition", "gen-ocr", "ocr tesseract scanned documents scans searchable search text languages language file traineddata import download tessdata"],   // (#1129)
        ["Demo profile", "gen-demo", "demo sample example fictional made-up look around try add remove demo"],   // (#1101)
-       ["About", "gen-about", "version release releases what's new schema database deployed deployment truenas unraid casaos docker folders runs as user uid gid configuration limits upload size zip journal photo sync attachment timeout health links"]]},
+       ["About", "gen-about", "version release releases what's new schema database deployed deployment truenas unraid casaos docker folders runs as user uid gid configuration limits upload size zip journal photo sync attachment timeout health links " +
+        "server internal port bind secure session cookie"]]},   // (Host's and Security's before, #1119)
     {id: "accounts", title: "Accounts", icon: "user-cog", part: "Install", admin: true, has: ["users"], place: "admin",
      words: "users new create add account reset password one-time temporary remove delete disable enable make admin " +
        "owner ownerless profile without an turn off sign-in admin someone"},   // (#495, #499, #502: what's done to an account; #506: Make owner, under the list; #515: enable; requiring two-factor sign-in: General's, #1001)

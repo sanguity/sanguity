@@ -4,7 +4,7 @@
    genBkSchedule). Logging: how long activity is kept (the install setting activity.days, ACTIVITY_DAYS), kept as
    typed and marked "not saved" until the group's bar saves it (genBkSave, settings-nav.js ADM) or puts it back
    (genBkDiscard); keeping fewer days, where that deletes entries, says how many and goes ahead only once that count
-   is typed (admin.js confirmed, the server's one rule), with the fresh check; set by the environment, it's shown fixed, naming
+   is typed (admin.js confirmed, the server's one rule), with the fresh check; set by the environment, it's text (util.js envRow, #1119), naming
    its variable. Then where the app's output and its security log are read (read-only). call(), say(), plural() and
    fresh() are settings.js's and admin.js's. */
 "use strict";
@@ -14,7 +14,7 @@ const GB_KEY = "activity.days";
 async function loadGenBackups() {
   try {
     const [where, inst, backups] = await Promise.all([call("settings/install/backups-logging"), call("settings/install"), call("backups")]);
-    GB = {where, st: gbSetting(inst), backups};
+    GB = {where, st: gbSetting(inst), backups, at: inst.settings_at};
   } catch (e) { $("#genBk").replaceChildren(el("p", {class: "msg bad", text: e.message})); return; }
   drawGenBackups();
 }
@@ -22,24 +22,25 @@ const gbSetting = inst => inst.sections.flatMap(s => s.settings).find(st => st.k
 
 /* "kv" lines: [name, value nodes, what sets it] */
 const gbLines = rows => el("dl", {class: "kv"}, ...rows.flatMap(([dt, dd, by]) =>
-  [el("dt", {text: dt}), el("dd", {}, ...[].concat(dd), by ? el("div", {class: "hint"}, "Set by: " + by + ".") : null)]));
+  [el("dt", {}, dt), el("dd", {}, ...[].concat(dd), by ? el("div", {class: "hint"}, "Set by: " + by + ".") : null)]));
 const gbSchedule = b => b.schedule === "off" ? "Off" : `${b.schedule[0].toUpperCase() + b.schedule.slice(1)}, keeping the newest ${plural(b.keep, "backup")}`;
 
 function drawGenBackups() {
   const {where: w, st, backups: b} = GB, card = $("#genBk"), had = card.contains(document.activeElement) ? document.activeElement.id : null;
-  const env = st.from === "environment";
-  const days = el("input", {type: "number", id: "genActDays", class: "set-num", min: 30, max: 3650, step: 1, value: gbTyped ?? st.value,
-    disabled: env || null, "aria-describedby": "genActHint"});
-  const row = setRow([el("h3", {class: "sub"}, el("label", {for: days.id, text: st.label}),
-      env ? el("span", {class: "tag", text: "set by the environment"}) : null, el("span", {class: "tag set-unsaved", text: "not saved"})),
-    el("p", {class: "hint", id: "genActHint", text: env ? `${st.env}, in ${w.settings_at}: take it out there to change it here.` : st.help})], days);
+  let row, days = null;
+  if (!st.can_change) row = envRow(st, GB.at, {value: plural(st.value, "day"), head: ["h3", {class: "sub"}]});   // (#1119) set by the environment
+  else {
+    days = el("input", {type: "number", id: "genActDays", class: "set-num", min: 30, max: 3650, step: 1, value: gbTyped ?? st.value, "aria-describedby": "genActHint"});
+    row = setRow([el("h3", {class: "sub"}, el("label", {for: days.id, text: st.label}), el("span", {class: "tag set-unsaved", text: "not saved"})),
+      el("p", {class: "hint", id: "genActHint", text: st.help})], days);
+    days.oninput = () => { sayIn($("#genBkMsg"), ""); mark(); };
+    days.onkeydown = ev => { if (ev.key === "Enter") { ev.preventDefault(); $("#setBar .btn.primary")?.click(); } };   // the bar's Save
+  }
   const mark = () => {
-    gbTyped = days.value === String(st.value) ? null : days.value;
+    gbTyped = !days || days.value === String(st.value) ? null : days.value;
     row.classList.toggle("set-changed", gbTyped != null);
     if (gbTyped != null) $("#gen-backups").setAttribute("data-dirty", 1); else $("#gen-backups").removeAttribute("data-dirty");
   };
-  days.oninput = () => { sayIn($("#genBkMsg"), ""); mark(); };
-  days.onkeydown = ev => { if (ev.key === "Enter") { ev.preventDefault(); $("#setBar .btn.primary")?.click(); } };   // the bar's Save
   const keys = w.key.keys == null ? "it can't be read here" : plural(w.key.keys, "key");
   const logs = w.logs.command ? [el("code", {text: w.logs.command}), " ", copyBtn(w.logs.command, {what: "the command"}), ` ${w.logs.where}.`] : w.logs.where + ".";
   card.replaceChildren(
@@ -96,5 +97,5 @@ function gbDrawn(inst, said) {
 function genBkDiscard() {
   gbTyped = null; drawGenBackups();
   sayIn($("#genBkMsg"), "Changes discarded: back as saved.");
-  $("#genActDays").focus();
+  $("#genActDays")?.focus();
 }

@@ -1013,10 +1013,11 @@ def general_backups_check(browser, base, cookies, check, db_path, pw=None):
         pg.route("**/api/settings/install", env)
         pg.reload()
         pg.wait_for_selector("#genBk .kv", timeout=15000)
-        fixed = pg.evaluate("[document.getElementById('genActDays').disabled, document.getElementById('genActDays').value, "
-                            "document.querySelector('#genBk .set-row').textContent]")
-        check("…set by the environment, it's shown fixed, naming its variable", fixed[:2] == [True, "400"]
-              and "set by the environment" in fixed[2] and "ACTIVITY_DAYS" in fixed[2], fixed)
+        fixed = pg.evaluate("""(r => [!!document.getElementById('genActDays'), !!r.querySelector('input'), r.querySelector('.set-row-ctl > p').textContent,
+          r.querySelector('.set-row-lbl .tag:not(.set-unsaved)')?.textContent, r.querySelector('.set-row-lbl').textContent, r.querySelector('.set-row-ctl').textContent])(document.querySelector('#genBk .set-row'))""")
+        check("…set by the environment, it's its value as text, never a field, with its variable's tag, its own help, and where it's "
+              "changed (#1119)", fixed[:4] == [False, False, "400 days", "Set in .env: ACTIVITY_DAYS"] and "older entries are deleted once a day" in fixed[4]
+              and "or take it out there to change it here:" in fixed[5], fixed)
     except Exception as e:
         check("General → Backups and logging (#1002) ran", False, stopped(e))
     finally:
@@ -1045,16 +1046,112 @@ def general_about_check(browser, base, cookies, check):
         check("General → About (#1004): the version (a link to the releases page, opened apart), the database, how it's deployed, its "
               "settings and who it runs as; then the folders, each with what mounts it; nothing in it contacts any host but the app",
               got[0][:5] == ["Version", "Database", "Deployed as", "Settings", "Runs as"]
-              and got[0][5:] == ["Data", "Backups", "Encryption key", "Record exports", "Phone and watch data", "Configuration"]
+              and got[0][5:11] == ["Data", "Backups", "Encryption key", "Record exports", "Phone and watch data", "Configuration"]
               and got[1] == ["https://github.com/sanguity/sanguity/releases", "_blank", "noopener noreferrer"]
               and "Schema version " in got[3] and hosts == {urllib.parse.urlsplit(base).netloc}, [got, hosts])
         check("…and the limits read-only, uploads, connected sources and Health Links, each with its variable",
               got[2] == ["UPLOAD_MAX_FILE_MB", "UPLOAD_MAX_TOTAL_MB", "UPLOAD_MAX_FILES", "UPLOAD_MAX_ZIP_RATIO", "JOURNAL_PHOTO_MAX_MB",
                          "SYNC_HOURS", "SYNC_MAX_RESOURCES", "SYNC_MAX_ATTACHMENT_MB", "CONNECT_TIMEOUT", "SHL_MAX_MB", "SHL_MAX_FILES", "SHL_TIMEOUT"]
               and not pg.evaluate("!!document.querySelector('#genAbout input, #genAbout select')"), got[2])
+        check("…and what only the server's own setup sets, Host's and Security's before, each with what sets it (#1119)",
+              got[0][11:] == ["Internal port and bind address", "Secure session cookie"]   # (the trusted proxies and password checks: Needs a restart's, #1121)
+              and all(w in got[3] for w in ("Set by: PORT and HOST", "Set by: COOKIE_SECURE")) and "Changed under Needs a restart" in got[3]
+              and pg.evaluate("!!document.querySelector('#genAbout a[href=\"#gen-restart\"]')"), got[0][11:])
     except Exception as e:
         check("General → About (#1004) ran", False, stopped(e))
     finally:
+        ctx.close()
+    return errs
+
+
+def general_env_check(browser, base, cookies, check, db_path):
+    """(#1119) Settings → Install → General with its settings set by the server's environment (each variable set here
+    for the while, as #1000's PUBLIC_ORIGINS is, the values as they are so nothing else changes): what can't be
+    changed never looks changeable. No disabled or readonly control anywhere in General; each environment-set row
+    (Host's, Security's, the Sign-in provider's secret, Backups and logging's, the Phone receiver's, Experimental's) its
+    value as text (the secret never), a "Set in .env: VAR" tag on its name's line, its own help, and where this install's
+    settings are; Host and Security hold no read-only fact (About does), and About tags a limit only where the
+    environment set it. With passkeys made, Host's Passkey names says each name and its count. 320 px and 200% text
+    fit, keyboard and screen reader (no serious axe finding). Puts everything back as it was. Returns script errors."""
+    import sqlite3
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+    ctx.add_cookies(cookies)
+    pg, errs = ctx.new_page(), []
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    inst = {st["key"]: st for sec in ctx.request.get(base + "/api/settings/install").json()["sections"] for st in sec["settings"]}
+    files = {x["name"]: x for g in ctx.request.get(base + "/api/settings/install/about").json()["limits"] for x in g["limits"]}["UPLOAD_MAX_FILES"]["value"]
+    env = {"WATCH_UPLOAD_URL": "https://phones.example.test/ingest", "SESSION_DAYS": str(inst["security.sessionDays"]["value"]),
+           "ACTIVITY_DAYS": str(inst["activity.days"]["value"]), "CONNECTED_SOURCES": "1" if inst["experimental.connectedSources"]["value"] else "0",
+           "OIDC_CLIENT_SECRET": "a fictional client secret from the environment", "UPLOAD_MAX_FILES": str(files),
+           "NOTIFY_TOKEN": "tk_fictional_1119_from_the_environment"}
+    had = {k: os.environ.get(k) for k in env}
+    con = sqlite3.connect(db_path)
+    uid = con.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()[0]
+    con.executemany("INSERT INTO passkeys(user_id, credential_id, public_key, rp_id, name, created) VALUES(?, ?, x'00', 'records.example.test', 'fictional', 1)",
+                    [(uid, "env1119-a"), (uid, "env1119-b")])
+    con.commit()
+    os.environ.update(env)
+    try:
+        pg.goto(base + "/settings.html?profile=1#general")
+        for sel in ("#gen-host [data-env]", "#gen-phone [data-env]", "#genSecBody [data-env]", "#genExpBody [data-env]", "#genBk [data-env]",
+                    "#gen-signin [data-env]", "#genAbout .kv"):
+            pg.wait_for_selector(sel, timeout=20000)
+        got = pg.evaluate("""(at => ({
+          fixed: [...document.querySelectorAll('section[id^="gen-"] :is(input, textarea, select, button, [role=switch])')]
+            .filter(e => e.checkVisibility() && (e.disabled || e.readOnly || e.getAttribute('aria-disabled') === 'true')).map(e => e.id || e.textContent.trim()),
+          rows: Object.fromEntries([...document.querySelectorAll('section[id^="gen-"] [data-env]')].map(r => [r.dataset.env, {
+            value: r.querySelector('.set-row-ctl > p').textContent, tag: r.querySelector('.set-row-lbl .tag')?.textContent,
+            tagOnName: !!r.querySelector('.set-row-lbl > :first-child .tag'), help: r.querySelector('.set-row-lbl .hint')?.textContent || '',
+            where: r.querySelector('.set-row-ctl > p.hint:last-child')?.textContent, controls: r.querySelectorAll('input, textarea, select').length}])),
+          host: document.getElementById('gen-host').textContent, sec: document.getElementById('gen-security').textContent,
+          passkeys: [...document.querySelectorAll('#gen-host .set-row')].find(r => r.textContent.startsWith('Passkey names'))?.querySelector('.set-row-ctl').textContent,
+          limits: [...document.querySelectorAll('#genAbout li')].filter(l => l.querySelector('.tag')).map(l => l.querySelector('.tag').textContent),
+          page: document.documentElement.outerHTML}))""", None)
+        at = ctx.request.get(base + "/api/settings/install").json()["settings_at"]
+        machine = {st["name"] for st in ctx.request.get(base + "/api/settings/install/restart").json()["settings"]   # (Needs a restart's
+                   if not st["can_change"]}   # the machine's own environment sets, as TZ here: #1121)
+        rows = got["rows"]
+        want = {"PUBLIC_ORIGINS": "".join(inst["host.publicOrigins"]["value"]), "WATCH_UPLOAD_URL": env["WATCH_UPLOAD_URL"], "SESSION_DAYS": env["SESSION_DAYS"],
+                "ACTIVITY_DAYS": f"{env['ACTIVITY_DAYS']} days", "CONNECTED_SOURCES": "On" if env["CONNECTED_SOURCES"] == "1" else "Off",
+                "OIDC_CLIENT_SECRET": "Set there (never shown here)", "UPLOAD_MAX_FILES": f"{files:,} files",   # (Needs a restart's, #1121)
+                "NOTIFY_TOKEN": "Set there (not sent to this server)" if ctx.request.get(base + "/api/settings/install/notify").json()["token_elsewhere"]
+                else "Set there (never shown here)"}   # (#1130's, never its value)
+        check("General with its settings set by the environment (#1119): no disabled or readonly control anywhere in it",
+              not got["fixed"] and all(r["controls"] == 0 for r in rows.values()), [got["fixed"], {k: r["controls"] for k, r in rows.items()}])
+        check("…each row the environment sets: its value as text (the client secret's never), its variable's tag on its name's line, "
+              "its own help, and where this install's settings are, to change it or take it out",
+              set(rows) == set(want) | machine and all((rows[k]["value"] == want[k] if k in want else rows[k]["value"]) and rows[k]["tag"] == "Set in .env: " + k
+                                                       and rows[k]["tagOnName"] and len(rows[k]["help"]) > 20 and rows[k]["where"] == "Change it where this server's "
+                                                       f"settings are, or take it out there to change it here: {at}." for k in rows)
+              and env["OIDC_CLIENT_SECRET"] not in got["page"] and env["NOTIFY_TOKEN"] not in got["page"], {k: [r, want.get(k)] for k, r in rows.items()})
+        check("…Host and Security hold no read-only fact of the server's setup (About does); About tags a limit only where the "
+              "environment set it", not re.search(r"Trusted proxies|Internal port|COOKIE_SECURE|HASH_PARALLEL|Secure session cookie|Password checks at once",
+                                                  got["host"] + got["sec"]) and got["limits"] == ["Set in .env: UPLOAD_MAX_FILES"],
+              [got["limits"], re.findall(r"Trusted proxies|Internal port|COOKIE_SECURE|HASH_PARALLEL", got["host"] + got["sec"])])
+        check("…and Host's Passkey names says each name the passkeys were made at, with its count (never “[object …]”)",
+              got["passkeys"] == "records.example.test: 2 passkeys", got["passkeys"])
+        serious, _ = axe_check(pg, "General, set by the environment")
+        check("…no serious axe finding", not serious, serious)
+        pg.set_viewport_size({"width": 320, "height": 800})
+        pg.wait_for_timeout(200)
+        fits = phone_fits(pg, "General, set by the environment, at 320 px")
+        pg.set_viewport_size({"width": 412, "height": 900})
+        pg.evaluate("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = [s]; }", BIG_TEXT_CSS)
+        pg.wait_for_timeout(300)
+        fits += phone_fits(pg, "General, set by the environment, at 200% text")
+        fits += [f"at 200% text the page scrolls sideways by {n} px" for n in [pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")] if n > 0]
+        check("…and fits at 320 px and at 200% text", not fits, fits)
+    except Exception as e:
+        check("General with its settings set by the environment (#1119) ran", False, stopped(e))
+    finally:
+        for k, v in had.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        con.execute("DELETE FROM passkeys WHERE credential_id LIKE 'env1119-%'")
+        con.commit()
+        con.close()
         ctx.close()
     return errs
 
@@ -2793,7 +2890,7 @@ def time_summary(timings, total, marks, slowest=40):
 
 def general_security_check(check, browser, base, cookies):
     """(#1001) Settings → Install → General → Security, for an admin: every setting drawn with its bounds, Install's
-    two-factor switch here (Accounts links to it), the Secure cookie and password checks read-only; a value past its
+    two-factor switch here (Accounts links to it), the Secure cookie and password checks not (About's, #1119); a value past its
     bound refused by the bar's Save, kept as typed; idle sign-out that would end a sign-in asks first, with how many
     (Cancel saves nothing), then ends it, Enter saving; You → Sign-in and security says the lengths at once; admins
     only for profiles tells the guide's New profile to ask an admin, and offers New profile nowhere else to a member
@@ -2810,13 +2907,13 @@ def general_security_check(check, browser, base, cookies):
     drawn = js("""[[...document.querySelectorAll('#genSecBody [data-key]')].map(r => r.dataset.key),
       [...document.querySelectorAll('#genSecBody .set-num')].map(i => [i.id, i.min, i.max]),
       !!document.querySelector('#gen-security #reqTf'), document.querySelector('#setNav a[aria-current=page]')?.dataset.group,
-      document.getElementById('genSecBody').textContent.includes('COOKIE_SECURE') && document.getElementById('genSecBody').textContent.includes('HASH_PARALLEL'),
+      document.getElementById('gen-security').textContent.includes('COOKIE_SECURE') || document.getElementById('gen-security').textContent.includes('HASH_PARALLEL'),
       document.querySelector('#users a[href="#gen-security"]')?.textContent, !!document.querySelector('#users #reqTf')]""")
     keys = ["sessionDays", "sessionHours", "idleMinutes", "profiles", "passwordMin", "passwordMin2fa", "tempPasswordDays",
             "reauthMinutes", "triesHere", "triesAddress", "triesAccount"]
     check("General → Security (#1001): each setting a row with its bounds, the two-factor switch here and not under Accounts, "
-          "which links here, and the Secure cookie and password checks shown with their variables",
-          drawn[0] == ["security." + k for k in keys] and drawn[2:] == [True, "general", True, "General → Security", False]
+          "which links here, and no read-only fact: the Secure cookie and password checks are About's (#1119)",
+          drawn[0] == ["security." + k for k in keys] and drawn[2:] == [True, "general", False, "General → Security", False]
           and ["gs-sessionHours", "1", "12"] in drawn[1] and ["gs-idleMinutes", "0", "1440"] in drawn[1] and ["gs-reauthMinutes", "1", "5"] in drawn[1], drawn)
     # past its bound: the bar's Save says why, and it stays as typed
     page.fill("#gs-triesHere", "6")
@@ -3175,7 +3272,8 @@ def oidc_check(check, browser, base, cookies):
         fresh_check(page)
         got = js("""[document.getElementById('signin-issuer').value, document.getElementById('signin-secret').value,
           document.getElementById('signin-secret').placeholder, document.querySelector('#gen-signin code').textContent,
-          document.getElementById('signinOnly').disabled, document.documentElement.outerHTML.includes(%s)]""" % json.dumps(secret))
+          !document.getElementById('signinOnly') && document.getElementById('signinOnlyH').textContent.includes('Offered once your own identity there has signed in'),
+          document.documentElement.outerHTML.includes(%s)]""" % json.dumps(secret))   # (#1119: not offered, said, never a disabled switch)
         check("General → Sign-in provider (#1109): the provider as set up, the client secret only as saved (never on the page), "
               "the redirect URI to register, and OIDC only not offered before the admin's own sign-in works",
               got == [idp.issuer, "", "Saved", base + "/login.html", True, False], got)
@@ -3236,7 +3334,7 @@ def oidc_check(check, browser, base, cookies):
         idp.token = {"amr": ["pwd", "mfa"]}
         # ---- OIDC only: offered now; the sign-in page the button alone
         page.goto(base + "/settings.html?profile=1#gen-signin")
-        page.wait_for_selector("#signinOnly:not([disabled])", timeout=20000)
+        page.wait_for_selector("#signinOnly", timeout=20000)
         fresh_check(page)
         page.click("#signinOnly")
         answer_ask(page)
@@ -3552,9 +3650,11 @@ def notify_check(check, browser, base, cookies):
         page.goto(base + "/settings.html?profile=1#gen-notify")
         page.wait_for_selector("#notifyUrl", timeout=20000)
         fresh_check(page)
-        got = js("[[...document.querySelectorAll('#gen-notify button')].find(b => b.textContent === 'Send a test').disabled, document.getElementById('notify').hidden]")
-        check("General → Notifications (#1130): drawn with no server, Send a test off, and You → Notifications not offered before one is set",
-              got == [True, True], got)
+        got = js("""[!![...document.querySelectorAll('#gen-notify button')].find(b => b.textContent === 'Send a test'),
+          [...document.querySelectorAll('#gen-notify .set-row')].find(r => r.textContent.startsWith('Test'))?.querySelector('.set-row-ctl').textContent,
+          document.getElementById('notify').hidden]""")
+        check("General → Notifications (#1130): drawn with no server, Send a test not offered (said, never a disabled button: #1119), and "
+              "You → Notifications not offered before one is set", got == [False, "Not set up yet.", True], got)
         page.fill("#notifyUrl", "http://ntfy.example.test")
         page.click("#setBar button:has-text('Save')")
         page.locator("#setBar .msg", has_text="isn't saved").or_(page.locator("#setBar .msg", has_text="aren't saved")).first.wait_for(timeout=10000)
@@ -3902,7 +4002,7 @@ def main():
         check("General → Host (#1000): the public addresses' change says what it does, with the server's counts, asks for it typed, "
               "then applies at once", "stopped" not in got1000 and not errs1000
               and got1000["rows"] == ["Public addresses", "Change the public addresses", "Passkey names", "This page's request",
-                                      "Trusted proxies", "Internal port and bind address", "Published web port"]
+                                      "Published web port"]   # (#1119: the server's own setup is About's)
               and "becomes https://records.example.test" in got1000["says"]
               and (f"{apps1000} connected-source app" in got1000["says"]) == (apps1000 > 0)
               and (f"The phones of {phones1000} profile" in got1000["says"]) == (phones1000 > 0)
@@ -3952,8 +4052,9 @@ def main():
         try:
             p1003.goto(base + "/settings.html?profile=1#general")
             p1003.wait_for_selector("#phoneUrl:not([readonly])", timeout=20000)
-            got1003["rows"] = p1003.evaluate("""[...document.querySelectorAll('#gen-phone .set-row-lbl')].slice(1)
-                .map(l => [l.querySelector('h3').textContent, (l.textContent.match(/\\b[A-Z]+(?:_[A-Z]+)+|\\bTZ\\b/) || [''])[0], l.nextElementSibling.textContent])""")
+            got1003["rows"] = p1003.evaluate("""[...document.querySelectorAll('#gen-phone .set-row-lbl')].slice(1)   // (#1119: the value, then Set by: under it)
+                .map(l => [l.querySelector('h3').firstChild.textContent, (l.nextElementSibling.querySelector('.hint')?.textContent.match(/^Set by: .*?\\b([A-Z]+(?:_[A-Z]+)+|TZ)\\b/) || ['', ''])[1],
+                  l.nextElementSibling.firstChild.textContent, !!l.nextElementSibling.querySelector('.hint a[href="#gen-restart"]')])""")
             p1003.fill("#phoneUrl", "https://phones.example.test/ingest")
             p1003.click("#setBar button:has-text('Save')")
             asked = p1003.locator("dialog.sg-ask button.danger, dialog.sg-ask button.primary")
@@ -3974,6 +4075,7 @@ def main():
               and [r[:2] for r in got1003["rows"]] == [["Receiver's published port", "RECEIVER_PORT"], ["Time zone", "TZ"], ["Unclaimed data", "SLOT_GRACE_DAYS"],
                                                      ["What a restore replaced", "RESTORE_KEEP_DAYS"]]
               and [r[2] for r in got1003["rows"][1:3]] == [os.environ.get("TZ") or "UTC", f"{os.environ.get('SLOT_GRACE_DAYS') or 7} days"]
+              and [r[3] for r in got1003["rows"]] == [False, True, True, True]   # (#1119: changed under Needs a restart, #1121)
               and ("asked" not in got1003 or "phones.example.test" in got1003["asked"])
               and got1003["after"] == ["https://phones.example.test/ingest", False] and got1003["back"] == 200, got1003)
         # General → Needs a restart (#1121): a value saved from the bar waits for a restart (Restart needed, the server's
@@ -3990,7 +4092,8 @@ def main():
         try:
             p1121.goto(base + "/settings.html?profile=1#gen-restart")
             p1121.wait_for_selector("#rs-upload-max-file-mb", timeout=20000)
-            got1121["env"] = p1121.evaluate("""(r => [r.querySelector('.tag').textContent, r.querySelector('.set-row-ctl').textContent, !!r.querySelector('input')])(
+            got1121["env"] = p1121.evaluate("""(r => [r.querySelector('.tag').textContent, r.querySelector('.set-row-ctl > p').textContent, !!r.querySelector('input'),
+                r.querySelector('.set-row-ctl > .hint:last-child')?.textContent.startsWith('Change it where this server\\'s settings are')])(
                 document.querySelector('#gen-restart [data-name=SHL_TIMEOUT]'))""")
             p1121.fill("#rs-upload-max-file-mb", "99999")
             p1121.click("#setBar button:has-text('Save')")
@@ -4025,7 +4128,7 @@ def main():
         check("General → Needs a restart (#1121): saved from the bar it waits for a restart (Restart needed, the server's value unchanged), "
               "past its bound refused and kept as typed, the environment's plain text with its variable; Restart now asks, restarts, "
               "and the card read again has it in force", "stopped" not in got1121 and not errs1121
-              and got1121["env"] == ["Set in .env: SHL_TIMEOUT", "25 seconds", False]
+              and got1121["env"] == ["Set in .env: SHL_TIMEOUT", "25 seconds", False, True]   # (#1119: util.js envRow)
               and got1121["refused"][0].startswith("Not saved: One file must be a whole number from 1 to 4,096") and got1121["refused"][1] == "99999"
               and got1121["dirty"] == "1" and got1121["saved"][1:] == [4096, "Restart needed", False] and "apply once the server restarts" in got1121["saved"][0]
               and got1121["after"][:3] == [[1], 2048, False] and "checking them" in got1121["after"][3], [got1121, errs1121])
@@ -4061,6 +4164,9 @@ def main():
         check("…and no script fails there", not errs1002, errs1002)
         errs1004 = general_about_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check)
         check("…nor on About (#1004)", not errs1004, errs1004)
+        errs1119 = general_env_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check,
+                                     os.path.join(TMP, "sanguity.db"))   # (#1119) General with its settings set by the environment
+        check("…nor with its settings set by the environment (#1119)", not errs1119, errs1119)
         # the Sharing page (#168): its sidebar, each part drawn by its own script
         strict.goto(base + "/sharing.html#summary")   # the visit summary (#48)
         strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
@@ -10363,7 +10469,7 @@ def main():
                     gp.goto(base + "/settings.html?profile=1#gen-ocr")
                     gp.wait_for_selector("#ocrPass", timeout=15000)
                     gen1129 = gp.evaluate("[document.querySelector('#gen-ocr h2').textContent, document.getElementById('ocrPass').textContent, "
-                                          "[...document.querySelectorAll('#genOcr [data-code]')].map(i => [i.dataset.code, i.checked, i.disabled]), !!document.getElementById('ocrFile'), "
+                                          "[...document.querySelectorAll('#genOcr [data-code]')].map(i => [i.dataset.code, i.matches('input') ? i.checked : i.textContent]), !!document.getElementById('ocrFile'), "
                                           "document.getElementById('ocrDl').checked]")
                     gfits = []
                     for w in (320, 1400):
@@ -10375,7 +10481,7 @@ def main():
                     gp.close()
                 check("…General → Text recognition says this server has no Tesseract here, English built in and always used, "
                       "Import a language file, downloads off; it fits 320 and 1400 px, no serious axe finding",
-                      gen1129[0] == "Text recognition" and "no Tesseract" in gen1129[1] and gen1129[2] == [["eng", True, True]] and gen1129[3]
+                      gen1129[0] == "Text recognition" and "no Tesseract" in gen1129[1] and gen1129[2] == [["eng", "English, built in: always used"]]   # (#1119: text, never a disabled checkbox) and gen1129[3]
                       and gen1129[4] is False and not gfits and not gaxe, [gen1129, gfits, gaxe])
             except Exception as e:
                 check("Searchable scanned documents (#1129) ran", False, stopped(e))

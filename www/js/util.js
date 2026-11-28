@@ -171,6 +171,21 @@ const helpNodes = (help, ...more) => {
    for another element than a div). -> the row */
 const setRow = (lbl, ctl, {tag = "div", ...attrs} = {}) => el(tag, {...attrs, class: "set-row" + (attrs.class ? " " + attrs.class : "")},
   el("div", {class: "set-row-lbl"}, lbl), el("div", {class: "set-row-ctl"}, ctl));
+/* (#1119) Install → General's rows of what can't be changed there, the same on every card: never a control that looks
+   changeable. envRow: a setting the server's environment sets (.env always wins, #1006), from GET settings/install
+   ({key, label, help, env, value}): its value as text (value: nodes, else st.value), "Set in .env: VAR" on its name's
+   line (head: the name's [tag, attrs]), its own help (helpId: an id for it), more under the value, and where this
+   install's settings are (at: settings/install's settings_at); attrs, the row's own. factRow: a read-only fact, its
+   value as text (a code chip only for what's worth copying), "Set by: …" under it where something sets it (text or
+   nodes: a link to where it's changed); env: its variable, when the environment set it. envTag: [a space, the tag],
+   the tag (.env) unindented where it wraps under its name, on a phone. -> the row */
+const envTag = name => [" ", el("span", {class: "tag env", text: "Set in .env: " + name})];
+const envRow = (st, at, {value = String(st.value), head = ["p", {class: "set-row-name"}], help = st.help, helpId, more, attrs} = {}) => setRow(
+  present(el(...head, st.label, envTag(st.env)), helpId ? el("div", {id: helpId}, helpNodes(help)) : helpNodes(help)),
+  present(el("p", {}, value), more, el("p", {class: "hint", text: `Change it where this server's settings are, or take it out there to change it here: ${at}.`})),
+  {"data-key": st.key, "data-env": st.env, ...attrs});
+const factRow = (name, help, value, by, env) => setRow([el("h3", {class: "sub"}, name, env ? envTag(env) : null), el("p", {class: "hint", text: help})],
+  present([value].flat(2).map(v => typeof v === "string" ? el("p", {text: v}) : v), by ? el("p", {class: "hint"}, "Set by: ", by, ".") : null));
 /* a small menu of a row's actions (Settings' ordered lists, Admin's accounts, #287): its ⋯ button opens it by touch,
    mouse or keyboard (Enter, Space or the down arrow; then the arrow keys, and Escape to close it: the app's one menu,
    SgNav.menu in nav.js). entries: [{text, run, danger}], a null for a line between two; act: the button's
