@@ -198,7 +198,10 @@ they say where a record came from, and NULL means the importer's label. **cost_m
 `server/oop.py`) hold what a person said about an out-of-pocket amount on the Costs tab: a payment or a claim's share
 tagged HSA or FSA, a payment matched to a claim (or to none), two look-alike payments said to be two. Like edits they
 belong to the profile and find their payment or claim by a keyed hash of its key. (Versions 26 and 27 belong to work
-landing alongside.) **notify_topics** (schema version 54, #1130, `server/notify.py`) is each person's own topic on the
+landing alongside.) **cost_plans** (schema version 51, #1127) and **cost_bills** (schema version 52, #1128,
+`server/costplan.py`) are a profile's plan years and a provider's bills typed in on Costs: the body (a plan year's
+dates and amounts; a bill's date of service, provider, amount, due date and the claim and file it's lined up with) is
+encrypted, who typed or changed it and when plain, as `med_entries`'. **notify_topics** (schema version 54, #1130, `server/notify.py`) is each person's own topic on the
 install's notification server (random, encrypted); **notify_optins** are each person's notifications turned on, per
 profile they can see and per kind (`results`, `doses`); **notify_sent** is each notification made, once per person,
 keyed by what it's for (an import, or a profile's dose time on a day) and whose, with its state, tries and next try.
@@ -989,6 +992,7 @@ heart rate is the profile setting `person.maxHr` (above), sealed like the other 
 | `document_text` | `body` |
 | `share_links` | `label`, `scope` |
 | `cost_marks` | `target_key`, `value` |
+| `cost_plans`, `cost_bills` | `body` |
 | `labmaps` | `source`, `target` |
 | `settings` | `sealed` |
 | `summary_drafts` | `sealed` |
