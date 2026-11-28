@@ -20978,6 +20978,23 @@ def main():
                 got = pg.evaluate(AT1026)
                 if got[1:3] != [want_view, "#labs-" + want_view] or (lab and lab not in got[3]):
                     bad1026.append(f"{where}: {got[:3]}, charted {got[3][:4]}{f' (not {lab})' if lab and lab not in got[3] else ''}")
+
+            def left1026(pg, where):
+                # the palette's choice on Sources leaves for the records page: its address is waited for, not its
+                # "load" (its boot is waited for next, 20 s, as everywhere here). That wait, 10 s until "load", stopped
+                # the part now and then with several parts running at once, saying only where the other page was:
+                # if this one never leaves, where it is and what its palette shows are said
+                try:
+                    pg.wait_for_url(lambda u: "sources" not in u, wait_until="commit", timeout=20000)
+                except Exception:
+                    try:
+                        then = pg.evaluate("""() => { const d = document.querySelector('dialog.palette');
+                          return [d?.open, document.getElementById('palQ')?.value, document.activeElement?.id || document.activeElement?.tagName,
+                                  d?.innerText.replace(/\\s+/g, ' ').slice(0, 200)]; }""")
+                    except Exception as e:
+                        then = str(e).splitlines()[0]
+                    problems.append(f"#1026: {where}, on a {kind}: still at {pg.url}; the palette open, typed, focus, showing: {then}")
+                    raise
             for phone1026 in (True, False):
                 kind = "phone" if phone1026 else "desktop, Heatmap picked"
                 c1026, p1026 = fresh1026(phone1026)
@@ -21024,7 +21041,7 @@ def main():
                 p1026.fill("#palQ", "potassium")
                 p1026.wait_for_timeout(300)
                 p1026.keyboard.press("Enter")
-                p1026.wait_for_url(lambda u: "sources" not in u, timeout=10000)
+                left1026(p1026, "the palette's lab from Sources")
                 p1026.wait_for_function("typeof booted !== 'undefined' && booted && state.tab === 'labs'", timeout=20000)
                 at1026(p1026, f"{kind}: the palette's lab, from Sources", "chart", "Potassium, Blood")
                 p1026.reload()
@@ -21065,7 +21082,7 @@ def main():
                     p1026.wait_for_timeout(300)
                     p1026.keyboard.press("Enter")
                     if "sources" in url1026:
-                        p1026.wait_for_url(lambda u: "sources" not in u, timeout=10000)
+                        left1026(p1026, "the palette's Labs from Sources")
                     p1026.wait_for_function("typeof booted !== 'undefined' && booted && state.tab === 'labs'", timeout=20000)
                     p1026.wait_for_timeout(300)
                     pal1026.append(p1026.evaluate("[state.labsView, location.hash]"))
