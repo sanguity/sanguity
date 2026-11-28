@@ -21,7 +21,7 @@ async function drawEmergency(p) {
   const wallet = el("input", {type: "checkbox", role: "switch", id: "ecWallet"});
   const paper = el("select", {id: "ecPaper"}, el("option", {value: "letter", text: "Letter"}), el("option", {value: "a4", text: "A4"}));
   paper.value = EC_LETTER.test(navigator.language || "") ? "letter" : "a4";
-  const img = el("img", {id: "ecImg", alt: "", style: {display: "block", width: "min(100%, 220px)", height: "auto", border: "1px solid"}});
+  const img = el("img", {id: "ecImg", class: "ec-img", alt: ""});
   const showImg = () => { const cv = ecCanvas(c, wallet.checked); img.src = cv.toDataURL("image/png");
     img.alt = "Preview of the lock-screen image: " + cv.lines.join(". "); };   // (what it shows, cut short or not)
   wallet.addEventListener("change", showImg);
@@ -103,7 +103,9 @@ function ecCanvas(c, wallet) {
     g.font = `${w} ${Math.round(s * f)}px ${font}`;
     const out = [];
     let line = "";
-    for (const word of t.replace(/: ([+\d(][\d ()+.\-/]*)$/, (m, ph) => ": " + ph.replace(/ /g, " ")).split(" ")) {
+    const at = t.lastIndexOf(": "), ph = at < 0 ? "" : t.slice(at + 2);   // a contact's phone: what follows ": ", no letters in it
+    const kept = /\d/.test(ph) && !/\p{L}/u.test(ph) ? t.slice(0, at + 2) + ph.replace(/ /g, "\u00a0") : t;
+    for (const word of kept.split(" ")) {
       const next = line ? line + " " + word : word;
       if (line && g.measureText(next).width > room) { out.push(line); line = word; } else line = next;
     }
@@ -122,8 +124,9 @@ function ecCanvas(c, wallet) {
   };
   const trim = (name, least) => { while (!fit() && (keep[name] ?? count(name)) > least) keep[name] = (keep[name] ?? count(name)) - 1; };
   if (!fit()) { trim("Allergies", 1); trim("Emergency contacts", 1); trim("Allergies", 0); }
-  g.fillStyle = "#000"; g.fillRect(0, 0, W, H);
-  g.fillStyle = "#fff"; g.textBaseline = "alphabetic";
+  const tok = getComputedStyle(document.documentElement);   // white on black whatever the theme (tokens.css --lock-*)
+  g.fillStyle = tok.getPropertyValue("--lock-bg").trim(); g.fillRect(0, 0, W, H);
+  g.fillStyle = tok.getPropertyValue("--lock-ink").trim(); g.textBaseline = "alphabetic";
   let y = top;
   for (const l of laid) {
     const [f, w, above] = KIND[l.k], px = Math.round(s * f);

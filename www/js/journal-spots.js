@@ -32,52 +32,50 @@ function jSpotsLine() {
 /* a photo with its date, what it shows in the person's words and its entry's note: id names the caption, for the
    slider to be described by */
 function jShotCaption(x, id, lead) {
-  return el("figcaption", {id}, el("b", {text: (lead ? lead + ": " : "") + jShotWhen(x), style: {display: "block"}}),
-    x.p.alt ? el("div", {text: x.p.alt}) : null, x.e.j.note ? el("div", {class: "jnote", text: x.e.j.note, style: {margin: "0"}}) : null);
+  return el("figcaption", {id}, el("b", {class: "jshot-when", text: (lead ? lead + ": " : "") + jShotWhen(x)}),
+    x.p.alt ? el("div", {text: x.p.alt}) : null, x.e.j.note ? el("div", {class: "jnote m-0", text: x.e.j.note}) : null);
 }
-const jShotImg = (x, style) => el("img", {src: jPhotoUrl(x.p), alt: x.p.alt || `Photo of ${jShotWhen(x)}`, style});
-const J_FIT = {display: "block", width: "100%", height: "100%", maxWidth: "none", maxHeight: "none", objectFit: "contain", border: "0", borderRadius: "0"};
-const J_FRAME = {position: "relative", overflow: "hidden", aspectRatio: "4 / 3", width: "100%", border: "1px solid var(--ring)", borderRadius: "var(--r-md)", background: "var(--raised)"};
+/* cls: "jshot-fit" for a photo filling its frame (.jshot-frame, app.css), whole */
+const jShotImg = (x, cls) => el("img", {src: jPhotoUrl(x.p), alt: x.p.alt || `Photo of ${jShotWhen(x)}`, class: cls || null});
 
 /* two photos of the spot: side by side, or one over the other with a slider (an input type=range: arrow keys, touch,
    said as both photos' dates). a, b: indexes into s.shots; slider: which view */
 function jSpotCompare(s, uid) {
   const v = {a: 0, b: s.shots.length - 1, slider: false, at: 50};
-  const box = el("section", {class: "jspot-cmp", "aria-labelledby": `jsc-${uid}`, style: {display: "grid", gap: "var(--sp-2)", marginBottom: "var(--sp-3)"}});
+  const box = el("section", {class: "jspot-cmp", "aria-labelledby": `jsc-${uid}`});
   const pick = (k, label) => {
-    const sel = el("select", {id: `jsc-${uid}-${k}`, style: {width: "100%"}}, ...s.shots.map((x, i) => el("option", {value: i, text: `${jShotWhen(x)} · ${jTitle(x.e.j)}`})));
+    const sel = el("select", {id: `jsc-${uid}-${k}`}, ...s.shots.map((x, i) => el("option", {value: i, text: `${jShotWhen(x)} · ${jTitle(x.e.j)}`})));
     sel.value = v[k];
     sel.onchange = () => { v[k] = +sel.value; draw(); };
     return el("div", {class: "jfield"}, el("label", {for: sel.id, text: label}), sel);
   };
-  const views = el("div", {class: "seg", role: "group", "aria-label": "Show the two photos", style: {justifySelf: "start"}},
+  const views = el("div", {class: "seg", role: "group", "aria-label": "Show the two photos"},
     ...[["Side by side", false], ["Slider", true]].map(([t, on]) => el("button", {type: "button", text: t, "aria-pressed": v.slider === on,
       onclick: ev => { v.slider = on; for (const b of views.children) b.setAttribute("aria-pressed", b === ev.currentTarget); draw(); }})));
   const shown = el("div");
   const draw = () => {
     const A = s.shots[v.a], B = s.shots[v.b];
     if (!v.slider) {
-      const fig = (x, n) => el("figure", {class: "jpic", style: {maxWidth: "none", flex: "1 1 0"}},
-        el("a", {href: jPhotoUrl(x.p), target: "_blank", rel: "noopener", "data-tip": "Open it full size", style: J_FRAME}, jShotImg(x, J_FIT)),
+      const fig = (x, n) => el("figure", {class: "jpic jshot"},
+        el("a", {href: jPhotoUrl(x.p), target: "_blank", rel: "noopener", "data-tip": "Open it full size", class: "jshot-frame"}, jShotImg(x, "jshot-fit")),
         jShotCaption(x, `jsc-${uid}-c${n}`));
-      return shown.replaceChildren(el("div", {class: "jpics", style: {flexWrap: "nowrap"}}, fig(A, 1), fig(B, 2)));
+      return shown.replaceChildren(el("div", {class: "jpics jshots"}, fig(A, 1), fig(B, 2)));
     }
     // the first photo over the second, shown left of the line; the slider moves the line
-    const top = jShotImg(A, {...J_FIT, position: "absolute", inset: "0"}), line = el("span", {"aria-hidden": "true",
-      style: {position: "absolute", top: "0", bottom: "0", width: "0", borderLeft: "2px solid var(--surface)", boxShadow: "0 0 0 1px var(--ink)"}});
-    const range = el("input", {type: "range", id: `jsc-${uid}-r`, min: 0, max: 100, step: 5, style: {width: "100%"},
+    const frame = el("div", {class: "jshot-frame"}, jShotImg(B, "jshot-fit"), jShotImg(A, "jshot-fit jshot-top"), el("span", {class: "jshot-line", "aria-hidden": "true"}));
+    const range = el("input", {type: "range", id: `jsc-${uid}-r`, min: 0, max: 100, step: 5,
       "aria-label": `Slider between the photos of ${jShotWhen(A)} and ${jShotWhen(B)}`, "aria-describedby": `jsc-${uid}-c1 jsc-${uid}-c2`});
     range.value = v.at;
     const move = () => {
       v.at = +range.value;
-      top.style.clipPath = `inset(0 ${100 - v.at}% 0 0)`; line.style.left = `calc(${v.at}% - 1px)`;
+      frame.style.setProperty("--at", v.at + "%");   // where the line is, and how much of the first photo shows (app.css)
       range.setAttribute("aria-valuetext", `${jShotWhen(A)} on the left ${v.at}%, ${jShotWhen(B)} on the right ${100 - v.at}%`);
     };
     range.addEventListener("input", move);
-    shown.replaceChildren(el("figure", {class: "jpic", style: {maxWidth: "none", margin: "0"}},
-      el("div", {style: J_FRAME}, jShotImg(B, J_FIT), top, line), range,
-      el("div", {class: "jpics", style: {flexWrap: "nowrap", margin: "0"}}, ...[[A, 1, "Left"], [B, 2, "Right"]].map(([x, n, lead]) =>
-        el("div", {class: "jpic", style: {maxWidth: "none", flex: "1 1 0"}}, jShotCaption(x, `jsc-${uid}-c${n}`, lead))))));
+    shown.replaceChildren(el("figure", {class: "jpic jshot-slide"},
+      frame, range,
+      el("div", {class: "jpics jshots m-0"}, ...[[A, 1, "Left"], [B, 2, "Right"]].map(([x, n, lead]) =>
+        el("div", {class: "jpic jshot"}, jShotCaption(x, `jsc-${uid}-c${n}`, lead))))));
     move();
   };
   draw();
