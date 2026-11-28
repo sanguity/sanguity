@@ -1360,6 +1360,22 @@ SCHEMA = [
         changed INTEGER);
     CREATE INDEX insurance_plans_profile ON insurance_plans(profile_id);
     """,
+    # version 56: follow-ups from a visit (#1138; followups.py): the person's own list of things to do, each with an
+    # optional date and the record it's about. What it says is in body, encrypted ({text, due, said, from, about, show,
+    # done, done_at}); who added or changed it and when are plain, as the journal's are.
+    """
+    CREATE TABLE followups(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_name TEXT,
+        changed INTEGER);
+    CREATE INDEX followups_profile ON followups(profile_id);
+    """,
 ]
 
 

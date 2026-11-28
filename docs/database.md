@@ -184,7 +184,9 @@ encrypted, and the records list them in `medications` (and the hidden ones as `h
 (schema version 53, #1134, `server/family.py`) are a profile's own family history entries (a relative and their
 conditions, its key "own:" and a random word) and its hiding of entries of the records' (by source key, so a later pull
 doesn't bring one back); the body is encrypted, and the records list them in `familyHistory` (the hidden ones as
-`hiddenFamily`). An import's
+`hiddenFamily`). **followups** (schema version 56, #1138, `server/followups.py`) are the person's own follow-ups from a
+visit: the body (its words, date, the record it's about, whether it's done and whether the calendar feed shows its
+words) is encrypted, and the records list them as `followups`. An import's
 **name** (schema version 25, #38) is what the person renamed it to, encrypted; the records call it by that wherever
 they say where a record came from, and NULL means the importer's label. **cost_marks** (schema version 27, #55,
 `server/oop.py`) hold what a person said about an out-of-pocket amount on the Costs tab: a payment or a claim's share
@@ -220,6 +222,7 @@ erDiagram
     profiles ||--o{ med_doses : "has"
     profiles ||--o{ med_entries : "has"
     profiles ||--o{ family_entries : "has"
+    profiles ||--o{ followups : "has"
     profiles ||--o{ cost_marks : "has"
 
     profiles {
@@ -971,6 +974,7 @@ heart rate is the profile setting `person.maxHr` (above), sealed like the other 
 | `med_doses` | `body` |
 | `med_entries` | `body` |
 | `family_entries` | `body` |
+| `followups` | `body` |
 | `share_links` | `label`, `scope` |
 | `cost_marks` | `target_key`, `value` |
 | `labmaps` | `source`, `target` |

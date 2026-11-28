@@ -46,6 +46,8 @@ to data.json, and each part of it has its place:
   doses      [{id, med, name, t, status, note, slot, by...}]  the med_doses table: the medication log, doses people
                                                              logged as taken, taken late or skipped (med_log.py, #235),
                                                              never part of an import; left out while there are none
+  followups  [{id, text, due, said, about, show, done, by...}]  the followups table: follow-ups from a visit
+                                                             (followups.py, #1138); left out while there are none
 
 store() takes such an object apart into the rows of one import; assemble() puts a profile's imports back
 together. An event's id is its row's, so the ids an import arrives with are mapped on the way in, the ones a lab
@@ -60,14 +62,14 @@ every row. '' means the record has no key; NULL, not worked out yet (backfill_ke
 import collections, hashlib, hmac, json, re, threading
 from contextlib import contextmanager
 
-from . import crossmatch, crypto, edits, encounters, family, journal, labmap, medications, oop, units
+from . import crossmatch, crypto, edits, encounters, family, followups, journal, labmap, medications, oop, units
 from .importers import common
 
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
 SERVED = ("imports", "edits", "same", "possible", "journal", "medications", "oop", "reminders", "doses",
           "hiddenMeds", "medEntries", "corrections", "costPlans", "costBills", "hiddenFamily", "familyEntries",
-          "insurance")   # parts assemble() adds: never stored from an import (an
+          "insurance", "followups")   # parts assemble() adds: never stored from an import (an
                            # export's data.json has them, and its corrections, #589, its own medications, #1091,
                            # and its insurance plans, #1137: those go back into their own tables, export.restore)
 
@@ -670,7 +672,7 @@ def _snapshot(db):
 
 def assemble(db, pid, raw=False):
     """The profile's records in the shape the page reads, or None when nothing was ever imported into it and it has no
-    medication of its own (#1091: with one, records of no events, its medications listed as ever). raw: as they
+    medication or follow-up of its own (#1091, #1138: with one, records of no events, those listed as ever). raw: as they
     were imported, for Export everything (#589): not tidied, no correction or same-result link applied (the export
     carries those apart, to be applied again once loaded), and nothing worked out from them (medications,
     out-of-pocket, units); the journal, doses and reminders listed as ever."""
@@ -728,9 +730,9 @@ def _panels(labs):
 def _assemble(db, pid, raw=False):
     imps = db.execute("SELECT id, at, origin, format, synced, meta, name FROM imports WHERE profile_id=? ORDER BY id", (pid,)).fetchall()
     if not imps and (raw or not (any(r["own"] for r in medications.listing(db, pid))
-                                 or any(r["own"] for r in family.listing(db, pid)))):
-        return None   # (#1091, #1134) nothing imported, but medications or family history of its own: records of those
-                      # alone (as imported: none)
+                                 or any(r["own"] for r in family.listing(db, pid)) or followups.any_(db, pid))):
+        return None   # (#1091, #1134, #1138) nothing imported, but medications, family history or follow-ups of its own:
+                      # records of those alone (as imported: none)
     out, costs, pay_imps = {}, [], []   # costs: (import, place in its list, row)
     for r in imps:
         meta = _dec(r["meta"]) or {}
@@ -806,6 +808,8 @@ def _assemble(db, pid, raw=False):
     from . import med_log
     if (doses := med_log.listing(db, pid)):   # #235: the medication log, only when there's something in it
         out["doses"] = doses
+    if (fus := followups.listing(db, pid)):   # #1138: follow-ups from a visit, only when there are some
+        out["followups"] = fus
     return out if raw else units.annotate(out)   # which series can be shown in other units, exactly (#41)
 
 

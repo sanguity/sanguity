@@ -1815,6 +1815,7 @@ app.include_router(__import__("server.routes_family", fromlist=["router"]).route
 app.include_router(__import__("server.routes_meds", fromlist=["router"]).router)      # medication reminders (#162) and log (#235)
 app.include_router(__import__("server.routes_notify", fromlist=["router"]).router)    # notifications to the install's own server (#1130)
 app.include_router(__import__("server.routes_insurance", fromlist=["router"]).router)  # insurance cards (#1137)
+app.include_router(__import__("server.routes_followups", fromlist=["router"]).router)   # follow-ups from a visit (#1138)
 
 
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here
