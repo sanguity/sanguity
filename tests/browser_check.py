@@ -3568,14 +3568,19 @@ def oidc_check(check, browser, base, cookies):
 
 
 def emergency_card_check(check, browser, base, cookies):
-    """(#1126) The emergency card, as the owner whose cookies are given, on profile 1: Settings → About this person
-    takes a blood type (the bar's Save) and emergency contacts (added, moved up, in order); Sharing → Emergency card
-    (from the profile menu, and the palette's "emergency card") previews them, and makes the PDF (one page, Letter or
-    A4, its information the title alone) and the lock-screen PNG (upright, this screen's size, the picture alone:
-    no text, time or place chunks), "I carry the printed card" adding the wallet line to it and nothing else; the
-    group at 320 px and 200% text, light and dark, with no serious axe finding. Puts the fields back. Returns script
-    errors."""
+    """(#1126, #1162) The emergency card, as the owner whose cookies are given, on profile 1: Settings → About this
+    person takes a blood type (the bar's Save) and emergency contacts (added, moved up, in order); Sharing → Emergency
+    card (from the profile menu, and the palette's "emergency card") is an editor with nothing on the card until it's
+    added: the records' and About's suggestions each with Add (focus on to the next), lines of one's own (a critical
+    alert, in bold on the preview), moved and removed by keyboard, the legal name, each section placed on the printed
+    card or the lock screen (the previews following); the QR code, off at first, reading back to the card's text; saved
+    and there after a reload. Then the files: the PDF as a full page and a wallet card, on Letter and A4 (one page,
+    its information the title alone), and the lock-screen PNG (upright, this screen's size, the picture alone: no
+    text, time or place chunks), "I carry the printed card" adding the wallet line and nothing else, a long card cut
+    short there with "and N more". The editor at 320 px and 200% text, light and dark, with no serious axe finding.
+    Puts the fields and the card back. Returns script errors."""
     import struct
+    from tests.test_qr import read_qr
     errs, serious = [], []
     ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True, accept_downloads=True)
     ctx.add_cookies([c for c in cookies if c["name"] == "sg_session"])
@@ -3584,11 +3589,14 @@ def emergency_card_check(check, browser, base, cookies):
     js = page.evaluate
     put = """b => fetch('api/profiles/1/person', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
       body: JSON.stringify(b)}).then(r => r.status)"""
+    card_back = """() => fetch('api/profiles/1/emergency', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+      body: JSON.stringify({card: {}})}).then(r => r.status)"""
     try:
         # ---- About this person: blood type (unless the records have one) and two contacts, the second moved up
         page.goto(base + "/settings.html?profile=1#about")
         page.wait_for_selector("#about[data-profile='1'] #aboutContactsHd", timeout=20000)
         js(put, {"bloodType": "", "contacts": []})
+        js(card_back)
         page.reload()
         page.wait_for_selector("#about[data-profile='1'] #contactAdd", timeout=20000)
         lab = not js("!!document.getElementById('aboutBlood')")
@@ -3610,13 +3618,15 @@ def emergency_card_check(check, browser, base, cookies):
               and js("document.activeElement?.id") in ("contactDown-0", "contactUp-1", "aboutContactsHd") and not errs,
               [js("document.getElementById('aboutBody').innerText.slice(-400)"), js("document.activeElement?.id"), errs])
 
-        # ---- the profile menu's Emergency card, and the palette's
+        # ---- the profile menu's Emergency card, and the palette's: the editor, nothing on the card, the records suggesting
         menu_click(page, "#emergencyLink")
-        page.wait_for_selector("#emergency[data-profile='1'] #ecPreview", timeout=20000)
-        said = js("document.getElementById('ecPreview').innerText")
-        check("…the profile menu's Emergency card opens Sharing → Emergency card, its preview from the records and those fields (#1126)",
-              "sharing.html" in page.url and page.url.endswith("#emergency") and "Dr Lee: 555-0199" in said
-              and ("O negative (as typed in)" in said or lab) and "Current medications" in said and "Active problems" in said, [page.url, said[:500]])
+        page.wait_for_selector("#emergency[data-profile='1'] #ecEdit #ecSec-contacts", timeout=20000)
+        sugs = js("[...document.querySelectorAll('#ecSec-contacts .ec-sugs li')].map(li => li.textContent)")
+        empty = js("document.getElementById('ecPrint').innerText")
+        check("…the profile menu's Emergency card opens its editor: nothing on the card, About's contacts and the records suggested (#1126, #1162)",
+              "sharing.html" in page.url and page.url.endswith("#emergency") and "Nothing on the printed card yet." in empty
+              and any("Dr Lee: 555-0199" in s for s in sugs) and js("document.querySelectorAll('.ec-sugs li').length") > 2
+              and js("document.getElementById('ecQr').checked") is False, [page.url, empty[:300], sugs])
         page.keyboard.press("Control+k")
         page.wait_for_selector("dialog.palette[open]", timeout=5000)
         page.fill("#palQ", "emergency card")
@@ -3625,30 +3635,86 @@ def emergency_card_check(check, browser, base, cookies):
         page.keyboard.press("Escape")
         check("…the palette finds it as “emergency card” (#1126)", bool(found) and "Emergency card" in found[0], found)
 
-        # ---- the PDF, on A4 and Letter
+        # ---- by keyboard: Add a suggestion (focus on to the next), a critical alert of one's own, a line moved and removed
+        preview = lambda: js("document.getElementById('ecPrint').innerText")   # noqa: E731
+        settle = lambda want: page.wait_for_function(f"document.getElementById('ecPrint').innerText.includes({json.dumps(want)})", timeout=10000)   # noqa: E731
+        first = js("document.querySelector('#ecSec-contacts .ec-sugs button').id")
+        page.focus("#" + first)
+        page.keyboard.press("Enter")
+        settle("Dr Lee: 555-0199")
+        after_add = js("document.activeElement?.id || ''")
+        page.keyboard.press("Enter")   # the next suggestion, Sam
+        settle("Sam Example (Spouse): +1 555 0100")
+        page.focus("#ecAdd-alerts")
+        page.keyboard.type("Irradiated blood products only")
+        page.keyboard.press("Enter")
+        settle("Irradiated blood products only")
+        alert_focus = js("document.activeElement?.id")
+        page.focus("#ecUp-contacts-1")
+        page.keyboard.press("Enter")
+        page.wait_for_function("document.getElementById('ecLine-contacts-0')?.value.startsWith('Sam Example')", timeout=5000)
+        moved_focus = js("document.activeElement?.id")
+        page.fill("#ecName", "Robin Quinn Example (fictional)")
+        settle("Robin Quinn Example (fictional)")
+        bold = js("getComputedStyle([...document.querySelectorAll('#ecPrint .ec-alerts p')].find(p => p.textContent.startsWith('Irradiated'))).fontWeight")
+        check("…Add puts a suggestion on, focus on to the next; a critical alert of one's own, in bold; a line moved by keyboard; the legal name (#1162)",
+              after_add.startswith("ecSug-") and alert_focus == "ecAdd-alerts" and moved_focus in ("ecDown-contacts-0", "ecUp-contacts-1")
+              and int(bold) >= 700 and preview().index("Sam Example") < preview().index("Dr Lee")
+              and preview().index("CRITICAL ALERTS") < preview().index("EMERGENCY CONTACTS"), [after_add, alert_focus, moved_focus, bold, preview()[:400]])
+
+        # ---- placement: contacts off the lock screen, the image follows; the printed card keeps them
+        alt = lambda: js("document.getElementById('ecImg').alt")   # noqa: E731
+        had = alt()
+        page.click("#ecLock-contacts")
+        page.wait_for_function("!document.getElementById('ecImg').alt.includes('Dr Lee')", timeout=10000)
+        check("…each section placed: contacts off the lock screen leave the image, not the printed card (#1162)",
+              "Dr Lee: 555-0199" in had and "Irradiated blood products only" in had and "Dr Lee: 555-0199" in preview(), [had, alt()])
+        page.click("#ecLock-contacts")
+        page.wait_for_function("document.getElementById('ecImg').alt.includes('Dr Lee')", timeout=10000)
+
+        # ---- the QR code: off at first; on, it reads back to the card's text, and says what didn't fit
+        page.click("#ecQr")
+        page.wait_for_selector("#ecPrint svg.qr", timeout=10000)
+        q = js("({text: EC.view.qr.text, mods: qrCode(EC.view.qr.text, {most: 23}).modules, left: document.getElementById('ecQrLeft').textContent})")
+        check("…the QR code, once on, holds the card's own text and reads back to it, never a link (#1162)",
+              read_qr(q["mods"]).decode() == q["text"] and q["text"].startswith("EMERGENCY CARD\nRobin Quinn Example (fictional)\n")
+              and "- Irradiated blood products only" in q["text"] and "http" not in q["text"] and "It holds all of the card" in q["left"], q)
+
+        # ---- saved, and there after a reload
+        page.click("#ecSave")
+        page.wait_for_function("document.getElementById('ecStatus')?.textContent.startsWith('Card last updated')", timeout=10000)
+        page.reload()
+        page.wait_for_selector("#emergency[data-profile='1'] #ecLine-contacts-1", timeout=20000)
+        check("…saved: still there after a reload, the suggestions added no longer offered (#1162)",
+              js("document.getElementById('ecName').value") == "Robin Quinn Example (fictional)" and js("document.getElementById('ecQr').checked")
+              and not js("[...document.querySelectorAll('#ecSec-contacts .ec-sugs li')].some(li => li.textContent.includes('Dr Lee'))")
+              and "Irradiated blood products only" in preview(), preview()[:300])
+
+        # ---- the PDF, a full page and a wallet card, on A4 and Letter
         got = {}
-        for paper in ("a4", "letter"):
-            page.select_option("#ecPaper", paper)
-            with page.expect_download(timeout=20000) as dl:
-                page.click("#ecPdf")
-            got[paper] = open(dl.value.path(), "rb").read()
-            fname = dl.value.suggested_filename
+        for form in ("page", "wallet"):
+            page.select_option("#ecForm", form)
+            for paper in ("a4", "letter"):
+                page.select_option("#ecPaper", paper)
+                with page.expect_download(timeout=20000) as dl:
+                    page.click("#ecPdf")
+                got[form, paper] = open(dl.value.path(), "rb").read()
+                fname = dl.value.suggested_filename
         info = {k: re.findall(rb"/Info (\d+) 0 R", v) and re.search(rb"\n" + re.findall(rb"/Info (\d+) 0 R", v)[0] + rb" 0 obj\n(.*?)\nendobj", v, re.S).group(1)
                 for k, v in got.items()}
-        check("…the PDF downloads, one page on A4 and on Letter, its information the title alone (#1126)",
+        check("…the PDF downloads as a full page and a wallet card, one page each on A4 and on Letter, its information the title alone (#1126, #1162)",
               all(v.startswith(b"%PDF-") and v.count(b"/Type /Page ") == 1 for v in got.values())
-              and b"/MediaBox [0 0 595.28 841.89]" in got["a4"] and b"/MediaBox [0 0 612 792]" in got["letter"]
+              and all(b"/MediaBox [0 0 595.28 841.89]" in got[f, "a4"] and b"/MediaBox [0 0 612 792]" in got[f, "letter"] for f in ("page", "wallet"))
               and all(i.startswith(b"<< /Title (Emergency card for ") and b"/Producer" not in i for i in info.values())
-              and fname.startswith("emergency-card-") and fname.endswith(".pdf"), [fname, info])
+              and fname.startswith("emergency-card-") and "-wallet-" in fname and fname.endswith(".pdf"), [fname, info])
 
         # ---- the lock-screen image: the switch adds the wallet line to its preview, and the PNG is the picture alone
-        alt = lambda: js("document.getElementById('ecImg').alt")   # noqa: E731
         off = alt()
         page.click("#ecWallet")
         on = alt()
         check("…“I carry the printed card” adds the wallet line to the image, off at first, and nothing else (#1126)",
-              "see the card in my wallet" not in off and on == off.replace(". As of ", ". Medications and conditions: see the card in my wallet. As of ")
-              and "Current medications" not in on and "Active problems" not in on and "Dr Lee: 555-0199" in on, [off, on])
+              "see the card in my wallet" not in off and on == off.replace(". Card last updated ", ". More: see the card in my wallet. Card last updated ")
+              and "Current medications" not in on and "Dr Lee: 555-0199" in on, [off, on])
         with page.expect_download(timeout=20000) as dl:
             page.click("#ecPng")
         png = open(dl.value.path(), "rb").read()
@@ -3664,20 +3730,23 @@ def emergency_card_check(check, browser, base, cookies):
               and not set(chunks) & {"tEXt", "iTXt", "zTXt", "tIME", "eXIf"} and dl.value.suggested_filename.endswith(".png"), [chunks, (w, h), screen])
 
         # ---- many allergies and five contacts: never off the bottom, the type no smaller than its least, the
-        # allergies cut short with "and N more allergies", the first contact always there (#1126)
-        many = js("""() => { const c = {profile: 'Robin Example (fictional)', asOf: '2026-11-28', walletNote: 'Medications and conditions: see the card in my wallet',
-            short: [{heading: 'Allergies', lines: Array.from({length: 30}, (_, i) => `Fictional allergen ${i + 1} (hives, swelling of the throat), severe`)},
-                    {heading: 'Blood type', lines: ['O negative']},
-                    {heading: 'Emergency contacts', lines: Array.from({length: 5}, (_, i) => `Contact ${i + 1} Example (sibling): +1 555 010 00${i}`)}]};
-          const cv = ecCanvas(c, true);
-          return {h: cv.height, w: cv.width, end: cv.end, size: cv.size, least: cv.width * EC_MIN, lines: cv.lines}; }""")
+        # allergies cut short with "and N more allergies", the first contact always kept, the alerts there (#1126, #1162)
+        many = js("""() => { const part = (id, heading, lines, nouns) => ({id, heading, lines, nouns, print: true, lock: true});
+          const v = {name: 'Robin Example (fictional)', updated: 'Card last updated Nov 28, 2026', qr: {on: false},
+            parts: [part('alerts', 'Critical alerts', ['Irradiated blood products only'], ['alert', 'alerts']),
+                    part('allergies', 'Allergies', Array.from({length: 30}, (_, i) => `Fictional allergen ${i + 1} (hives, swelling of the throat), severe`), ['allergy', 'allergies']),
+                    part('blood', 'Blood type', ['O negative'], ['line', 'lines']),
+                    part('contacts', 'Emergency contacts', Array.from({length: 5}, (_, i) => `Contact ${i + 1} Example (sibling): +1 555 010 00${i}`), ['contact', 'contacts'])]};
+          const cv = ecCanvas(v, true);
+          return {h: cv.height, w: cv.width, end: cv.end, size: cv.size, least: cv.width * EC_MIN, lines: cv.lines, cut: cv.cut}; }""")
         lines = many["lines"]
-        check("…with 30 allergies and 5 contacts the lock-screen image stays on the screen, the allergies cut short, the first contact kept (#1126)",
+        check("…with 30 allergies and 5 contacts the lock-screen image stays on the screen, the allergies cut short, the first contact and the alert kept (#1126, #1162)",
               many["end"] <= many["h"] and many["size"] >= many["least"] - 0.01 and any(re.fullmatch(r"and \d+ more allergies", t) for t in lines)
-              and "Contact 1 Example (sibling): +1 555 010 000" in lines and "O negative" in lines and lines[-2].startswith("Medications and conditions"),
+              and "Contact 1 Example (sibling): +1 555 010 000" in lines and "O negative" in lines and "Irradiated blood products only" in lines
+              and lines[-2].startswith("More: see the card") and many["cut"] and many["cut"][0]["heading"] == "Allergies",
               {k: v for k, v in many.items() if k != "lines"} | {"lines": lines})
 
-        # ---- the group at 320 px and 200% text, light and dark, with no serious axe finding
+        # ---- the editor at 320 px and 200% text, light and dark, with no serious axe finding
         out = []
         for w_ in (320, 412):
             page.set_viewport_size({"width": w_, "height": 900})
@@ -3692,10 +3761,11 @@ def emergency_card_check(check, browser, base, cookies):
             page.emulate_media(color_scheme=scheme)
             serious.extend(axe_check(page, f"Emergency card, {scheme}")[0])
         page.emulate_media(color_scheme="light")
-        check("…it fits 320 px and 200% text, with no serious axe finding, light or dark (#1126)", not out and not serious, out + serious)
+        check("…its editor fits 320 px and 200% text, with no serious axe finding, light or dark (#1126, #1162)", not out and not serious, out + serious)
     finally:
         try:
             js(put, {"bloodType": "", "contacts": []})
+            js(card_back)
         except Exception:
             pass
         ctx.close()
@@ -3748,8 +3818,8 @@ def key_documents_check(check, browser, base, cookies):
         found = js("[...document.querySelectorAll('#palList [role=option]')].map(o => o.textContent.trim())")
         page.keyboard.press("Escape")
         check("…the palette finds it as “advance directive” (#1135)", any(doc["title"] in f for f in found), found[:6])
-        card = js("fetch('api/profiles/1/emergency').then(r => r.json()).then(c => c.sections.find(s => s.heading === 'Key documents')?.lines)")
-        check("…the emergency card says it's on file, and where (#1135)",
+        card = js("fetch('api/profiles/1/emergency').then(r => r.json()).then(c => c.suggestions.filter(s => s.section === 'documents').map(s => s.text))")
+        check("…the emergency card's editor suggests it's on file, and where (#1135, #1162)",
               card == ["Advance directive or living will: on file (kept at Original in the hall desk (fictional))"], card)
         js("id => openEvent(byId.get(id))", doc["id"])
         page.wait_for_selector("#dKeyDoc button", timeout=10000)

@@ -85,7 +85,8 @@ check changes without updating the list, and it exercises this table against a l
 | Cycle tracking: turn on or off, delete all of it | No | No | Yes | No | No | No |
 | A SMART Health Link pasted on Sources | No | Yes (after confirming) | Yes | No | No | No |
 | The visit summary PDF and its questions draft | Yes | Yes | Yes | No | No | No |
-| The emergency card (#1126): its preview, PDF and lock-screen image (`/api/profiles/{pid}/emergency`), files the person keeps | Yes | Yes | Yes | No (404) | No | No |
+| The emergency card (#1126): its preview, PDF and lock-screen image (`/api/profiles/{pid}/emergency`), files the person keeps | Yes (the saved card) | Yes | Yes | No (404) | No | No |
+| The emergency card's editor (#1162): what the records suggest, and saving what's on it (`PUT /api/profiles/{pid}/emergency`, encrypted) | No | Yes | Yes | No (404) | No | No |
 | Blood type and emergency contacts under About this person (#1126) | Read | Read and change | Read and change | No (404) | No (not in "About this person") | No |
 | Key documents (#1135): a document marked as an advance directive, a power of attorney, a POLST..., with where it's kept (`/api/profiles/{pid}/keydocs`) | Read | Read and mark | Read and mark | No (404) | No | No |
 | Settings: read; their own settings | Yes | Yes | Yes | Their own only | No | No |

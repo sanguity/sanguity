@@ -55,7 +55,7 @@ python tests/test_recategorize.py      # chart activity and recategorizing: cont
 python tests/test_milestones.py        # milestones and workout rules on the Settings page
 python tests/test_lab_mapping.py       # matching unknown lab names
 python tests/test_summary.py           # the visit summary PDF
-python tests/test_emergency.py         # the emergency card (#1126)
+python tests/test_emergency.py         # the emergency card (#1126, #1162)
 python tests/test_keydocs.py           # key documents (#1135)
 python tests/test_person.py            # About this person: birth date, sex for ranges, height history (#194)
 python tests/test_export.py            # Export everything loaded elsewhere: corrections, journal, doses back, undoable (#589)

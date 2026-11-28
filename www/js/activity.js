@@ -22,7 +22,8 @@ const WHAT = {
   reload: () => "loaded the latest records",
   export: d => (d.format === "tax" ? `downloaded Costs' tax-year report for ${d.year}` : d.format === "fhir" ? "exported as FHIR" : "exported everything") + (d.cycle ? ", with the cycle records" : ""),   // #183, #205, #1136
   summary: d => `made a visit summary${d.for ? ` for the appointment on ${recordDate(d.for)}` : ""}${(d.sections || []).includes("cycle") ? ", with the cycle records" : ""}`,
-  emergency: d => d.file === "png" ? "made an emergency card lock-screen image" : `made an emergency card PDF${d.paper === "a4" ? " (A4)" : ""}`,   // #1126
+  emergency: d => d.saved ? "saved the emergency card" : d.file === "png" ? "made an emergency card lock-screen image"
+    : `made an emergency card PDF${d.form === "wallet" ? ", wallet card" : ""}${d.paper === "a4" ? " (A4)" : ""}`,   // #1126, #1162
   cycle: d => ({on: "turned cycle tracking on", off: "turned cycle tracking off, deleting what was kept", delete: "deleted the cycle records kept"}[d.change] || "changed cycle tracking"),   // #183
   upload: d => d.source === "smart-health-link" ? `imported a SMART Health Link from ${d.host}` : `uploaded ${d.files} file${d.files === 1 ? "" : "s"} to import`,
   outside: d => `had Sanguity contact ${d.host} (${d.purpose})`,

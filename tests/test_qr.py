@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""QR codes (#284, www/js/qr.js): our own encoder, byte mode at error correction level M, versions 1 to 10, held to
-known vectors and read back. It runs in node (the script loaded into a vm context of its own, as a page would load it),
+"""QR codes (#284, www/js/qr.js): our own encoder, byte mode at error correction level M, versions 1 to 10 (to 40 when
+the caller allows, #1162), held to known vectors and read back. It runs in node (the script loaded into a vm context of its own, as a page would load it),
 the test's own reader and Reed-Solomon code in Python checking what it makes:
   - the published pieces: the error correction codewords of ISO/IEC 18004's worked example (HELLO WORLD at 1-M), the
     format information of level M with each mask (its Table C.1) and the version information of versions 7 to 10
@@ -9,7 +9,9 @@ the test's own reader and Reed-Solomon code in Python checking what it makes:
     independent encoder (not a dependency: the vectors are written out here), with its padding fixed where it pads a
     stream already on a byte boundary with a whole 0x00 codeword, against 7.4.10;
   - every length from 0 to 213 bytes read back: the format says level M and the mask used, the data is the text's
-    UTF-8 bytes then the terminator and the pad codewords, and each block's error correction is right.
+    UTF-8 bytes then the terminator and the pad codewords, and each block's error correction is right;
+  - versions 11 to 40 (#1162, the emergency card's text): each one's block table filling exactly the modules its
+    size leaves for data, its alignment patterns where Annex E puts them, its fullest text read back.
 tests/browser_check.py reads the code shown beside a new share link back to its address with read_qr() below.
 
   python3 tests/test_qr.py      # needs node on the PATH
@@ -21,12 +23,26 @@ QR_JS = os.path.join(ROOT, "www", "js", "qr.js")
 
 # level M: per version, the error correction codewords of each block, then (blocks, data codewords in each) per group
 BLOCKS = [None, (10, (1, 16)), (16, (1, 28)), (26, (1, 44)), (18, (2, 32)), (24, (2, 43)), (16, (4, 27)), (18, (4, 31)),
-          (22, (2, 38), (2, 39)), (22, (3, 36), (2, 37)), (26, (4, 43), (1, 44))]
-ALIGN = [None, [], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50]]
+          (22, (2, 38), (2, 39)), (22, (3, 36), (2, 37)), (26, (4, 43), (1, 44)), (30, (1, 50), (4, 51)), (22, (6, 36), (2, 37)),
+          (22, (8, 37), (1, 38)), (24, (4, 40), (5, 41)), (24, (5, 41), (5, 42)), (28, (7, 45), (3, 46)), (28, (10, 46), (1, 47)),
+          (26, (9, 43), (4, 44)), (26, (3, 44), (11, 45)), (26, (3, 41), (13, 42)), (26, (17, 42)), (28, (17, 46)),
+          (28, (4, 47), (14, 48)), (28, (6, 45), (14, 46)), (28, (8, 47), (13, 48)), (28, (19, 46), (4, 47)), (28, (22, 45), (3, 46)),
+          (28, (3, 45), (23, 46)), (28, (21, 45), (7, 46)), (28, (19, 47), (10, 48)), (28, (2, 46), (29, 47)), (28, (10, 46), (23, 47)),
+          (28, (14, 46), (21, 47)), (28, (14, 46), (23, 47)), (28, (12, 47), (26, 48)), (28, (6, 47), (34, 48)), (28, (29, 46), (14, 47)),
+          (28, (13, 46), (32, 47)), (28, (40, 47), (7, 48)), (28, (18, 47), (31, 48))]
+# Annex E's alignment pattern centres, versions 1 to 40
+ALIGN = [None, [], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50], [6, 30, 54],
+         [6, 32, 58], [6, 34, 62], [6, 26, 46, 66], [6, 26, 48, 70], [6, 26, 50, 74], [6, 30, 54, 78], [6, 30, 56, 82], [6, 30, 58, 86],
+         [6, 34, 62, 90], [6, 28, 50, 72, 94], [6, 26, 50, 74, 98], [6, 30, 54, 78, 102], [6, 28, 54, 80, 106], [6, 32, 58, 84, 110],
+         [6, 30, 58, 86, 114], [6, 34, 62, 90, 118], [6, 26, 50, 74, 98, 122], [6, 30, 54, 78, 102, 126], [6, 26, 52, 78, 104, 130],
+         [6, 30, 56, 82, 108, 134], [6, 34, 60, 86, 112, 138], [6, 30, 58, 86, 114, 142], [6, 34, 62, 90, 118, 146],
+         [6, 30, 54, 78, 102, 126, 150], [6, 24, 50, 76, 102, 128, 154], [6, 28, 54, 80, 106, 132, 158], [6, 32, 58, 84, 110, 136, 162],
+         [6, 26, 54, 82, 110, 138, 166], [6, 30, 58, 86, 114, 142, 170]]
 MASKS = [lambda r, c: (r + c) % 2 == 0, lambda r, c: r % 2 == 0, lambda r, c: c % 3 == 0, lambda r, c: (r + c) % 3 == 0,
          lambda r, c: (r // 2 + c // 3) % 2 == 0, lambda r, c: r * c % 2 + r * c % 3 == 0,
          lambda r, c: (r * c % 2 + r * c % 3) % 2 == 0, lambda r, c: ((r + c) % 2 + r * c % 3) % 2 == 0]
-BYTES = [None, 14, 26, 42, 62, 84, 106, 122, 152, 180, 213]   # Table 7: the bytes each version holds at level M
+BYTES = [None, 14, 26, 42, 62, 84, 106, 122, 152, 180, 213, 251, 287, 331, 362, 412, 450, 504, 560, 624, 666, 711, 779, 857,
+         911, 997, 1059, 1125, 1190, 1264, 1370, 1452, 1538, 1628, 1722, 1809, 1911, 1989, 2099, 2213, 2331]   # Table 7: the bytes each version holds at level M
 
 # GF(256) on x^8+x^4+x^3+x^2+1, and the error correction codewords of a block
 EXP, LOG = [0] * 512, [0] * 256
@@ -82,7 +98,7 @@ def read_codes(m):
     blocks), the format read from its first copy and checked against the second"""
     n = len(m)
     v = (n - 17) // 4
-    assert 1 <= v <= 10 and n == 17 + 4 * v, n
+    assert 1 <= v <= 40 and n == 17 + 4 * v, n
     first = [m[8][c] for c in (0, 1, 2, 3, 4, 5, 7)] + [m[r][8] for r in (8, 7, 5, 4, 3, 2, 1, 0)]
     second = [m[r][8] for r in range(n - 1, n - 8, -1)] + [m[8][c] for c in range(n - 8, n)]
     assert first == second, (first, second)
@@ -192,7 +208,7 @@ class QR(unittest.TestCase):
         """the smallest version that holds the text: each version's most bytes in it, one more in the next; past
         version 10's 213 bytes, none (qrSvg gives null then); a character's UTF-8 bytes are what count"""
         got = qr_js("DATA.map(n => { const q = qrCode('x'.repeat(n)); return q && [q.version, q.size]; })",
-                    [n + d for n in BYTES[1:] for d in (0, 1)])
+                    [n + d for n in BYTES[1:11] for d in (0, 1)])
         want = [[w, 17 + 4 * w] for v in range(1, 11) for w in (v, v + 1)][:-1] + [None]
         self.assertEqual(got, want)
         self.assertEqual(qr_js("[qrCode('é'.repeat(7)).version, qrCode('é'.repeat(8)).version, qrCode(new Uint8Array(14)).version]"), [1, 2, 1])
@@ -227,6 +243,29 @@ class QR(unittest.TestCase):
                 self.assertEqual(ecs, [rs(b, BLOCKS[v][0]) for b in data])
                 masks.add(mask)
         self.assertGreater(len(masks), 4, masks)   # the masks are chosen, not one used for all
+
+    def test_versions_to_40(self):
+        """(#1162) versions 11 to 40, allowed by most: each block table fills exactly the modules its size leaves for data
+        (all of it less the finders, timing, alignment, format and version areas); the alignment patterns are Annex E's;
+        each version's most bytes take it and one more the next, none past most; and each fullest text reads back"""
+        for v in range(1, 41):
+            n, fn = 17 + 4 * v, function_map(17 + 4 * v)
+            ec, *groups = BLOCKS[v]
+            self.assertEqual(sum(b * (d + ec) for b, d in groups), sum(not x for row in fn for x in row) // 8, v)
+            self.assertEqual(sum(b * d for b, d in groups) - (2 if v < 10 else 3), BYTES[v], v)
+        self.assertEqual(qr_js("Array.from({length: 40}, (_, i) => qrCode.ALIGN(i + 1))"), ALIGN[1:])
+        self.assertEqual(qr_js("Array.from({length: 40}, (_, i) => qrCode.bytesIn(i + 1))"), BYTES[1:])
+        got = qr_js("DATA.map(([n, most]) => { const q = qrCode('x'.repeat(n), {most}); return q && q.version; })",
+                    [[BYTES[v], 40] for v in range(10, 41)] + [[BYTES[v] + 1, 40] for v in range(10, 40)] + [[858, 23], [857, 23], [2332, 40]])
+        self.assertEqual(got, list(range(10, 41)) + list(range(11, 41)) + [None, 23, None])
+        texts = [prose(BYTES[v]) for v in (11, 14, 17, 20, 23, 27, 32, 36, 40)] + ["Allergies: penicillin (hives) ✓ é " * 20]
+        got = qr_js("DATA.map(t => { const q = qrCode(t, {most: 40}); return [q.version, q.mask, q.modules]; })", texts)
+        for t, (v, mask, mods) in zip(texts, got):
+            with self.subTest(n=len(t), version=v):
+                level, read_mask, data, ecs = read_codes(mods)
+                self.assertEqual((level, read_mask), (0, mask))
+                self.assertEqual(read_qr(mods), t.encode())
+                self.assertEqual(ecs, [rs(b, BLOCKS[v][0]) for b in data])
 
     def test_svg(self):
         """qrSvg() (with a stand-in for util.js's el()): an <svg class="qr" role="img"> named by its label, its viewBox

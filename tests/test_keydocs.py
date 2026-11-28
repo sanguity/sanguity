@@ -3,7 +3,7 @@
 power of attorney, a POLST...: owners and editors mark, change and unmark it (viewers see it, strangers get a 404);
 the mark is a sealed profile setting found by the record's key, so it follows the document through a re-import, moves
 the records' revision, goes in the profile's export, and is logged without what it says; the records carry it
-("keyDoc"); the emergency card says "<kind>: on file (kept at ...)" and its lock-screen image doesn't.
+("keyDoc"); the emergency card's editor suggests "<kind>: on file (kept at ...)" under Key documents (#1162: nothing on it by itself).
 Fictional data only.
 
   python3 tests/test_keydocs.py
@@ -105,14 +105,14 @@ class Api(unittest.TestCase):
         self.assertFalse(any("hall desk" in str(a) for a in acts), "logged without where it's kept")
         r = self.c["robin"].put(self.url("/keydocs"), json={**mark, "kind": "poa", "kept": ""}, headers=H)
         self.assertEqual(self.doc()["keyDoc"], {"kind": "poa", "kept": ""}, "changed")
-        card = self.c["kim"].get(self.url("/emergency")).json()
-        self.assertEqual([s["lines"] for s in card["sections"] if s["heading"] == "Key documents"], [["Healthcare power of attorney: on file"]])
-        self.assertNotIn("Key documents", [s["heading"] for s in card["short"]], "not on the lock-screen image")
+        card = self.c["lee"].get(self.url("/emergency")).json()
+        self.assertEqual([s["text"] for s in card["suggestions"] if s["section"] == "documents"], ["Healthcare power of attorney: on file"])
+        self.assertEqual(card["view"]["parts"], [], "suggested, never put on the card by itself")
         self.assertEqual(self.c["lee"].delete(self.url(f"/keydocs/{e['id']}"), headers=H).status_code, 200)
         self.assertNotIn("keyDoc", self.doc())
         self.assertEqual(self.c["lee"].delete(self.url(f"/keydocs/{e['id']}"), headers=H).status_code, 404)
-        card = self.c["kim"].get(self.url("/emergency")).json()
-        self.assertNotIn("Key documents", [s["heading"] for s in card["sections"]], "none marked: not on the card")
+        card = self.c["lee"].get(self.url("/emergency")).json()
+        self.assertNotIn("documents", [s["section"] for s in card["suggestions"]], "none marked: not suggested")
 
     def test_2_follows_a_reimport_and_goes_in_the_export(self):
         e = self.doc()
