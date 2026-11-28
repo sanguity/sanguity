@@ -951,13 +951,14 @@ def report(data, dups, summarise):
             items.append(item)
     # the profile-wide lists' entries there already (#497), listed too, with no ref: an entry isn't added twice
     lists = _meta_lists(data)
-    listed = lambda path, x: ("allergy" if x.get("type") == "Allergy" else "problem") if path == "problems" else path   # noqa: E731
+    listed = lambda path, x: ("allergy" if x.get("type") == "Allergy" else "problem") if path == "problems" else \
+        "family" if path == "familyHistory" else path   # noqa: E731 (#1134: a relative's family history)
     for path, drop in dups["meta"].items():
         for n in sorted(drop - changed["meta"].get(path, set())):
             x = lists.get(path, [])[n] if n < len(lists.get(path, [])) else None
             if isinstance(x, dict):
                 items.append({"ref": None, "kind": listed(path, x), "t": str(x.get("date") or x.get("t") or "")[:10],
-                              "title": str(x.get("name") or x.get("title") or "")})
+                              "title": str((x.get("relation") if path == "familyHistory" else None) or x.get("name") or x.get("title") or "")})
     # (#920) what's updated in place, by kind: "1 medication and 1 problem already here ... updated"
     said = collections.Counter(str(events[i].get("k")) for i in changed["events"] if i in events)
     said.update(listed(path, lists[path][n]) for path, ns in changed["meta"].items() for n in ns)

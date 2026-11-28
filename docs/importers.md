@@ -82,7 +82,7 @@ records the app couldn't load, so a mistake in an importer doesn't reach anyone'
 ## The records (`data`)
 
 The same object build.py and `demo/generate.py` write as data.json. Required keys: `events`, `details`, `labs`,
-`costs` (empty is fine). Optional: `upcoming`, `problems`, `milestones`, `clinicWeights`, `outOfPocket`, `watch`. Run
+`costs` (empty is fine). Optional: `upcoming`, `problems`, `familyHistory`, `milestones`, `clinicWeights`, `outOfPocket`, `watch`. Run
 `python3 -I demo/generate.py /tmp/demo` and look at `/tmp/demo/data.json` for a full, fictional example.
 
 ### `events`: the timeline
@@ -374,6 +374,7 @@ To add a layout:
 |---|---|
 | `upcoming` | `[{"t": "2026-12-01", "title", "who", "where", "dx", "procs"}]`: future appointments |
 | `problems` | `[{"name", "type", "date", "status", "src"}]`: the problem list. An allergy or intolerance (#179) has type `"Allergy"`, name `"Allergy: <substance> (<reactions>)"` and, as recorded, `substance`, `reactions` (a list), `severity`, `criticality`, `code` and `system`: `common.allergy()` builds it, as the C-CDA and FHIR importers do |
+| `familyHistory` | `[{"relation", "code", "name", "conditions": [{"name", "code", "system", "onset", "death", "note"}], "deceased", "deathAge", "note", "date", "src", "key"}]`: family history (#1134), one entry per relative as a record says it (`common.family_member()`); keyed like `problems`
 | `milestones` | `[{"date", "label", "primary": true}]`: named dates for chart markers. Since #39 they are a profile setting, changed on the Settings page; an import's are kept but not shown (an older export loaded back in whole brings them into its settings) |
 | `clinicWeights` | `[[time, pounds, where]]`: weights measured at visits, charted with the scale's |
 | `outOfPocket` | `{"payments": [{"d", "payee", "group", "amount", "account", "memo", "est", "key"?, "hsa"?, "receipt"?, "claim"?}], "exported", "range", "excluded", "balance"}`. Optional per payment (#55): `key` a source key, `hsa` `"HSA"` or `"FSA"`, `receipt` the key of a document event holding its receipt, `claim` the key of the claim event it paid. The served records add `oop` (server/oop.py): where each payment came from, its HSA/FSA tag, the claim it was matched to and what is counted; an import's own `oop` is ignored |
@@ -395,6 +396,7 @@ The pieces build.py uses, as plain functions (standard library only):
 | `inferred_stays(admissions, inpatient_ts, org)` | Hospital stays guessed from inpatient results, for sources without admit/discharge dates |
 | `immunization(vaccine, src, **fields)`, `dose_text(n, of)` | An immunization's title, sub line and detail (#179); a dose number as `"2"` or `"2 of 3"` |
 | `allergy(substance, reactions, severity, criticality, status, date, src, code, system)` | An allergy's entry of `problems` (#179) |
+| `family_member(relation, conditions, name, deceased, death_age, note, date, src, code)` | An entry of `familyHistory` (#1134): one relative as one record says it; `relation_word(code, said)` the v3 RoleCode in plain words, `age_text(value, unit)` an age as text |
 
 The stay helpers return `{"t", "title", "sub", "detail", "end"}`; add an `id` and `"k": "stay"`. If a helper is
 missing something your format needs, add to it rather than copying it, and keep build.py's output unchanged

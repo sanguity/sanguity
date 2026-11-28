@@ -63,7 +63,7 @@ function homeTiles() {
 /* ---- the Overview grouped by the questions it answers (#274, plan #243), in this order at every width:
    Today (today's doses, what's coming up, when the watch last synced), Key labs (in the person's own order, by panel,
    the status only where it's an exception), Readings (the watch's, the scale's and the home readings, in one row), then
-   the Health record (problems, allergies, immunizations), what's Recent (clinical records, the workouts in one line) and
+   the Health record (problems, allergies, immunizations, family history), what's Recent (clinical records, the workouts in one line) and
    the insurance costs. Each group under its own h2, its cards under it as h3s (#331); one with nothing in it says what
    would be there (#440), as Key labs does. */
 const ovHead = (title, ...more) => el("div", {class: "ov-h"}, el("h2", {text: title}), ...more);
@@ -289,6 +289,8 @@ function ovRecord() {
       periodVisit("all"); kindsVisit(["immunization"]); pickTab("timeline"); }}, `All ${imms.length} on the Timeline `, icon("arrow-right")));
     left.push(ic);
   }
+  const fam = ovFamily();   // (#1134) family history, grouped by relative (family.js)
+  if (fam) left.push(fam);
   // Recent: the clinical records (cycle records only in their lane, #183), and the watch's workouts in one line: those
   // of the 30 days to the latest one
   const recent = EV.filter(e => !e.hidden && !NOT_CLINICAL.has(e.k)).sort((a, b) => b.ts - a.ts).slice(0, 8);

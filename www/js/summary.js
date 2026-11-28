@@ -168,6 +168,10 @@ function renderPreview(s) {
       parts.push(el("h3", {text: `Current medications (${s.medications.length})`}));
       parts.push(s.medications.length ? table(["Medication", "Instructions", "Since", "Source"], s.medications.map(r => el("tr", {},
         cell(r.name, "wrap"), cell(r.instructions, "wrap"), cell(fmtDay(r.since)), cell(r.source)))) : none("No current medications in the records."));
+    } else if (id === "family") {   // (#1134) each relative, as the records and your own entries say
+      parts.push(el("h3", {text: `Family history (${s.family.length})`}));
+      parts.push(s.family.length ? table(["Relative", "Conditions", "Living or deceased", "Source"], s.family.map(r => el("tr", {},
+        cell(r.relative, "wrap"), cell(r.conditions || "none recorded", "wrap"), cell(r.status), cell(r.source)))) : none("No family history in the records."));
     } else if (id === "appointments") {
       parts.push(el("h3", {text: `Upcoming appointments (${s.appointments.length})`}));
       // this visit's date in ink, as the others: red is for out of range only (#299)

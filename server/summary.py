@@ -23,6 +23,9 @@ Sections, each optional (SECTIONS):
                  Then judged against a range other than its row's (its Now's) says so in its cell (#717, #752); under
                  each table and the charts, what their flags are judged against (notes(), the preview's and the PDF's)
   medications    current medications (status active, or no status and no end date)
+  family         family history (#1134, family.summary_rows): each relative, their conditions with the onset ages,
+                 and whether they have died, as the records and the person's own entries say; ticked unless unticked,
+                 as first visits ask for it
   appointments   upcoming appointments
   questions      the person's own questions, typed before generating
   measures       the phone's and watch's measures and the newer kinds of record (#225, server/measures.py): home
@@ -44,10 +47,10 @@ notice on every page.
 """
 import contextvars, datetime, json, math, re
 
-from . import crypto, db as dbm, measures, pdfdoc, ranges, records, settings, units
+from . import crypto, db as dbm, family, measures, pdfdoc, ranges, records, settings, units
 
 SECTIONS = [("out_of_range", "Out-of-range results"), ("trends", "Trends since the last visit"),
-            ("medications", "Current medications"), ("appointments", "Upcoming appointments"),
+            ("medications", "Current medications"), ("family", "Family history"), ("appointments", "Upcoming appointments"),
             ("questions", "My questions")]
 NOTICE = ("Made by Sanguity from your own records. This isn't medical advice: it shows what the records say, and "
           "out-of-range results are flagged against the reference range printed on each result's own report "
@@ -451,6 +454,8 @@ def build(db, pid, uid, profile_name, opts):
         out["trends"] = rows
     if "medications" in wanted:
         out["medications"] = _medications(data, now)
+    if "family" in wanted:
+        out["family"] = family.summary_rows(data)
     if "appointments" in wanted:
         out["appointments"] = [{**u, "this": i == appt} for i, u in enumerate(upcoming[:10])]
     if "questions" in wanted:
@@ -886,6 +891,14 @@ def _render(s, charts):
                     continue
                 lay.table(sid, [("MEDICATION", 180), ("INSTRUCTIONS", 150), ("SINCE", 66), ("SOURCE", None)], rows,
                           lambda r: [r["name"], r["instructions"], _when(r["since"]), r["source"]])
+            elif sid == "family":
+                rows = s["family"]
+                lay.heading("Family history", len(rows))
+                if not rows:
+                    lay.note("No family history in the records.")
+                    continue
+                lay.table(sid, [("RELATIVE", 120), ("CONDITIONS", 230), ("LIVING OR DECEASED", 96), ("SOURCE", None)], rows,
+                          lambda r: [r["relative"], r["conditions"] or "none recorded", r["status"], r["source"]])
             elif sid == "appointments":
                 rows = s["appointments"]
                 lay.heading("Upcoming appointments", len(rows))
@@ -969,7 +982,7 @@ def _render(s, charts):
 
 
 def _count(s, sid):
-    if sid in ("out_of_range", "trends", "medications", "appointments", "questions"):
+    if sid in ("out_of_range", "trends", "medications", "family", "appointments", "questions"):
         return len(s.get(sid) or [])
     if sid in measures.IDS:
         return len(((s.get("measures") or {}).get(sid) or {}).get("rows") or [])

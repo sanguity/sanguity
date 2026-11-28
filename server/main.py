@@ -1802,6 +1802,7 @@ app.include_router(__import__("server.routes_costs", fromlist=["router"]).router
 app.include_router(__import__("server.routes_backups", fromlist=["router"]).router)   # backups on the Admin page (#200)
 app.include_router(__import__("server.routes_person", fromlist=["router"]).router)    # about this person: birth date, sex, height (#194)
 app.include_router(__import__("server.routes_cycle", fromlist=["router"]).router)     # menstrual cycle tracking, opt-in (#183)
+app.include_router(__import__("server.routes_family", fromlist=["router"]).router)    # family history (#1134)
 app.include_router(__import__("server.routes_meds", fromlist=["router"]).router)      # medication reminders (#162) and log (#235)
 
 

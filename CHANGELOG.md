@@ -3965,6 +3965,12 @@ Everything on `main` so far; it becomes the first tagged release.
   other with a slider (arrow keys, touch, said with both photos' dates and notes), each with its date and its entry's
   note, and nothing said about the pictures. Spots can be renamed and merged, and a photo taken off one; they're in
   backups and "Export everything" (schema version 56).
+- **Family history** (#1134): relatives and their conditions, with the age each began at and whether the relative is
+  living or died (and at what age), read from FHIR's FamilyMemberHistory and a C-CDA's Family History section (no longer
+  skipped; a re-import adds no copy) or typed in. The Overview's Health record lists them by relative; owners and
+  editors add, change and remove their own entries and hide (never edit) the records', each with an Undo. The visit
+  summary has a Family history section, ticked at first; the FHIR export writes FamilyMemberHistory; Export everything
+  carries the entries. Facts as recorded, nothing worked out from them.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

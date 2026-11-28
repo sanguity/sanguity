@@ -411,6 +411,11 @@ upcoming = [{"t": (END + timedelta(days=12)).isoformat(), "title": "Follow-up vi
             {"t": (END + timedelta(days=95)).isoformat(), "title": "CT chest abdomen pelvis", "who": ONC, "where": HOSPITAL, "dx": "", "procs": []}]
 problems = [{"name": "Hodgkin lymphoma, in remission", "type": "Diagnosis", "date": DX.isoformat(), "status": "Active", "src": CANCER},
             {"name": "Anemia", "type": "Diagnosis", "date": (DX - timedelta(days=21)).isoformat(), "status": "Resolved", "src": CLINIC}]
+# family history (#1134), as the clinic's records say it (importers/common.family_member's shape)
+family = [{"relation": "Mother", "code": "MTH", "conditions": [{"name": "Hypothyroidism", "onset": "45"}], "deceased": False,
+           "src": CLINIC, "key": "demo:family:mother"},
+          {"relation": "Maternal grandfather", "code": "MGRFTH", "deceased": True, "deathAge": "71", "src": CLINIC,
+           "conditions": [{"name": "Non-Hodgkin lymphoma", "onset": "68", "death": True}], "key": "demo:family:grandfather"}]
 
 # ------------------------------------------------------------------ watch + smart scale (from a month before diagnosis)
 wstart = FIRST if BIG else max(START, DX - timedelta(days=30))
@@ -584,7 +589,7 @@ lab_series = [{"name": n, "unit": LABS[n][0], "panel": LABS[n][1], "n": len(p), 
 lab_series += VITALS
 lab_series.sort(key=lambda s: (-s["n"], s["name"]))
 data = {"built": at(END, 6), "source": "Sanguity demo data (fictional)", "events": events, "details": details, "labs": lab_series,
-        "upcoming": upcoming, "problems": problems, "costs": costs,
+        "upcoming": upcoming, "problems": problems, "familyHistory": family, "costs": costs,
         "outOfPocket": {"payments": payments, "exported": END.isoformat(), "range": [FIRST.isoformat(), END.isoformat()],
                         "excluded": "transfers between your own accounts", "balance": {"owed": 0, "asOf": END.isoformat()}},
         "milestones": [{"date": DX.isoformat(), "label": "Diagnosis", "primary": True}, {"date": TX.isoformat(), "label": "Treatment start"},

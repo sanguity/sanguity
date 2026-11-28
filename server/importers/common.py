@@ -576,3 +576,85 @@ def allergy(substance, reactions=(), severity="", criticality="", status="", dat
     if _line(code):
         p["code"], p["system"] = _line(code), _line(system) or None
     return p
+
+
+# ---- family history (#1134): who in the family had what, as the records say it. HL7 v3 RoleCode's family codes
+# (FHIR's FamilyMemberHistory.relationship, a C-CDA Family History Organizer's relatedSubject code) in plain words
+RELATIONS = {"FAMMEMB": "Family member", "CHILD": "Child", "CHLDADOPT": "Adopted child", "DAUADOPT": "Adopted daughter",
+             "SONADOPT": "Adopted son", "CHLDFOST": "Foster child", "DAUFOST": "Foster daughter", "SONFOST": "Foster son",
+             "DAUC": "Daughter", "DAU": "Daughter", "NCHILD": "Child", "SONC": "Son", "SON": "Son", "STPCHLD": "Stepchild",
+             "STPDAU": "Stepdaughter", "STPSON": "Stepson", "EXT": "Extended family member", "AUNT": "Aunt",
+             "MAUNT": "Maternal aunt", "PAUNT": "Paternal aunt", "COUSN": "Cousin", "MCOUSN": "Maternal cousin",
+             "PCOUSN": "Paternal cousin", "GGRPRN": "Great-grandparent", "GGRFTH": "Great-grandfather",
+             "MGGRFTH": "Maternal great-grandfather", "PGGRFTH": "Paternal great-grandfather", "GGRMTH": "Great-grandmother",
+             "MGGRMTH": "Maternal great-grandmother", "PGGRMTH": "Paternal great-grandmother",
+             "MGGRPRN": "Maternal great-grandparent", "PGGRPRN": "Paternal great-grandparent", "GRNDCHILD": "Grandchild",
+             "GRNDDAU": "Granddaughter", "GRNDSON": "Grandson", "GRPRN": "Grandparent", "GRFTH": "Grandfather",
+             "MGRFTH": "Maternal grandfather", "PGRFTH": "Paternal grandfather", "GRMTH": "Grandmother",
+             "MGRMTH": "Maternal grandmother", "PGRMTH": "Paternal grandmother", "MGRPRN": "Maternal grandparent",
+             "PGRPRN": "Paternal grandparent", "NIENEPH": "Niece or nephew", "NEPHEW": "Nephew", "NIECE": "Niece",
+             "UNCLE": "Uncle", "MUNCLE": "Maternal uncle", "PUNCLE": "Paternal uncle", "PRN": "Parent", "FTH": "Father",
+             "NFTH": "Father", "NPRN": "Parent", "MTH": "Mother", "NMTH": "Mother", "ADOPTF": "Adoptive father",
+             "ADOPTM": "Adoptive mother", "STPFTH": "Stepfather", "STPMTH": "Stepmother", "SIB": "Sibling", "BRO": "Brother",
+             "NBRO": "Brother", "SIS": "Sister", "NSIS": "Sister", "HSIB": "Half-sibling", "HBRO": "Half-brother",
+             "HSIS": "Half-sister", "TWIN": "Twin", "TWINBRO": "Twin brother", "TWINSIS": "Twin sister",
+             "FTWIN": "Fraternal twin", "ITWIN": "Identical twin", "STPSIB": "Stepsibling", "STPBRO": "Stepbrother",
+             "STPSIS": "Stepsister", "SPS": "Spouse", "HUSB": "Husband", "WIFE": "Wife"}
+RELATION_CODE = {}   # a relation in plain words, lower case -> its code (the first above that says it)
+for _c, _w in RELATIONS.items():
+    RELATION_CODE.setdefault(_w.lower(), _c)
+ROLE_CODE = "http://terminology.hl7.org/CodeSystem/v3-RoleCode"
+ROLE_OID = "2.16.840.1.113883.5.111"
+
+
+def relation_word(code, said=""):
+    """What a relative is to the person, in plain words: the RoleCode's word, else what the record says."""
+    w = RELATIONS.get(_line(code).upper()) or _line(said)
+    return (w[:1].upper() + w[1:]) if w else "Relative"
+
+
+def family_member(relation, conditions=(), name="", deceased=None, death_age="", note="", date=None, src="", code=None):
+    """An entry of `familyHistory` (#1134), as the FHIR and C-CDA importers write it: one relative and what the records
+    say they had. {"relation": "Mother", "code": its RoleCode (when given), "name", "conditions": [{"name", "code",
+    "system", "onset": the age it began at, as text ("52", "18 months"), "death": it contributed to their death,
+    "note"}], "deceased": True (they have died) or False (living; absent: not said), "deathAge", "note", "date": when it
+    was recorded, "src"}. Facts as recorded, nothing worked out from them."""
+    out = {"relation": _line(relation) or "Relative"}
+    if _line(code):
+        out["code"] = _line(code).upper()
+    if _line(name):
+        out["name"] = _line(name)
+    conds = []
+    for c in conditions or ():
+        if not isinstance(c, dict) or not _line(c.get("name")):
+            continue
+        x = {"name": _line(c["name"])}
+        for k in ("code", "system", "onset"):
+            if _line(c.get(k)):
+                x[k] = _line(c[k])
+        if str(c.get("note") or "").strip():
+            x["note"] = str(c["note"]).strip()
+        if c.get("death"):
+            x["death"] = True
+        conds.append(x)
+    out["conditions"] = conds
+    if deceased is not None:
+        out["deceased"] = bool(deceased)
+    if _line(death_age):
+        out["deceased"], out["deathAge"] = True, _line(death_age)
+    if str(note or "").strip():
+        out["note"] = str(note).strip()
+    out.update({k: v for k, v in (("date", date), ("src", _line(src))) if v})
+    return out
+
+
+def age_text(value, unit=""):
+    """An age as the records give it, as text: in years bare ("52"), in any other unit with it ("18 months")."""
+    if value is None or isinstance(value, bool) or str(value).strip() == "":
+        return ""
+    v = f"{value:g}" if isinstance(value, float) else str(value).strip()
+    u = _line(unit).lower()
+    if u in ("", "a", "yr", "yrs", "year", "years", "y", "ann"):
+        return v
+    word = {"mo": "months", "month": "months", "wk": "weeks", "week": "weeks", "d": "days", "day": "days"}.get(u, u)
+    return f"{v} {word}"
