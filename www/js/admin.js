@@ -209,7 +209,10 @@ function userMenu(u) {
           "turn off two-factor sign-in, and look after backups and sources.",
           "They don't see a profile's records unless it's shared with them. They'll need two-factor sign-in of their own to use Settings → Install."],
           action: "Make admin", danger: true}, `${n} is an admin now.`)},
-    {text: "Reset password…", run: () => changeUser(u, {reset_password: true}, {title: `Reset ${n}'s password?`, message: [
+    {text: "Reset password…", run: () => ME.sign_in_provider?.only   // (#1109: no password signs in; the server says so too)
+      ? rowSay(u.id, `Passwords are off while Sign in with ${ME.sign_in_provider.label} only is on: ${n} signs in there. Link their identity ` +
+          "from this menu, or turn OIDC only off first, under General, Sign-in provider.", true)
+      : changeUser(u, {reset_password: true}, {title: `Reset ${n}'s password?`, message: [
       "Their password stops working at once, and they're signed out everywhere.",
       "You'll get a one-time password to give them; they choose a new one when they first sign in with it." +
       (u.two_factor ? " Their two-factor sign-in stays on." : "")], action: "Reset password", danger: true},

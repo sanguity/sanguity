@@ -383,9 +383,16 @@ def any_user(request: Request, db=Depends(get_db)):
     return s
 
 
-def settled(s=Depends(any_user)):
+def must_change(db, u):
+    """Whether account u is held at a password change (a one-time password, or a short one a second factor allowed):
+    never while Sign in with OIDC only is on (#1109), when no password signs in, so none needs replacing; the flag is
+    kept, and holds them again if it's turned off."""
+    return bool(u["must_change_pw"]) and not oidc.only(db)
+
+
+def settled(s=Depends(any_user), db=Depends(get_db)):
     """Signed in, with no pending password change (two-factor setup may still be due)."""
-    if s["must_change_pw"]:
+    if must_change(db, s):
         raise HTTPException(403, "password_change_required")
     return s
 
@@ -667,7 +674,7 @@ def login_code(body: LoginCode, request: Request, response: Response, db=Depends
     if (w := sec.throttle.wait(*keys)):
         _audit("login.throttled", request, u, step="code")
         raise HTTPException(429, f"Too many wrong codes. Try again in {w} seconds.", headers={"Retry-After": str(w)})
-    out = {"must_change_pw": bool(u["must_change_pw"])}
+    out = {"must_change_pw": must_change(db, u)}
     if code:
         n = accounts.code_try(db, uid)   # counted before it's checked (#928)
         if n is None:
@@ -789,7 +796,7 @@ def login_passkey(body: PasskeyFinish, request: Request, response: Response, db=
         _tickets.used(body.ticket[:200])
     _remember_device(request, response, db, uid)
     _start_session(request, response, db, uid, first + " + passkey" if first else "passkey")
-    return {"must_change_pw": bool(u["must_change_pw"]), "username": u["username"]}
+    return {"must_change_pw": must_change(db, u), "username": u["username"]}
 
 
 def _known_device(request, db, u):
@@ -854,11 +861,11 @@ def me(s=Depends(any_user), db=Depends(get_db)):
     second = accounts.has_second_factor(db, s)
     needs_2fa = required and not accounts.signed_in_with_two(db, s)   # (#1109: this sign-in's provider's counts)
     return {"user": {"id": s["id"], "username": s["username"], "is_admin": bool(s["is_admin"]),
-                     "must_change_pw": bool(s["must_change_pw"]), "two_factor": second,
+                     "must_change_pw": must_change(db, s), "two_factor": second,
                      "needs_two_factor": needs_2fa, "admin_needs_two_factor": accounts.admin_needs_second_factor(db, s)},
             "two_factor_required": required, "reauth_minutes": config.setting("REAUTH_MINUTES"),
             "session": sign_in_lengths(), "may_create_profiles": may_create_profiles(s),   # (#1001: You → Sign-in and security, New profile)
-            "profiles": _profiles_for(db, s["id"]) if not (s["must_change_pw"] or needs_2fa) else [],
+            "profiles": _profiles_for(db, s["id"]) if not (must_change(db, s) or needs_2fa) else [],
             "password_min": _password_min(db, s), "session_ends": _session_ends(db, s),
             "connected_sources": settings.connected_sources(),   # (#1096) whether any page offers them: on or off, no more
             "sign_in_provider": oidc.brief(db),   # (#1109) the provider's button name and whether it's the only way in, or None
@@ -866,7 +873,7 @@ def me(s=Depends(any_user), db=Depends(get_db)):
             # the install's HTTPS address (PUBLIC_ORIGINS), for "install from this address" on a plain-HTTP page (#56)
             "https_address": next((o for o in sorted(config.setting("PUBLIC_ORIGINS")) if o.startswith("https://")), None),
             # backups late or failing (#200): the Admin menu item says so, for admins who may use it
-            "backups_late": bool(s["is_admin"]) and not (s["must_change_pw"] or needs_2fa)
+            "backups_late": bool(s["is_admin"]) and not (must_change(db, s) or needs_2fa)
                             and not accounts.admin_needs_second_factor(db, s) and backup_jobs.late(db)}
 
 
@@ -1073,7 +1080,7 @@ def two_factor_off(body: TwoFactorOff, request: Request, s=Depends(settled), db=
         activity.log(db, "2fa.off", s, ip=_client_ip(request))
     # turn_off_2fa ended every session, this one too: start a fresh one so the page keeps working
     after = db.execute("SELECT must_change_pw FROM users WHERE id=?", (s["id"],)).fetchone()
-    response = JSONResponse({"ok": True, "must_change_pw": bool(after["must_change_pw"])})
+    response = JSONResponse({"ok": True, "must_change_pw": must_change(db, after)})
     _start_session(request, response, db, s["id"])
     return response
 
@@ -1159,7 +1166,7 @@ def passkey_remove(pk: int, body: PasskeyRemove, request: Request, s=Depends(set
         feeds = calendar.drop_for(db, s["id"])   # (#597)
         activity.log(db, "passkey.remove", s, detail={"name": r["name"]}, ip=_client_ip(request))
     after = db.execute("SELECT must_change_pw FROM users WHERE id=?", (s["id"],)).fetchone()
-    return {"ok": True, "left": passkeys.count(db, s["id"]), "must_change_pw": bool(after["must_change_pw"]), "signed_out_elsewhere": n,
+    return {"ok": True, "left": passkeys.count(db, s["id"]), "must_change_pw": must_change(db, after), "signed_out_elsewhere": n,
             "calendar_feeds": feeds}
 
 
@@ -1667,6 +1674,9 @@ def edit_user(uid: int, body: UserPatch, request: Request, s=Depends(admin), db=
     if not target:
         raise HTTPException(404, "No such account.")
     note = lambda action: activity.log(db, action, s, detail={"username": target["username"]}, ip=_client_ip(request))
+    if body.reset_password and oidc.only(db):   # (#1109) no password signs in: a one-time one would be no way in
+        raise HTTPException(409, f"Passwords are off while Sign in with {oidc.load(db)['label']} only is on: {target['username']} "
+                                 "signs in there. Link their identity under their account's menu, or turn OIDC only off first.")
     if body.reset_password or body.disable_2fa or (body.is_admin and not target["is_admin"]):   # a way into the account
         fresh(request, s, "reset a password" if body.reset_password else "turn off two-factor sign-in"
               if body.disable_2fa else "make an admin")
