@@ -187,10 +187,11 @@ they say where a record came from, and NULL means the importer's label. **cost_m
 `server/oop.py`) hold what a person said about an out-of-pocket amount on the Costs tab: a payment or a claim's share
 tagged HSA or FSA, a payment matched to a claim (or to none), two look-alike payments said to be two. Like edits they
 belong to the profile and find their payment or claim by a keyed hash of its key. (Versions 26 and 27 belong to work
-landing alongside.) **notify_optins** (schema version 54, #1130, `server/notify.py`) are each person's notifications
-turned on, per profile they can see and per kind (`results`, `doses`); **notify_sent** is each notification made, once,
-keyed by what it's for (an import, or a profile's dose time on a day), with its state, tries and next try. Neither
-holds a message: what's sent is made as it's sent, from the kind and the profile's name alone.
+landing alongside.) **notify_topics** (schema version 54, #1130, `server/notify.py`) is each person's own topic on the
+install's notification server (random, encrypted); **notify_optins** are each person's notifications turned on, per
+profile they can see and per kind (`results`, `doses`); **notify_sent** is each notification made, once per person,
+keyed by what it's for (an import, or a profile's dose time on a day) and whose, with its state, tries and next try.
+None holds a message: what's sent is made as it's sent, from the kind and the profile's name alone.
 
 ```mermaid
 erDiagram

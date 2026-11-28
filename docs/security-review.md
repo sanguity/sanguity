@@ -95,7 +95,7 @@ check changes without updating the list, and it exercises this table against a l
 | The profile's activity log | No | No | Yes | No | No | No |
 | Rename or delete the profile | No | No | Yes | No | No | No |
 | Outside connections (Settings → Install) | Empty list | Their profiles' entries | Their profiles' entries | The whole install | No | No |
-| Notifications (#1130): turn on new results and dose reminders for the profile, for themself (`/api/me/notify`); the notification server, its write-only access token and Test (`/api/settings/install/notify`) | Yes, for themself | Yes, for themself | Yes, for themself | The server, the token (after a fresh check) and Test | No | No |
+| Notifications (#1130): turn on new results and dose reminders for the profile, for themself, sent to their own unguessable topic (`/api/me/notify`; a new topic, a test); the notification server, its write-only access token and Test (`/api/settings/install/notify`) | Yes, for themself | Yes, for themself | Yes, for themself | The server, the token (after a fresh check) and Test | No | No |
 | Accounts, require two-factor, sign-in notices, account activity | No | No | No | Yes (with their own second factor) | No | No |
 | Connected-source apps (vendor setup), lab-name matches, install settings, backups | No | No | No | Yes (with their own second factor; the most powerful changes, and every change to an install setting (#1006), also need a fresh check) | No | No |
 | The provider directory: search it | Yes | Yes | Yes | Yes | No | No |
