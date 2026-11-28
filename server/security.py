@@ -260,7 +260,7 @@ def login_keys(username, address, device=None):
 
 class SignInThrottle(Throttle):
     """Sign-in's, and a signed-in session's password checks (#1001): an admin may lower each kind's free failures in
-    Settings → Install → General → Security (settings.py's security.tries*), read at each failure, never above FREE."""
+    Settings → Install → Accounts and sign-in → Sign-in rules (settings.py's security.tries*), read at each failure, never above FREE."""
     limit = None   # settings.py sets it: kind -> the free failures in force for it, or None
 
     def free(self, kind):

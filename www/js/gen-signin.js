@@ -1,4 +1,4 @@
-/* Sanguity · Settings → Install → General: Sign-in provider (#1109). One OpenID Connect provider for the install
+/* Sanguity · Settings → Install → Accounts and sign-in: Sign-in provider (#1109; General's before #1119). One OpenID Connect provider for the install
    (routes_oidc.py): its issuer, client ID, client secret (never shown back: only whether one is saved, or set by
    OIDC_CLIENT_SECRET in the server's environment), the button's name on the sign-in page, the scopes and the acr that
    counts as two factors, kept as typed and marked "not saved" until the group's bar (settings-nav.js) saves them
@@ -23,7 +23,7 @@ const signinIn = k => document.getElementById("signin-" + k);
 const signinTyped = () => SIGNIN ? SIGNIN_FIELDS.filter(([k]) => { const i = signinIn(k); return i && !i.readOnly && i.value.trim() !== (k === "secret" ? "" : String(SIGNIN.d[k] ?? "")); }) : [];
 
 async function loadSignin(note) {
-  const card = $("#gen-signin");
+  const card = $("#signin-provider");
   let d;
   try { d = await call("settings/install/oidc"); }
   catch (e) { card.replaceChildren(el("h2", {text: "Sign-in provider"}), el("p", {class: "msg bad", text: e.message})); return; }
@@ -31,7 +31,7 @@ async function loadSignin(note) {
 }
 
 function drawSignin(d, note) {
-  const card = $("#gen-signin"), locked = d.only;
+  const card = $("#signin-provider"), locked = d.only;
   SIGNIN = {d};
   const msg = el("span", {class: "msg set-msg"});
   const mark = () => { const n = signinTyped().length; for (const [k] of SIGNIN_FIELDS) signinIn(k)?.closest(".set-row").classList.toggle("set-changed", signinTyped().some(([t]) => t === k));
@@ -74,7 +74,7 @@ function drawSignin(d, note) {
     "it asks. " + (offered ? "" : d.configured ? "Offered once your own identity there has signed in: link it under Sign-in and security. " : "Offered once it's set up. ") +
     "If the provider stops working, python -m server.manage oidc-only off turns this back.";
   card.replaceChildren(...present(
-    el("div", {class: "set-hd"}, el("h2", {id: "gen-signin-hd", tabindex: -1, text: "Sign-in provider"})),
+    el("div", {class: "set-hd"}, el("h2", {id: "signin-provider-hd", tabindex: -1, text: "Sign-in provider"})),
     // (its first line the hint, the rest behind the heading's ⓘ: one line at 1400 px, as every card's)
     helpNodes("One OpenID Connect provider, to sign in with on the sign-in page.\nLike Authentik, Keycloak, Authelia or Google: " +
       "each person who links their identity there signs in with it. Nobody is contacted until it's set up. Its fields apply with Save; Sign in with OIDC only, at once."),
@@ -99,7 +99,7 @@ async function signinSave(msg, had) {
   try { await fresh(() => call("settings/install/oidc", "PUT", body), signinReauth()); }
   catch (e) { sayIn(msg, `The sign-in provider isn't saved: ${e.message}`, true); return; }
   await loadSignin("Saved the sign-in provider.");
-  if (had) $("#gen-signin-hd").focus();
+  if (had) $("#signin-provider-hd").focus();
   toast("Saved the sign-in provider.");
   ME.sign_in_provider = SIGNIN.d.configured ? {label: SIGNIN.d.label, only: SIGNIN.d.only} : null;
   if (typeof loadOidc === "function") loadOidc();   // (You → Sign-in and security's card, account.js)
@@ -107,7 +107,7 @@ async function signinSave(msg, had) {
 function signinDiscard() {
   if (!SIGNIN) return;
   drawSignin(SIGNIN.d, "Changes discarded: back as saved.");
-  $("#gen-signin-hd").focus();
+  $("#signin-provider-hd").focus();
 }
 /* Sign in with OIDC only: switched at once, after the fresh check; turning it on is asked first */
 async function signinOnly(box) {

@@ -104,7 +104,7 @@ class OIDC(unittest.TestCase):
         return code_now(secret)
 
     def set_up(self, **more):
-        """The provider set up, as an admin does under General → Sign-in provider."""
+        """The provider set up, as an admin does under Accounts and sign-in → Sign-in provider."""
         ada = self.signed_in("ada")
         r = ada.put("/api/settings/install/oidc", json={"issuer": self.idp.issuer, "client_id": "sanguity-test",
                                                         "secret": SECRET, "label": "Authentik (fictional)", **more}, headers=H)

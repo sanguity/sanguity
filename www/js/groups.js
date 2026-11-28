@@ -113,17 +113,8 @@ const SG_PAGES = {
         ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches lab tests"]]},
     // Install: the Admin page's groups (#167: admin.js, admin-sources.js, admin-backups.js, outside.js, activity.js),
     // admins only. General (#998) first: the server's own settings, each of its sections (#1000-#1005) a part in its has
-    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-security", "gen-signin", "gen-backups", "gen-phone", "gen-notify", "gen-restart", "gen-experimental", "gen-ocr", "gen-demo", "gen-about"], place: "admin", words: "server install configuration",
+    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-backups", "gen-phone", "gen-notify", "gen-restart", "gen-experimental", "gen-ocr", "gen-demo", "gen-about"], place: "admin", words: "server install configuration",
      finds: [["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names published web port forwarded request"],
-       // (each of its rows' labels finds it, #524; "onetime", not "one-time": a word typed is found at a word's start, so it's
-       // still found by "one-time", but not whole, so "one-time password" finds Accounts first, where one is made, #502)
-       ["Security", "gen-security", "sign-in lasts session length days hours with second factor without idle when unused sign out " +
-        "who may create profiles admins only shortest password length characters two factor onetime temporary time works fresh " +
-        "check minutes"],
-       ["Wrong tries before a wait", "gen-security", "password throttle attempts one account from place address any anywhere"],   // (an entry of its own: "create account" is Accounts')
-       ["Require two-factor sign-in", "gen-security", "2fa everyone"],   // (#1001; #528: "require 2fa", Accounts' before)
-       ["Sign-in provider", "gen-signin", "oidc openid connect single sign-on sso issuer client id secret redirect uri scopes acr " +
-        "that counts as two factors button's name authentik keycloak authelia google test connection sign in with oidc only passwords off"],   // (#1109)
        ["Backups and logging", "gen-backups", "backups folder encryption key file keys logs log output docker security activity kept days how long delete older"],   // (the schedule's Backups', #532: it only links there)
        ["Phone receiver", "gen-phone", "upload address watch scale health connect receiver port time zone unclaimed restore replaced"],
        ["Notifications", "gen-notify", "notification server ntfy topic push access token test send"],   // (#1130)
@@ -133,9 +124,20 @@ const SG_PAGES = {
        ["Demo profile", "gen-demo", "demo sample example fictional made-up look around try add remove demo"],   // (#1101)
        ["About", "gen-about", "version release releases what's new schema database deployed deployment truenas unraid casaos docker folders runs as user uid gid configuration limits upload size zip journal photo sync attachment timeout health links " +
         "server internal port bind secure session cookie"]]},   // (Host's and Security's before, #1119)
-    {id: "accounts", title: "Accounts", icon: "user-cog", part: "Install", admin: true, has: ["users"], place: "admin",
+    // (#1119, the owner's decision) Accounts and sign-in: People, then Sign-in rules and Sign-in provider (General's
+    // before), found by their words as there
+    {id: "accounts", title: "Accounts and sign-in", icon: "user-cog", part: "Install", admin: true, has: ["users", "signin-rules", "signin-provider"], place: "admin",
      words: "users new create add account reset password one-time temporary remove delete disable enable make admin " +
-       "owner ownerless profile without an turn off sign-in admin someone"},   // (#495, #499, #502: what's done to an account; #506: Make owner, under the list; #515: enable; requiring two-factor sign-in: General's, #1001)
+       "owner ownerless profile without an turn off sign-in admin someone people",   // (#495, #499, #502: what's done to an account; #506: Make owner, under the list; #515: enable)
+     finds: [   // (each of its rows' labels finds it, #524; "onetime", not "one-time": a word typed is found at a word's start, so it's
+       // still found by "one-time", but not whole, so "one-time password" finds the group first, where one is made, #502)
+       ["Sign-in rules", "signin-rules", "security sign-in lasts session length days hours with second factor without idle when unused sign out " +
+        "who may create profiles admins only shortest password length characters two factor onetime temporary time works fresh " +
+        "check minutes"],
+       ["Wrong tries before a wait", "signin-rules", "password throttle attempts one account from place address any anywhere"],   // (an entry of its own: "create account" is People's)
+       ["Require two-factor sign-in", "signin-rules", "2fa everyone"],   // (#1001; #528: "require 2fa")
+       ["Sign-in provider", "signin-provider", "oidc openid connect single sign-on sso issuer client id secret redirect uri scopes acr " +
+        "that counts as two factors button's name authentik keycloak authelia google test connection sign in with oidc only passwords off"]]},   // (#1109)
     {id: "installLog", title: "Install activity", icon: "logs", part: "Install", admin: true, has: ["installLog"], place: "admin", words: "log sign-ins failed audit"},
     {id: "backups", title: "Backups", icon: "archive", part: "Install", admin: true, has: ["backups"], place: "admin", words: "backup restore back up now make check show all fewer " +
       "schedule how often daily weekly off keep newest many oldest replaced delete now before-restore"},   // #200 (#595: Restore's; #532: its schedule's; and each field's and segmented control's label finds its place)

@@ -27,7 +27,7 @@
   check ARCHIVE                          restore a backup into a temporary folder beside it, compare it with what it
                                          says it holds, then delete the copy (the Admin page's Check a backup); safe
                                          while the app runs: the live data isn't touched
-  oidc-only off                          turn off Settings → Install → General → Sign-in provider's "Sign in with OIDC
+  oidc-only off                          turn off Settings → Install → Accounts and sign-in → Sign-in provider's "Sign in with OIDC
                                          only", so passwords and passkeys sign in again (a provider that keeps everyone out)
   config show                            the server's settings: each one's value, and whether the environment sets
                                          it, an admin saved it in the app (or on Needs a restart, applied at start:
