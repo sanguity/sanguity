@@ -416,7 +416,8 @@ define("phone.uploadUrl", "phone", "Upload address", "", upload_url, scope="inst
             "phones are given each public address's name (or this page's) on the receiver's published port.")
 
 # ---------------------------------------------------------------- General → Notifications (#1130, notify.py)
-# The install's own notification server: a self-hosted ntfy topic's address. https only, unless its host is on the
+# The install's own notification server: a self-hosted ntfy server's address (each person's own topic goes after it,
+# notify.py). https only, unless its host is on the
 # local network: an address of a private range, or a name that is one word or ends in a local suffix (notify.py checks
 # again, as it sends, that such a name's addresses are all on the local network). Its access token is a secret, kept
 # apart (notify.py: encrypted in meta, never given to a page), as the sign-in provider's client secret is.
@@ -442,7 +443,7 @@ def local_address(ip):
 
 
 def notify_url(v):
-    """An ntfy topic's address, or "" for none (nothing is sent)."""
+    """An ntfy server's address (each person's own topic goes after it), or "" for none (nothing is sent)."""
     if v is None or (isinstance(v, str) and not v.strip()):
         return ""
     v = _text(v, "The notification server", 300)
@@ -452,23 +453,24 @@ def notify_url(v):
     except ValueError:
         u = None
     if (u is None or u.scheme not in ("http", "https") or not u.hostname or " " in v or "@" in u.netloc
-            or not u.path.strip("/") or u.query or u.fragment):
-        raise SettingError(f"“{v}” isn't a topic's address like https://ntfy.example.com/sanguity: https://, then your "
-                           "server's name and the topic.")
+            or u.query or u.fragment):
+        raise SettingError(f"“{v}” isn't a server's address like https://ntfy.example.com: https://, then your server's "
+                           "name (and a path, if it's served under one).")
     if u.scheme == "http" and not local_host(u.hostname):
         raise SettingError(f"“{v}” would send notifications unencrypted over the internet: use https://. http:// is "
                            "only for a server on your local network (like 192.168.1.20, or a name like ntfy.lan).")
-    return v
+    return v.rstrip("/")
 
 
 section("notify", "Notifications", "Sent only to a notification server you run yourself, and only to the people who "
-        "turn them on.\nA self-hosted ntfy server's topic. Nothing is sent until it's set and someone turns them on "
-        "for a profile, under Settings → Notifications. Each says only which profile and what kind (\u201cSanguity: new "
-        "results for Ben\u201d, \u201cSanguity: a dose is due for Ben\u201d): never a result, a medication or anything "
-        "else of the records. Tapping one opens Sanguity, where its person signs in to see what it is.")
+        "turn them on.\nA self-hosted ntfy server. Nothing is sent until it's set and someone turns them on for a profile, "
+        "under Settings → Notifications: each person gets a topic of their own there, unguessable, that only they "
+        "subscribe to, and only the profiles they can see. Each says only which profile and what kind (\u201cSanguity: "
+        "new results for Ben\u201d, \u201cSanguity: a dose is due for Ben\u201d): never a result, a medication or "
+        "anything else of the records. Tapping one opens Sanguity, where its person signs in to see what it is.")
 define("notify.url", "notify", "Notification server", "", notify_url, scope="install", private=False, kind="url",
-       help="Your ntfy server's topic, like https://ntfy.example.com/sanguity. https:// only, unless the server is on "
-            "your local network (like http://192.168.1.20/sanguity, or http://ntfy.lan/sanguity). Empty: nothing is sent.")
+       help="Your ntfy server's address, like https://ntfy.example.com. https:// only, unless the server is on your "
+            "local network (like http://192.168.1.20, or http://ntfy.lan). Empty: nothing is sent.")
 
 
 # ---------------------------------------------------------------- General → Security (#1001)

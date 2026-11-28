@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Notifications (#1130, server/notify.py), against a fake ntfy server: off until an admin sets a notification server
-and someone turns them on; https only unless the server is on the local network; the access token write-only (never
-in an answer), sent as Authorization: Bearer, the environment's winning, kept for the host it was saved for; each
-person's choice per profile they can see and per kind; new results (a pull's own call is test_connections.py's, in
+and someone turns them on; https only unless the server is on the local network, an http name connected to at the
+address checked; the access token write-only (never in an answer), sent as Authorization: Bearer, the environment's
+winning (a bad one ignored, never quoted), each sent only to the scheme and host it's for; each person's own topic
+(unguessable, made new on request), a profile's notifications only to the topics of the people who turned them on
+and can still see it, one each; each person's choice per profile they can see and per kind; new results (a pull's own call is test_connections.py's, in
 its incremental pull) and doses due, each sent once (a restart makes none again), a paused line or one with Remind me
 off none, in the line's time zone; retried, and logged in Install activity without its words when it never goes
 through; listed under Outside connections; and no notification carries anything of the records (every payload's words
@@ -10,7 +12,7 @@ checked). Fictional people only; nothing real is contacted.
 
   python3 tests/test_notify.py
 """
-import json, logging, os, sys, tempfile, time, unittest
+import json, logging, os, socket, sys, tempfile, time, unittest
 from datetime import date, datetime, timedelta
 from unittest import mock
 
@@ -89,9 +91,10 @@ class Notify(unittest.TestCase):
         self.ntfy.posts, self.ntfy.status = [], 200
         main.sec.throttle._fails.clear()
         db = dbm.connect()
-        for t in ("notify_optins", "notify_sent", "med_reminders", "outside_contacts"):
+        for t in ("notify_optins", "notify_sent", "notify_topics", "med_reminders", "outside_contacts"):
             db.execute(f"DELETE FROM {t}")
-        db.execute("DELETE FROM meta WHERE k=?", (notify.TOKEN_META,))
+        db.execute("DELETE FROM meta WHERE k IN (?, ?)", (notify.TOKEN_META, notify.ENV_META))
+        notify._tested.clear()
         settings.clear(db, ["notify.url"], "install")
         db.close()
 
@@ -145,6 +148,9 @@ class Notify(unittest.TestCase):
     def bodies(self):
         return [p["body"] for p in self.ntfy.posts]
 
+    def topic(self, name):
+        return "/" + notify.topic(self.db(), self.uid[name])
+
     # ------------------------------------------------------------ off by default
     def test_nothing_is_sent_or_contacted_before_a_server_is_set(self):
         self.assertFalse(notify.configured())
@@ -162,24 +168,41 @@ class Notify(unittest.TestCase):
         self.assertNotIn("notifications", kim.get("/api/outside").json())
 
     def test_https_only_unless_the_server_is_on_the_local_network(self):
-        ok = ["https://ntfy.example.test/sanguity", "http://192.168.1.20/sanguity", "http://10.0.0.5:8080/t",
-              "http://ntfy.lan/sanguity", "http://ntfy/sanguity", "http://[fd00::1]/t", "http://100.101.1.2/t", ""]
+        ok = ["https://ntfy.example.test", "http://192.168.1.20", "http://10.0.0.5:8080", "http://ntfy.lan/under",
+              "http://ntfy", "http://[fd00::1]", "http://100.101.1.2", "https://ntfy.example.test/ntfy", ""]
         for u in ok:
             self.assertEqual(settings.notify_url(u), u)
-        for u in ["http://ntfy.example.test/sanguity", "http://8.8.8.8/t", "https://ntfy.example.test/", "ftp://ntfy.lan/t",
-                  "https://user:pw@ntfy.example.test/t", "https://ntfy.example.test/t?x=1"]:
+        self.assertEqual(settings.notify_url("https://ntfy.example.test/"), "https://ntfy.example.test")
+        for u in ["http://ntfy.example.test", "http://8.8.8.8", "ftp://ntfy.lan", "https://user:pw@ntfy.example.test",
+                  "https://ntfy.example.test/?x=1", "https://ntfy.example.test/#t"]:
             with self.assertRaises(settings.SettingError, msg=u):
                 settings.notify_url(u)
         # a name sent to over http: refused as it's sent unless every address it has is local
-        self.set_server("http://ntfy.lan/sanguity")
+        port = self.ntfy.host.split(":")[1]
+        self.set_server(f"http://ntfy.lan:{port}")
+        db = self.db()
+        notify.topic(db, self.uid["kim"])
         with mock.patch("server.net.resolve", return_value=["8.8.4.4"]):
             with self.assertRaisesRegex(notify.SendError, "isn't on the local network"):
-                notify.send(self.db(), "test")
+                notify.send(db, "test", self.uid["kim"])
+        # ...and connected to at the address checked, never looked up again (#1130's review: DNS rebinding): the name
+        # resolves once, to this machine; a second lookup would go elsewhere
+        answers, real = iter([["127.0.0.1"], ["8.8.4.4"]]), socket.getaddrinfo
+
+        def numeric_only(host, *a, **k):   # (connecting to an address looks it up as itself: no name is looked up)
+            if host != "127.0.0.1":
+                raise AssertionError(f"looked up {host} again")
+            return real(host, *a, **k)
+        with mock.patch("server.net.resolve", side_effect=lambda *a: next(answers)), \
+                mock.patch("socket.getaddrinfo", side_effect=numeric_only):
+            notify.send(db, "test", self.uid["kim"])
+        (p,) = self.ntfy.posts
+        self.assertEqual((p["headers"]["Host"], p["path"]), (f"ntfy.lan:{port}", self.topic("kim")))
 
     # ------------------------------------------------------------ the admin's settings
     def test_the_server_its_write_only_token_and_test(self):
         ada = self.signed_in("ada")
-        r = ada.put("/api/settings/install/notify.url", json={"value": "http://ntfy.example.test/x"}, headers=H)
+        r = ada.put("/api/settings/install/notify.url", json={"value": "http://ntfy.example.test"}, headers=H)
         self.assertEqual(r.status_code, 400)
         self.assertIn("https://", r.json()["detail"])
         r = ada.put("/api/settings/install/notify.url", json={"value": self.ntfy.url}, headers=H)
@@ -190,19 +213,22 @@ class Notify(unittest.TestCase):
             got = ada.get(path)
             self.assertNotIn(TOKEN, got.text, path)
         d = ada.get("/api/settings/install/notify").json()
-        self.assertEqual((d["token"], d["host"]), ("install", self.ntfy.url.split("/")[2]))
+        self.assertEqual((d["token"], d["host"]), ("install", self.ntfy.host))
         r = ada.post("/api/settings/install/notify/test", headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         (p,) = self.ntfy.posts
-        self.assertEqual(p["path"], "/sanguity-fictional")
+        self.assertEqual(p["path"], self.topic("ada"), "the admin's own topic")
+        self.assertRegex(p["path"], r"^/sanguity-[A-Za-z0-9_-]{24}$")
         self.assertEqual(p["headers"]["Authorization"], "Bearer " + TOKEN)
         self.assertEqual(p["headers"]["Title"], "Sanguity")
         self.assertEqual(p["headers"]["Click"], ORIGIN, "tapping opens Sanguity")
         self.assertEqual(p["body"], notify.message("test"))
-        # the token is kept for that host alone: a server elsewhere has none until one is saved for it
-        self.set_server("https://ntfy.example.test/sanguity")
-        self.assertIsNone(notify.token_source(self.db()))
-        self.assertNotIn("Authorization", notify.request(self.db(), "test")[1])
+        # the token is kept for that scheme and host alone: a server elsewhere, or the same host over the other scheme,
+        # has none until one is saved for it
+        for elsewhere in ("https://ntfy.example.test", "https://" + self.ntfy.host):
+            self.set_server(elsewhere)
+            self.assertIsNone(notify.token_source(self.db()))
+            self.assertNotIn("Authorization", notify.request(self.db(), "test", claim=True)[1])
         self.set_server()
         self.assertEqual(notify.token_source(self.db()), "install")
         # removed; and the environment's wins, and can't be changed here
@@ -210,9 +236,10 @@ class Notify(unittest.TestCase):
         with mock.patch.dict(os.environ, {"NOTIFY_TOKEN": "tk_from_the_environment"}):
             self.assertEqual(ada.get("/api/settings/install/notify").json()["token"], "environment")
             self.assertEqual(ada.put("/api/settings/install/notify/token", json={"token": "x"}, headers=H).status_code, 409)
-            self.assertEqual(notify.request(self.db(), "test")[1]["Authorization"], "Bearer tk_from_the_environment")
+            self.assertEqual(notify.request(self.db(), "test", claim=True)[1]["Authorization"], "Bearer tk_from_the_environment")
         # a failed test says why, and the admin's actions are in Install activity by name only
         self.ntfy.status = 403
+        notify._tested.clear()
         r = ada.post("/api/settings/install/notify/test", headers=H)
         self.assertEqual(r.status_code, 502)
         self.assertIn("refused the access token", r.json()["detail"])
@@ -251,16 +278,134 @@ class Notify(unittest.TestCase):
         self.assertFalse(kim.get("/api/me/notify").json()["profiles"][0]["doses"])
         # in the profile's activity, for its owners
         log = [e for e in activity.for_profile(self.db(), self.pid, action="notify")]
-        self.assertEqual({(e["actor"], e["detail"]["kind"], e["detail"]["on"]) for e in log}, {("kim", "results", True), ("lee", "doses", True)})
+        self.assertLessEqual({("kim", "results", True), ("lee", "doses", True)}, {(e["actor"], e["detail"]["kind"], e["detail"]["on"]) for e in log})
         # someone whose access ends gets none
         db = self.db()
         notify.choose(db, self.uid["lee"], self.pid, "results", True)
         db.execute("DELETE FROM memberships WHERE user_id=? AND profile_id=?", (self.uid["lee"], self.pid))
         try:
             db.execute("DELETE FROM notify_optins WHERE user_id=?", (self.uid["kim"],))
-            self.assertFalse(notify.wanted(db, self.pid, "results"))
+            self.assertEqual(notify.wanting(db, self.pid, "results"), [])
         finally:
             db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (self.uid["lee"], self.pid))
+
+    # ------------------------------------------------------------ each person's own topic (#1130's review)
+    def test_each_person_has_their_own_topic_and_gets_one_each(self):
+        self.set_server()
+        kim, lee = self.signed_in("kim"), self.signed_in("lee")
+        for c in (kim, lee):
+            c.put("/api/me/notify", json={"profile": self.pid, "kind": "results", "on": True}, headers=H)
+        tk, tl = kim.get("/api/me/notify").json()["topic"], lee.get("/api/me/notify").json()["topic"]
+        self.assertNotEqual(tk, tl)
+        self.assertTrue(tk.startswith(self.ntfy.url + "/sanguity-"))
+        db = self.db()
+        with dbm.transaction(db):
+            notify.new_results(db, self.pid, 80)
+        self.assertEqual(notify.run_queued(db), 2)
+        self.assertEqual(sorted(p["path"] for p in self.ntfy.posts), sorted([self.topic("kim"), self.topic("lee")]))
+        self.assertEqual(self.bodies(), ["Sanguity: new results for Ben"] * 2)
+        # kept encrypted
+        raw = db.execute("SELECT topic FROM notify_topics WHERE user_id=?", (self.uid["kim"],)).fetchone()[0]
+        self.assertNotIn("sanguity-", raw)
+
+    def test_someone_without_access_never_gets_one(self):
+        """lee's access to Ben ends: nothing more of Ben's reaches lee's topic, made or queued; kim's still does. And
+        mira's profile, which kim can't see, never reaches kim's."""
+        self.set_server()
+        db = self.db()
+        self.opt_in("kim", "results")
+        self.opt_in("lee", "results")
+        self.opt_in("lee", "results", pid=self.other)
+        with dbm.transaction(db):
+            notify.new_results(db, self.pid, 81)   # queued for both
+        db.execute("DELETE FROM memberships WHERE user_id=? AND profile_id=?", (self.uid["lee"], self.pid))
+        self.addCleanup(lambda: dbm.connect().execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')",
+                                                       (self.uid["lee"], self.pid)))
+        with dbm.transaction(db):
+            notify.new_results(db, self.pid, 82)
+            notify.new_results(db, self.other, 83)
+        notify.run_queued(db)
+        got = sorted((p["path"], p["body"]) for p in self.ntfy.posts)
+        self.assertEqual(got, sorted([(self.topic("kim"), "Sanguity: new results for Ben")] * 2
+                                     + [(self.topic("lee"), "Sanguity: new results for Mira (fictional)")]))
+        self.assertEqual(db.execute("SELECT state FROM notify_sent WHERE key=?", (f"results:81:{self.uid['lee']}",)).fetchone()[0], "dropped")
+        # a disabled account gets none either
+        db.execute("UPDATE users SET disabled=1 WHERE id=?", (self.uid["kim"],))
+        try:
+            with dbm.transaction(db):
+                notify.new_results(db, self.pid, 84)
+            self.assertEqual(notify.wanting(db, self.pid, "results"), [])
+        finally:
+            db.execute("UPDATE users SET disabled=0 WHERE id=?", (self.uid["kim"],))
+
+    def test_make_a_new_topic_and_a_test_to_ones_own(self):
+        self.set_server()
+        kim = self.signed_in("kim")
+        old = kim.get("/api/me/notify").json()["topic"]
+        self.assertEqual(kim.get("/api/me/notify").json()["topic"], old, "kept")
+        new = kim.post("/api/me/notify/topic", headers=H).json()["topic"]
+        self.assertNotEqual(new, old)
+        self.assertEqual(kim.post("/api/me/notify/test", headers=H).status_code, 200)
+        self.assertEqual([p["path"] for p in self.ntfy.posts], [self.topic("kim")])
+        self.assertEqual(self.ntfy.posts[0]["path"], "/" + new.rsplit("/", 1)[1], "the new one, never the old")
+        self.assertEqual(kim.post("/api/me/notify/test", headers=H).status_code, 502, "not again at once")
+        acts = [e["action"] for e in activity.for_accounts(self.db())]
+        self.assertIn("notify.topic", acts)
+        self.assertFalse(any(old.rsplit("/", 1)[1] in json.dumps(e) or new.rsplit("/", 1)[1] in json.dumps(e)
+                             for e in activity.for_accounts(self.db())), "no topic in any log")
+
+    def test_a_restore_keeps_todays_topics_choices_and_token(self):
+        from server import backup
+        self.assertLessEqual({"notify_topics", "notify_optins", "notify_sent"}, set(backup.ACCESS_TABLES))
+        self.assertLessEqual({notify.TOKEN_META, notify.ENV_META}, set(backup.INSTALL_META))
+        self.assertIn(("notify_topics", "user_id", "topic"), atrest.FIELDS)
+
+    # ------------------------------------------------------------ the environment's token (#1130's review)
+    def test_an_environment_token_that_cant_be_sent_is_ignored_unquoted(self):
+        self.set_server()
+        db = self.db()
+        notify.topic(db, self.uid["kim"])
+        bad = "tk_secret_word\nX-Injected: yes"
+        notify._warned.clear()
+        with mock.patch.dict(os.environ, {"NOTIFY_TOKEN": bad}), self.assertLogs("sanguity.notify", "WARNING") as logs:
+            self.assertEqual(notify.token(db, claim=True), "")
+            notify.send(db, "test", self.uid["kim"])
+        self.assertNotIn("Authorization", self.ntfy.posts[0]["headers"])
+        self.assertNotIn("X-Injected", self.ntfy.posts[0]["headers"])
+        self.assertFalse(any("tk_secret_word" in m for m in logs.output))
+        # a header http.client refuses all the same: a SendError that doesn't quote it
+        with mock.patch.object(notify, "request", return_value=(b"x", {"Authorization": "Bearer tk_secret_word\r\nX: y"})):
+            with self.assertRaises(notify.SendError) as e:
+                notify.send(db, "test", self.uid["kim"])
+        self.assertNotIn("tk_secret_word", str(e.exception))
+
+    def test_the_environment_token_goes_to_the_first_scheme_and_host_alone(self):
+        self.set_server()
+        db = self.db()
+        notify.topic(db, self.uid["kim"])
+        with mock.patch.dict(os.environ, {"NOTIFY_TOKEN": "tk_env_one"}):
+            notify.send(db, "test", self.uid["kim"])
+            self.assertEqual(self.ntfy.posts[-1]["headers"]["Authorization"], "Bearer tk_env_one")
+            for elsewhere in ("https://" + self.ntfy.host, "https://ntfy.example.test"):
+                self.set_server(elsewhere)
+                self.assertEqual(notify.token_source(db), "environment-elsewhere")
+                self.assertNotIn("Authorization", notify.request(db, "test", claim=True)[1])
+            self.set_server()
+            self.assertEqual(notify.token_source(db), "environment")
+        with mock.patch.dict(os.environ, {"NOTIFY_TOKEN": "tk_env_two"}):   # a new token: kept for the next server it goes to
+            self.set_server("https://ntfy.example.test")
+            self.assertEqual(notify.request(db, "test", claim=True)[1]["Authorization"], "Bearer tk_env_two")
+            self.set_server()
+            self.assertNotIn("Authorization", notify.request(db, "test", claim=True)[1])
+
+    def test_the_loop_logs_no_exceptions_words(self):
+        with mock.patch.object(notify, "tick", side_effect=ValueError("Invalid header value b'Bearer tk_secret_word'")), \
+                mock.patch.object(notify._wake, "wait", side_effect=lambda t: notify._stop.set()), \
+                self.assertLogs("sanguity.notify", "ERROR") as logs:
+            notify._stop.clear()
+            notify._loop()
+        notify._stop.clear()
+        self.assertEqual(logs.output, ["ERROR:sanguity.notify:notifications: ValueError"])
 
     # ------------------------------------------------------------ new results
     def test_new_results_once_each_and_only_when_wanted(self):
@@ -290,7 +435,7 @@ class Notify(unittest.TestCase):
             notify.new_results(db, self.pid, 44)
         notify.choose(db, self.uid["kim"], self.pid, "results", False)
         self.assertEqual(notify.run_queued(db), 0)
-        self.assertEqual(db.execute("SELECT state FROM notify_sent WHERE key='results:44'").fetchone()[0], "dropped")
+        self.assertEqual(db.execute("SELECT state FROM notify_sent WHERE key LIKE 'results:44:%'").fetchone()[0], "dropped")
 
     # ------------------------------------------------------------ doses
     def test_a_dose_due_is_sent_once_at_its_time(self):
@@ -355,7 +500,7 @@ class Notify(unittest.TestCase):
         now = dbm.now()
         for i in range(notify.TRIES):
             self.assertEqual(notify.run_queued(db, now=now), 0)
-            r = db.execute("SELECT state, tries, next_at FROM notify_sent WHERE key='results:50'").fetchone()
+            r = db.execute("SELECT state, tries, next_at FROM notify_sent WHERE key LIKE 'results:50:%'").fetchone()
             self.assertEqual(r["tries"], i + 1)
             if i < notify.TRIES - 1:
                 self.assertEqual((r["state"], r["next_at"]), ("queued", now + notify.BACKOFF[i]))
@@ -384,14 +529,15 @@ class Notify(unittest.TestCase):
             notify.new_results(db, self.pid, 60)
         settings.clear(db, ["notify.url"], "install")
         self.assertEqual(notify.run_queued(db), 0)
-        self.assertEqual(db.execute("SELECT state FROM notify_sent WHERE key='results:60'").fetchone()[0], "dropped")
+        self.assertEqual(db.execute("SELECT state FROM notify_sent WHERE key LIKE 'results:60:%'").fetchone()[0], "dropped")
         self.assertEqual(self.ntfy.posts, [])
 
     # ------------------------------------------------------------ outside connections
     def test_listed_under_outside_connections(self):
         self.set_server()
-        notify.send(self.db(), "test", p=notify.permit(self.db()))
-        host = self.ntfy.url.split("/")[2]
+        notify.topic(self.db(), self.uid["kim"])
+        notify.send(self.db(), "test", self.uid["kim"], p=notify.permit(self.db()))
+        host = self.ntfy.host
         ada, kim = self.signed_in("ada"), self.signed_in("kim")
         v = ada.get("/api/outside").json()
         self.assertIn(host, v["may_contact"])
@@ -412,7 +558,7 @@ class Notify(unittest.TestCase):
             notify.new_results(db, self.pid, 70)
         notify.due_doses(db, now=self.at("08:01"))
         notify.run_queued(db)
-        notify.send(db, "test")
+        notify.send(db, "test", self.uid["kim"])
         allowed = {notify.message(k, "Ben") for k in notify.TEXTS}
         posts = self.all_posts + self.ntfy.posts
         self.assertGreaterEqual(len(self.ntfy.posts), 3)

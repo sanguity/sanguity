@@ -93,6 +93,7 @@ const WHAT = {
   notify: d => `turned ${d.on ? "on" : "off"} notifications of ${d.kind === "doses" ? "dose reminders" : "new results"}`,
   "notify.test": d => d.ok ? "sent a test notification" : `couldn't send a test notification (${d.why})`,
   "notify.token": d => d.change === "remove" ? "removed the notification server's access token" : "saved the notification server's access token",
+  "notify.topic": () => "made a new notification topic of their own",
   "notify.fail": d => `couldn't send a notification of ${d.kind === "doses" ? "a dose due" : "new results"} after ${d.tries} tries (${d.why})`,
   "settings.require_2fa": d => d.on ? "required two-factor sign-in for everyone" : "stopped requiring two-factor sign-in",
   "account.remove": d => `removed the account ${d.username}` +
