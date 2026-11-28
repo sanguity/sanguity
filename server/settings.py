@@ -324,10 +324,9 @@ define("sync.attachAuto", "sync", "Fetch attachments automatically", True, yes_n
        help="Off: each sync lists the attachments it left out, and you fetch the ones you want.")
 define("sync.attachMaxMB", "sync", "Largest attachment fetched (MB)", min(20, ceiling_mb()),
        whole(1, ceiling_mb, "The largest attachment"), scope="install", private=False, kind="number",
-       # (#1008) where the ceiling is set: .env, which both compose files pass it from (#999), or the app's own
-       # environment variables where there's no .env (TrueNAS's Additional Environment Variables, an Unraid variable)
-       help=lambda: f"Bigger ones are left out and listed. At most {ceiling_mb()} MB, the server's limit: "
-                    "SYNC_MAX_ATTACHMENT_MB, on General → Needs a restart (or in .env or the app's environment variables).")
+       # (#1008, #1158) where the ceiling is set: General → Needs a restart, the page's like every server setting
+       help=lambda: f"Bigger ones are left out and listed. At most {ceiling_mb()} MB, the server's limit: One attachment, "
+                    "at most, under General → Needs a restart.")
 define("sync.attachTypes", "sync", "Kinds of attachment fetched", list(ATTACHMENT_TYPES),
        some_of(ATTACHMENT_TYPES, "Kinds of attachment"), scope="install", private=False, kind="choices",
        help="Other kinds (and these, when unticked) are left out and listed, to fetch if you want them.")
@@ -512,8 +511,9 @@ define("security.sessionDays", "security", "A sign-in lasts, with a second facto
        help="From signing in, with an authenticator app or a passkey. Shorter ends the sign-ins older than that; "
             "longer applies to new ones.")
 define("security.sessionHours", "security", "…without one (hours)", 12,
-       whole(1, 12, "A sign-in's length without a second factor"), scope="install", private=False, kind="number",
-       env="SESSION_HOURS_WITHOUT_2FA", help="For an account with no second factor yet.")
+       whole(0, 12, "A sign-in's length without a second factor"), scope="install", private=False, kind="number",
+       env="SESSION_HOURS_WITHOUT_2FA", help="For an account with no second factor yet. 0: no shorter limit, so a sign-in "
+       "without a second factor lasts as long as one with (the days above), as before Sanguity had this limit.")
 define("security.idleMinutes", "security", "Sign out when unused for (minutes)", 0, idle_minutes, scope="install",
        private=False, kind="number", env="SESSION_IDLE_MINUTES",
        help=f"0 is off. Otherwise from {IDLE_LEAST} to 1440 (a day): a sign-in left unused that long ends.")

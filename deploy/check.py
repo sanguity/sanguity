@@ -57,6 +57,9 @@ with open(os.path.join(ROOT, "server", "server_settings.py"), encoding="utf-8") 
 TEMPLATE_ENV = set(CONFIG.CONTAINER) | {"TZ", "PYTHONDONTWRITEBYTECODE"}
 MANAGED = set(CONFIG.MANAGED) | {n + "_FILE" for n in CONFIG.MANAGED}
 NOT_PASSED = ((SETTINGS - set(CONFIG.CONTAINER)) | RESTART | MANAGED) - {"TZ"}
+# (#1158) for this release, TrueNAS's and Unraid's old fields stay, as legacy, passed only when filled in: an upgraded
+# app carries them into the one-time import (copied into Settings on first start; cleared afterwards)
+LEGACY = {"PUBLIC_ORIGINS", "COOKIE_SECURE"}
 
 
 def _page_owned():
@@ -156,7 +159,8 @@ def container_only(label, services, extra=()):
     for name, svc in services.items():
         env = env_of(svc)
         if extra is None:   # (TrueNAS rendered: its library adds variables of its own) none of the server's settings
-            check(f"{label}: {name} gets none of the server's settings (#1158)", not set(env) & NOT_PASSED, sorted(set(env) & NOT_PASSED))
+            check(f"{label}: {name} gets none of the server's settings but the legacy fields (#1158)", not set(env) & NOT_PASSED - LEGACY,
+                  sorted(set(env) & NOT_PASSED - LEGACY))
             continue
         check(f"{label}: {name} gets only the container's own variables (#1158)", set(env) <= TEMPLATE_ENV | set(extra),
               sorted(set(env) - TEMPLATE_ENV - set(extra)))
@@ -289,10 +293,19 @@ def truenas(want, lib_dir):
     template = open(os.path.join(app_dir, "templates", "docker-compose.yaml"), encoding="utf-8").read()
     need = set(re.findall(r"values\.storage\.(\w+)", template))
     check("truenas: questions.yaml asks for every storage the template mounts", need <= have, sorted(need - have))
-    given = sorted(set(re.findall(r'add_env\("(\w+)"', template)) - TEMPLATE_ENV)   # (#1158) the container's own only
-    check("truenas: the template passes only the container's own variables (#1158)", not given, given)
+    given = sorted(set(re.findall(r'add_env\("(\w+)"', template)) - TEMPLATE_ENV - LEGACY)   # (#1158) the container's own only
+    check("truenas: the template passes only the container's own variables, and the legacy fields (#1158)", not given, given)
+    depth, plain = 0, []   # a legacy field's add_env outside any {% if %}: passed with its default
+    for line in template.splitlines():
+        depth += len(re.findall(r"{%-?\s*(?:if|for)\b", line)) - len(re.findall(r"{%-?\s*end(?:if|for)\b", line))
+        plain += [k for k in re.findall(r'add_env\("(\w+)"', line) if k in LEGACY and depth <= 0]
+    check("truenas: a legacy field is passed only when filled in (each add_env inside an if)", not plain, plain)
     sanguity = next(q for q in files["questions.yaml"]["questions"] if q["variable"] == "sanguity")
     defaults = {a["variable"]: a["schema"].get("default") for a in sanguity["schema"]["attrs"]}
+    legacy = {a["variable"]: a for a in sanguity["schema"]["attrs"] if a["variable"] in ("public_origins", "cookie_secure")}
+    check("truenas: the legacy fields say so, and are empty (auto) by default (#1158)",
+          len(legacy) == 2 and all("Legacy:" in a.get("description", "") for a in legacy.values())
+          and defaults.get("public_origins") == "" and defaults.get("cookie_secure") == "auto", sorted(legacy))
     check("truenas: Additional Environment Variables is empty by default", defaults.get("additional_envs") == [],
           defaults.get("additional_envs"))
     if not lib_dir:
@@ -365,7 +378,11 @@ def unraid(want):
           rp is not None and rp.get("Default") == str(ports.get(8081)) and rp.get("Required") == "true", rp is not None and rp.attrib)
     variables = {c.get("Target") for c in configs if c.get("Type") == "Variable"}
     check("unraid: sets PUID, PGID and TZ", {"PUID", "PGID", "TZ"} <= variables, sorted(variables))
-    check("unraid: sets only the container's own variables (#1158)", variables <= TEMPLATE_ENV, sorted(variables - TEMPLATE_ENV))
+    check("unraid: sets only the container's own variables, and the legacy fields (#1158)", variables <= TEMPLATE_ENV | LEGACY,
+          sorted(variables - TEMPLATE_ENV - LEGACY))
+    filled = sorted(c.get("Target") for c in configs if c.get("Type") == "Variable" and c.get("Target") in LEGACY
+                    and (c.get("Default") or (c.text or "") or "Legacy:" not in (c.get("Description") or "")))
+    check("unraid: the legacy fields are empty and say they're legacy (#1158)", not filled, filled)
     key = next((c for c in configs if c.get("Target") == "/run/secrets/sanguity"), None)
     data = next((c for c in configs if c.get("Target") == "/data"), None)
     if key is not None and data is not None:
@@ -433,7 +450,7 @@ def _kinds():
 
 def deployments():
     """Each way to deploy sets SANGUITY_DEPLOYMENT for the app, a kind General → About names (#1004); the released
-    image also sets SANGUITY_VERSION, its version."""
+    image also sets SANGUITY_IMAGE_VERSION, its version (#1158: never SANGUITY_VERSION, which .env sets to pick the tag)."""
     kinds = _kinds()
     for name, kind in (("compose.yaml", "compose"), ("compose.release.yaml", "release"),
                        (os.path.join("deploy", "casaos", "Sanguity", "docker-compose.yml"), "casaos")):
@@ -451,7 +468,7 @@ def deployments():
     check("the all-in-one container tells the app it's deployed as allinone, unless its template says (Unraid), a kind About names",
           '{"SANGUITY_DEPLOYMENT": "allinone", **base' in aio and "allinone" in kinds)
     docker = open(os.path.join(ROOT, "docker", "app.Dockerfile"), encoding="utf-8").read()
-    check("the released image sets SANGUITY_VERSION, the version About shows", "SANGUITY_VERSION=${VERSION}" in docker)
+    check("the released image sets SANGUITY_IMAGE_VERSION, the version About shows (#1158)", "SANGUITY_IMAGE_VERSION=${VERSION}" in docker)
 
 
 # ---------------------------------------------------------------- restart policies (#1121)

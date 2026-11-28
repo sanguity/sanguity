@@ -503,7 +503,7 @@ jobs:
           never = ['/app/auth', '/app/data', '/app/sources.json', '/usr/share/nginx/html/data.json']
           assert all(os.path.isfile(f) for f in need), [f for f in need if not os.path.isfile(f)]
           assert not any(os.path.exists(f) for f in never), [f for f in never if os.path.exists(f)]
-          assert os.environ['SANGUITY_VERSION'] == 'ci'"
+          assert os.environ['SANGUITY_IMAGE_VERSION'] == 'ci'"
           docker run --rm sanguity-release:ci python3 -m server.ocr check   # (#1129) its Tesseract and English
           docker run --rm --user 1000:1000 --read-only --tmpfs /tmp --add-host app:127.0.0.1 sanguity-release:ci nginx -t -e stderr
 

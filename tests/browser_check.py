@@ -3121,12 +3121,12 @@ def general_security_check(check, browser, base, cookies):
       document.getElementById('signin-rules').textContent.includes('COOKIE_SECURE') || document.getElementById('signin-rules').textContent.includes('HASH_PARALLEL'),
       [...document.querySelectorAll('main > .card')].filter(c => c.checkVisibility()).map(c => c.id), !!document.querySelector('#users #reqTf')]""")
     keys = ["sessionDays", "sessionHours", "idleMinutes", "profiles", "passwordMin", "passwordMin2fa", "tempPasswordDays",
-            "reauthMinutes", "triesHere", "triesAddress", "triesAccount"]
+            "reauthMinutes", "cookieSecure", "triesHere", "triesAddress", "triesAccount"]   # (#1158: the Secure cookie's choice)
     check("Accounts and sign-in → Sign-in rules (#1001; General → Security before #1119): each setting a row with its bounds, the "
           "two-factor switch here and not in People's card, the group People, Sign-in rules and Sign-in provider, and no read-only fact: "
           "the Secure cookie and password checks are About's and Needs a restart's (#1119)",
           drawn[0] == ["security." + k for k in keys] and drawn[2:] == [True, "accounts", False, ["users", "signin-rules", "signin-provider"], False]
-          and ["gs-sessionHours", "1", "12"] in drawn[1] and ["gs-idleMinutes", "0", "1440"] in drawn[1] and ["gs-reauthMinutes", "1", "5"] in drawn[1], drawn)
+          and ["gs-sessionHours", "0", "12"] in drawn[1] and ["gs-idleMinutes", "0", "1440"] in drawn[1] and ["gs-reauthMinutes", "1", "5"] in drawn[1], drawn)
     # past its bound: the bar's Save says why, and it stays as typed
     page.fill("#gs-triesHere", "6")
     marked = js("[document.getElementById('signin-rules').dataset.dirty, document.querySelector('[data-key=\"security.triesHere\"]').classList.contains('set-changed')]")

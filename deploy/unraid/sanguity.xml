@@ -33,5 +33,7 @@
   <Config Name="Time zone" Target="TZ" Default="UTC" Mode="" Description="Used to assign watch readings to days, e.g. America/Chicago or Europe/London." Type="Variable" Display="always" Required="true" Mask="false">UTC</Config>
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User the app runs as and owns its files (99 = nobody)." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group the app runs as (100 = users)." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+  <Config Name="Public origins (legacy)" Target="PUBLIC_ORIGINS" Default="" Mode="" Description="Legacy: copied into Settings on first start; you can clear it afterwards. The public addresses are set on Settings, Install, General, Host. (#1158)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Secure cookie (legacy)" Target="COOKIE_SECURE" Default="" Mode="" Description="Legacy: copied into Settings on first start; you can clear it afterwards. The Secure cookie is chosen on Settings, Install, Accounts and sign-in, Sign-in rules. (#1158)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Deployment" Target="SANGUITY_DEPLOYMENT" Default="unraid" Mode="" Description="How Sanguity is deployed, named on Settings, General, About. Leave it as it is." Type="Variable" Display="advanced-hide" Required="false" Mask="false">unraid</Config>
 </Container>

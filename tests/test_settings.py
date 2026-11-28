@@ -34,6 +34,7 @@ import logging   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
+OPEN = open   # (#1158: the test that no .env file is read)
 PW = {"robin": "harbour lantern pebble crow", "kim": "seventeen quiet orange kites", "lee": "maple tunnel brisk saddle",
       "ada": "admin of the fictional install", "zed": "a stranger to every profile"}
 with open(os.path.join(ROOT, "settings.example.json"), encoding="utf-8") as f:
@@ -375,6 +376,32 @@ class Settings(unittest.TestCase):
         self.assertEqual((r.status_code, r.json()["reset"]), (200, ["sync.staleDays"]), r.text)
         self.assertEqual(self.merged(1, "robin")["sync"]["staleDays"], 3)
 
+    def test_a_value_only_in_the_process_environment_is_taken_in_once(self):
+        """#1158: what an upgrade takes in is the process's environment, whatever put it there (compose's env_file or
+        environment, docker run -e, the TrueNAS app's fields, Unraid's): no .env file is read. Taken in once, then a
+        change to it is only warned about. (SESSION_HOURS_WITHOUT_2FA=0 too: SESSION_DAYS for everyone, as it meant.)"""
+        from server import settings_import
+        with contextlib.closing(dbm.connect()) as db:
+            mark = dbm.meta_get(db, settings_import.MARK)
+            try:
+                dbm.meta_set(db, settings_import.MARK, None)   # as before this version
+                with mock.patch.dict(os.environ, {"SESSION_IDLE_MINUTES": "45", "SESSION_HOURS_WITHOUT_2FA": "0"}), \
+                        mock.patch("builtins.open", side_effect=lambda *a, **k: (_ for _ in ()).throw(AssertionError(f"read {a[0]}"))
+                                   if str(a[0]).endswith(".env") else OPEN(*a, **k)):
+                    taken = settings_import.take(db, say=lambda *a: None)
+                    settings.forget_saved()
+                    self.assertTrue({"SESSION_IDLE_MINUTES", "SESSION_HOURS_WITHOUT_2FA"} <= set(taken), taken)
+                    self.assertEqual((config.setting("SESSION_IDLE_MINUTES"), config.setting("SESSION_HOURS_WITHOUT_2FA")), (45, 0))
+                with mock.patch.dict(os.environ, {"SESSION_IDLE_MINUTES": "90"}):
+                    said = []
+                    self.assertEqual(settings_import.take(db, say=said.append), [], "once")
+                    self.assertEqual(config.setting("SESSION_IDLE_MINUTES"), 45)
+                    self.assertTrue(any("SESSION_IDLE_MINUTES is set in the environment" in s for s in said), said)
+            finally:
+                settings.clear(db, ["security.idleMinutes", "security.sessionHours"], "install")
+                dbm.meta_set(db, settings_import.MARK, mark)
+                settings.forget_saved()
+
     def test_the_environment_is_taken_in_once(self):
         """#1158 (in place of #999's "the environment wins"): the first start took what the environment set into the
         settings (PUBLIC_ORIGINS, set above), logged in Install activity by start-up and said once on General; after
@@ -392,7 +419,7 @@ class Settings(unittest.TestCase):
         self.assertIn({"name": "PUBLIC_ORIGINS", "label": "Public addresses"}, got["taken"]["names"])
         with contextlib.closing(dbm.connect()) as db:
             logged = db.execute("SELECT COUNT(*) FROM activity WHERE action='settings.install' AND actor='start-up'").fetchone()[0]
-        self.assertEqual(logged, 1, "logged once, by start-up")
+        self.assertGreaterEqual(logged, 1, "logged by start-up (once here; the test above takes in once more)")
         self.assertEqual(ada.post("/api/settings/install/taken/seen", headers=H).status_code, 200)
         self.assertIsNone(ada.get("/api/settings/install").json()["taken"], "said once")
         with mock.patch.dict(os.environ, {"SYNC_HOURS": "24", "PUBLIC_ORIGINS": "https://health.example.test"}):
@@ -645,7 +672,7 @@ class Settings(unittest.TestCase):
         variable set in the environment (PASSWORD_MIN_LENGTH, here) changes nothing (#1158)."""
         ada = self.c["ada"]
         ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
-        bounds = {"security.sessionDays": (1, 30), "security.sessionHours": (1, 12), "security.idleMinutes": (5, 1440),
+        bounds = {"security.sessionDays": (1, 30), "security.sessionHours": (0, 12), "security.idleMinutes": (5, 1440),
                   "security.passwordMin": (15, 64), "security.passwordMin2fa": (8, 64), "security.tempPasswordDays": (1, 7),
                   "security.reauthMinutes": (1, 5), "security.triesHere": (3, 5), "security.triesAddress": (10, 20),
                   "security.triesAccount": (10, 30)}
@@ -773,9 +800,10 @@ class Settings(unittest.TestCase):
             self.security_reset()
 
     def test_every_variable_a_page_names_is_one_compose_reads(self):
-        """#1008: a variable a setting's help names (the Sync defaults' ceiling, SYNC_MAX_ATTACHMENT_MB), or any text the
-        app shows sends someone to .env for ("NAME in .env"), is one both compose files read from .env (${NAME:-...}):
-        the help said SYNC_MAX_ATTACHMENT_MB in .env, which no compose file passed, so setting it there did nothing."""
+        """#1008, #1158: a variable a setting's help names, or any text the app shows sends someone to .env for ("NAME in
+        .env"), is one the container sets (config.CONTAINER) or an install may manage there (config.MANAGED), never a
+        page setting; one sent to .env for is one both compose files read from .env (${NAME:-...}). (#1008: the help said
+        SYNC_MAX_ATTACHMENT_MB in .env, which no compose file passed; #1158: it's the page's now, and the help says where.)"""
         import glob, re
         var = re.compile(r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b")
         named = {}
@@ -789,12 +817,19 @@ class Settings(unittest.TestCase):
             with open(path, encoding="utf-8") as f:
                 for m in re.finditer(r"\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\b[^.\n]{0,12}\bin \.env\b", f.read()):
                     named[m.group(1)] = os.path.relpath(path, ROOT)
-        self.assertIn("SYNC_MAX_ATTACHMENT_MB", named)
-        self.assertIn("SYNC_MAX_ATTACHMENT_MB", settings.SETTINGS["sync.attachMaxMB"].public()["help"])
+        self.assertIn("Needs a restart", settings.SETTINGS["sync.attachMaxMB"].public()["help"])
+        composed = set()   # (the compose files' own: WEB_PORT, BACKUP_DIR... the container's, read by compose itself)
+        for name in ("compose.yaml", "compose.release.yaml"):
+            with open(os.path.join(ROOT, name), encoding="utf-8") as f:
+                composed |= set(re.findall(r"\$\{(\w+):-", f.read()))
+        page = {v: where for v, where in named.items()
+                if v not in config.CONTAINER and v not in composed and v.removesuffix("_FILE") not in config.MANAGED}
+        self.assertEqual(page, {}, "a page setting named as if it were set in .env")
+        dotenv = {v: where for v, where in named.items() if (v in config.CONTAINER or v in composed) and not where.endswith("help")}
         for name in ("compose.yaml", "compose.release.yaml"):
             with open(os.path.join(ROOT, name), encoding="utf-8") as f:
                 text = f.read()
-            missing = {v: where for v, where in named.items() if "${" + v + ":-" not in text}
+            missing = {v: where for v, where in dotenv.items() if "${" + v + ":-" not in text}
             self.assertEqual(missing, {}, f"named, but {name} doesn't read it from .env")
 
     def test_a_whole_value_saved_from_an_old_read_is_refused(self):   # #923
@@ -952,12 +987,12 @@ class Settings(unittest.TestCase):
         for kind, version, want in (("truenas", "1.2.3", ("1.2.3", False)), ("release", "1.2.3", ("1.2.3", False)),
                                     ("compose", "", (None, True)), ("allinone", "dev", (None, True)), ("", "", (None, True)),
                                     ("no-such-kind", "1.2.3", ("1.2.3", False))):
-            with mock.patch.dict(os.environ, SANGUITY_DEPLOYMENT=kind, SANGUITY_VERSION=version):
-                a = ada.get("/api/settings/install/about").json()
+            with mock.patch.dict(os.environ, SANGUITY_DEPLOYMENT=kind, SANGUITY_IMAGE_VERSION=version, SANGUITY_VERSION="9.9.9"):
+                a = ada.get("/api/settings/install/about").json()   # (#1158: .env's SANGUITY_VERSION, handed to the app, never read)
             named = kind if kind in general.KINDS else "other"
             self.assertEqual((a["deployment"], a["deployment_name"]), (named, general.KINDS[named]["name"]))
             self.assertEqual((a["version"], a["checkout"]), want, kind)
-            with mock.patch.dict(os.environ, SANGUITY_DEPLOYMENT=kind, SANGUITY_VERSION=version):   # the records page's foot, for everyone
+            with mock.patch.dict(os.environ, SANGUITY_DEPLOYMENT=kind, SANGUITY_IMAGE_VERSION=version, SANGUITY_VERSION="9.9.9"):   # the records page's foot
                 self.assertEqual(self.c["robin"].get("/api/me").json()["version"], want[0], kind)
             folders = {f["key"]: f for f in a["folders"]}
             self.assertEqual(folders["data"]["path"], config.DATA_DIR)

@@ -210,17 +210,22 @@ Sanguity is configured the way Sonarr and Radarr are (#1158): **every server set
 restart). That's the public addresses, the phone upload address, sign-in lengths and idle sign-out, the shortest
 passwords and the other sign-in limits, the Secure sign-in cookie, how long the activity log keeps entries, connected
 sources, the upload, connected-source and Health Link limits, the password checks at once, the trusted proxies, and
-the phone receiver's time zone and days. Each one's value is the one saved in the app, else its default.
+the phone receiver's time zone and days, and how long it waits for other servers (Needs a restart → Timeouts: a
+connected source's vendor, a Health Link's server, the sign-in provider, the notification server, the provider
+directory's lists and text-recognition downloads). Each one's value is the one saved in the app, else its default.
 
 `.env` (and the templates' variables) holds only what the container itself needs: the user and group IDs (`PUID`,
 `PGID`), the folders, the published ports (`WEB_PORT`, `RECEIVER_PORT`), the containers' clock (`TZ`) and, for a
-release, the version. Settings → Install shows those as facts, with where they're set. `tests/test_env_audit.py`
+release, the image's tag (`SANGUITY_VERSION`, which picks the image; About shows the version the image itself carries).
+For this release the TrueNAS and Unraid templates keep their Public Origins and Secure Cookie fields, marked legacy: an
+upgraded app carries them into the one-time import below; clear them afterwards. Settings → Install shows those as facts, with where they're set. `tests/test_env_audit.py`
 lists every variable the server reads and why each that isn't a setting can't be one.
 
 **Upgrading from a version that read them from `.env`:** on the first start of this version, each setting still set
 in the environment is copied into the app once. Install activity says which, and Settings → Install → General says so
-once. From then on a change to it in `.env` is ignored, with a warning in the app's log naming it; take those lines
-out at your leisure. (The compose files hand `.env` to the app as it is, so it sees them.)
+once. It reads the app's own environment, whatever put a value there: `.env` (the compose files hand it to the app as
+it is), `docker run -e`, the TrueNAS app's fields or an Unraid variable. From then on a change to it there is ignored,
+with a warning in the app's log naming it; take those lines out at your leisure.
 
 **Opt-in: managed by the environment.** The sign-in provider's fields (`OIDC_ISSUER`, `OIDC_CLIENT_ID`,
 `OIDC_CLIENT_SECRET`, `OIDC_SCOPES`, `OIDC_BUTTON`, `OIDC_ACR`, `OIDC_ONLY`) and the notification token

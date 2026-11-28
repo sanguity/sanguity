@@ -26,7 +26,7 @@ activity log ("directory.update").
 """
 import json, logging, os, shutil, subprocess, sys, tempfile, threading, time, urllib.parse
 
-from .. import activity, db as dbm, net, outside, settings
+from .. import activity, config, db as dbm, net, outside, settings
 from . import build, local_path
 
 log = logging.getLogger("sanguity.directory")
@@ -35,7 +35,6 @@ TICK = 3600                      # seconds between looks at whether the weekly u
 WEEK, RETRY = 7 * 86400, 86400   # due a week after a list was last read; a day after a failed try
 MAX_BYTES = 512 * 1024 * 1024    # a list bigger than this is refused (Epic's was about 97 MB in November 2026)
 CHUNK = 1 << 20
-TIMEOUT = 60                     # seconds a host may go silent
 READ_TIMEOUT = 900               # seconds build.py may take to read the lists
 WEEKLY = activity.WEEKLY_DIRECTORY   # who the weekly update is, in the install log
 STAGES = {"download": "Downloading", "read": "Reading the lists"}
@@ -140,7 +139,7 @@ def _say(**kw):
 def _download(permit, key, url, dest):
     """url's list into dest, through the permit; raises with why in plain words (ValueError, or net's errors)."""
     u = urllib.parse.urlsplit(url)
-    conn = net.connection(permit, url, timeout=TIMEOUT)
+    conn = net.connection(permit, url, timeout=config.setting("DIRECTORY_TIMEOUT"))   # (#1158)
     try:
         conn.request("GET", (u.path or "/") + (f"?{u.query}" if u.query else ""),
                      headers={"User-Agent": build.UA, "Accept": "application/fhir+json, application/json"})

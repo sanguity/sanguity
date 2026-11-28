@@ -271,7 +271,7 @@ def hosts(db):
 
 def client(db, who=None, ip=None):
     permit = net.Permit(PURPOSE, lambda: _hosts(db), lambda host, purpose: outside.record(db, None, host, purpose, who, ip))
-    return smart.Client(permit, timeout=min(15, config.setting("CONNECT_TIMEOUT")))
+    return smart.Client(permit, timeout=config.setting("OIDC_TIMEOUT"))   # (#1158: Needs a restart's Timeouts)
 
 
 def _get_json(c, url, what):

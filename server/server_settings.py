@@ -183,10 +183,21 @@ define("SYNC_MAX_RESOURCES", "Connected sources", "Records one pull fetches", wh
        "records", "The rest come next time.")
 define("SYNC_MAX_ATTACHMENT_MB", "Connected sources", "One attachment, at most", whole(1, 1024, "One attachment"), "MB",
        "The Sync defaults' ceiling: a bigger attachment is left out, with a warning.")
-define("CONNECT_TIMEOUT", "Connected sources", "Wait for a vendor's answer", whole(5, 120, "The wait for a vendor"), "seconds")
 define("SHL_MAX_MB", "Health Links", "What one link brings", whole(1, 256, "What one link brings"), "MB")
 define("SHL_MAX_FILES", "Health Links", "Files in one link", whole(1, 500, "Files in one link"), "files")
-define("SHL_TIMEOUT", "Health Links", "Wait for each request", whole(5, 120, "The wait for each request"), "seconds")
+# (#1158) how long the server waits for another server, together where an admin looks for them
+define("CONNECT_TIMEOUT", "Timeouts", "A connected source's vendor", whole(5, 120, "The wait for a vendor"), "seconds",
+       "Each request of a sync, a connection or Test connection gives up after this long.")
+define("SHL_TIMEOUT", "Timeouts", "A Health Link's server", whole(5, 120, "The wait for each request"), "seconds",
+       "Each request of a pasted Health Link (its manifest, each file) gives up after this long.")
+define("OIDC_TIMEOUT", "Timeouts", "The sign-in provider", whole(5, 60, "The wait for the sign-in provider"), "seconds",
+       "Its discovery document, its keys and each sign-in's token: past this, the sign-in says the provider didn't answer.")
+define("NOTIFY_TIMEOUT", "Timeouts", "The notification server", whole(3, 60, "The wait for the notification server"), "seconds",
+       "Each notification and Send a test; one not answered in time is tried again later.")
+define("DIRECTORY_TIMEOUT", "Timeouts", "The provider directory's lists", whole(10, 300, "The wait for a directory list"), "seconds",
+       "How long a list's host may go silent while Update now or the weekly update downloads it.")
+define("DOWNLOAD_TIMEOUT", "Timeouts", "A text-recognition language download", whole(10, 300, "The wait for a language download"),
+       "seconds", "How long tessdata's host may go silent while a language file downloads.")
 define("HASH_PARALLEL", "Server", "Password checks at once", whole(1, 8, "Password checks at once"), "at a time",
        "Each uses 64 MiB of memory while it runs; more wait their turn.")
 # (#1158) every template puts the app behind its own nginx, with no port of its own published (the all-in-one container

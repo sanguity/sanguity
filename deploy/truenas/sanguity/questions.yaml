@@ -26,6 +26,26 @@ questions:
     schema:
       type: dict
       attrs:
+        - variable: public_origins
+          label: Public Origins (legacy)
+          description: 'Legacy: copied into Settings on first start; you can clear it afterwards. The public addresses are set on Settings → Install → General → Host (#1158).'
+          schema:
+            type: string
+            default: ''
+        - variable: cookie_secure
+          label: Secure Cookie (legacy)
+          description: 'Legacy: copied into Settings on first start; you can clear it afterwards. The Secure cookie is chosen on Settings → Install → Accounts and sign-in → Sign-in rules (#1158).'
+          schema:
+            type: string
+            default: auto
+            required: true
+            enum:
+              - value: auto
+                description: Auto
+              - value: '1'
+                description: Always
+              - value: '0'
+                description: Never
         - variable: additional_envs
           label: Additional Environment Variables
           description: 'Optional. The server''s settings are changed in the app (Settings → Install) and kept in its data, not here: one given here is taken in once and ignored after. Only the sign-in provider (OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET...) and the notification token (NOTIFY_TOKEN) may be kept here on purpose, and then win (see .env.example in the repository).'

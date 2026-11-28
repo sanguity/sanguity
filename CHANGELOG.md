@@ -4068,8 +4068,9 @@ Everything on `main` so far; it becomes the first tagged release.
   its tooltip found at the edge); a long period's first and newest weeks, whose Thursdays fall outside it, are drawn
   at its ends; a week alone is a dot.
 - **Configured like Sonarr and Radarr** (#1158): the settings file is the one source of truth for every server setting,
-  each changed under Settings → Install (the Secure sign-in cookie and the zip ratio now too); `.env` and the templates
-  hold only the container's own variables. An upgrade takes what `.env` still sets into the app once (Install activity
+  each changed under Settings → Install (the Secure sign-in cookie, the zip ratio and the timeouts for other servers now
+  too); `.env` and the templates hold only the container's own variables (TrueNAS's and Unraid's two old fields kept,
+  as legacy, for this release). An upgrade takes what `.env` still sets into the app once (Install activity
   and General say which), then ignores a change there with a warning; `python -m server.manage config set NAME VALUE`
   joins `config reset`. The sign-in provider's fields and the notification token may be kept in the environment on
   purpose (`NAME` or `NAME_FILE`), and then win, shown locked.
