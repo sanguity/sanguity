@@ -687,8 +687,9 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 - One provider per install (`server/oidc.py`, `routes_oidc.py`): the authorization code flow with PKCE (S256), `state`
   and `nonce` (each 256 random bits), kept in memory for 10 minutes against a random browser token set as an HttpOnly,
   SameSite=Strict cookie (over HTTPS `__Host-sanguity_oidc` at `/`, which a sibling name or plain HTTP can't plant; else
-  `sanguity_oidc` at `/api/login/oidc`); starts throttled per address (an IPv6 one's /64), at most 30 in 10 minutes and
-  20 waiting, a full store dropping the adding address's own first; a state is used up as it comes back, whatever follows, and refused
+  `sanguity_oidc` at `/api/login/oidc`); a sign-in's start never refused (behind a reverse proxy
+  every visitor shares one address), a full store (10,000) dropping the adding address's own oldest first (an IPv6
+  one's /64); a link's or a fresh check's the account's own, at most 30 in 10 minutes and 20 waiting; a state is used up as it comes back, whatever follows, and refused
   from another browser. The redirect URI is the install's sign-in page at its public address, exactly.
 - The ID token's signature is checked against the provider's JWKS with `cryptography`: RS256 (2048-bit keys at least)
   or ES256 only; `none`, HS* and any other alg refused, as is a header naming keys of its own (`jku`, `jwk`, `x5u`) or
@@ -698,8 +699,10 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 - An identity is found by (issuer, sub) in `oidc_identities` (schema 49; unique); none is made automatically. A sign-in
   ends in `main._start_session` as a password's: the lengths, the device cookie, `login.ok` in the security log; a
   failure is `login.fail` (step `oidc`), counted by the address's throttle and the admins' failed sign-ins notice.
-- The provider's second factor counts only where its ID token says so (`amr` saying `mfa` or naming two different RFC 8176
-  methods, or the admin's `acr`; one method alone, an emailed code's `otp`, is one factor), for that session alone (`sessions.idp_mfa`); otherwise the account's own code or passkey follows,
+- The provider's second factor counts only where its ID token says so (`amr` saying `mfa` or naming RFC 8176 methods of
+  two factors, knowledge, possession and inherence, or the admin's `acr`; methods of one factor, or `user`, `pop`,
+  `rba`, `geo`, `mca` and `wia`, which say nothing of factors, are one), the provider's fresh check's `auth_time` no
+  earlier than its start, for that session alone (`sessions.idp_mfa`); otherwise the account's own code or passkey follows,
   with the same ticket as after a password.
 - Linking adds a way in: one's own with the password, as adding a passkey asks it, by signing in at the provider
   (`prompt=login`), finished only for the session that started it; an admin's for an account by its subject, after the

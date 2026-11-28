@@ -18,7 +18,7 @@ const SIGNIN_FIELDS = [
   ["label", "Button's name", "text", "single sign-on", "On the sign-in page: Sign in with this name."],
   ["scopes", "Scopes", "text", "openid email profile", "What's asked for, with spaces between: openid is needed; email and profile give the name shown for a linked identity."],
   ["acr", "acr that counts as two factors", "text", "", "Optional. A sign-in whose ID token has this acr counts as two factors, as one whose amr says mfa, or names " +
-    "two different methods (pwd and otp, say), does; any other is followed by the account's own code or passkey, where it has one."]];
+    "methods of two factors (pwd and otp, say), does; any other is followed by the account's own code or passkey, where it has one."]];
 const signinIn = k => document.getElementById("signin-" + k);
 const signinTyped = () => SIGNIN ? SIGNIN_FIELDS.filter(([k]) => { const i = signinIn(k); return i && !i.readOnly && i.value.trim() !== (k === "secret" ? "" : String(SIGNIN.d[k] ?? "")); }) : [];
 
