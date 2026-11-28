@@ -895,13 +895,14 @@ def _entry(db, pid):
                 _cache[pid] = _cache.pop(pid)   # most recently used last
                 return hit
         data = _assemble(db, pid)
-    entry = {"key": key, "rev": _rev(key), "body": None, "page": None, "details": {}, "docs": {}}
+    entry = {"key": key, "rev": _rev(key), "body": None, "page": None, "details": {}, "docs": {}, "doc_events": {}}
     if data is not None:
         entry["body"] = _dumps(data)
         details = data.get("details") or {}
         entry["page"] = _dumps({**data, "details": {k: x for k, v in details.items() if (x := _listed(v)) is not None}})
         entry["details"] = {str(k): _dumps(v) for k, v in details.items() if v is not None}
         entry["docs"] = _document_titles(data)
+        entry["doc_events"] = _document_events(data)
     with _cache_lock:
         _cache.pop(pid, None)
         _cache[pid] = entry
@@ -922,6 +923,22 @@ def _document_titles(data):
             if (m := _DOC_URL.search(d["url"])) and titles[str(k)].strip():
                 out.setdefault(m.group(1), titles[str(k)].strip())
     return out
+
+
+def _document_events(data):
+    """{document id: the ids of the records that link to it} (#1129: a document found by its text finds them)"""
+    out = {}
+    for k, d in (data.get("details") or {}).items():
+        if isinstance(d, dict) and d.get("type") == "file" and isinstance(d.get("url"), str) and str(k).lstrip("-").isdigit():
+            if (m := _DOC_URL.search(d["url"])):
+                out.setdefault(m.group(1), []).append(int(k))
+    return out
+
+
+def document_events(db, pid, docs):
+    """The ids of profile pid's records that link to any of the documents docs, in order (#1129, ocr.search)"""
+    e = _entry(db, pid)
+    return sorted({i for d in docs for i in (e["doc_events"].get(d, ()) if e else ())})
 
 
 def document_title(db, pid, doc):

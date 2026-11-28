@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, backup_jobs, calendar, config, crypto, db as dbm, demo, edits, export, fhir_export, general, hrzones, jobs, milestones, notify, oidc, passkeys, profiles as prof, records, security as sec, server_settings as restart_settings, settings, sync, twofactor, units, uploads, watch_keys, watch_store
+from . import accounts, activity, alerts, atrest, backup, backup_jobs, calendar, config, crypto, db as dbm, demo, edits, export, fhir_export, general, hrzones, jobs, milestones, notify, ocr, oidc, passkeys, profiles as prof, records, security as sec, server_settings as restart_settings, settings, sync, twofactor, units, uploads, watch_keys, watch_store
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -163,6 +163,7 @@ async def lifespan(app):
             from . import insurance   # a card's photo no plan names (#1137): a stop between writing it and saving its row
             insurance.sweep_all(db)
             backup_jobs.recover(db)   # backups and checks a stop interrupted (#200)
+            ocr.recover(db)   # a document whose reading a stop interrupted twice: not read again (#1129)
             with dbm.transaction(db):   # share links and feeds an older version left to come back with their person (#590)
                 accounts.end_lost_access(db)
             _setup_code(db)
@@ -175,9 +176,11 @@ async def lifespan(app):
         notify.start()   # notifications to the install's own server, once one is set and someone turns them on (#1130)
         from .directory import update as directory_update
         directory_update.start()   # the provider directory's lists, when an admin asks and weekly if turned on (#992)
+        ocr.start()   # scanned documents' text, for finding them (#1129)
         try:
             yield
         finally:
+            ocr.stop()
             directory_update.stop()
             notify.stop()
             backup_jobs.stop()
@@ -1794,6 +1797,7 @@ app.include_router(__import__("server.routes_same", fromlist=["router"]).router)
 app.include_router(__import__("server.routes_manual", fromlist=["router"]).router)    # results typed in (#27)
 app.include_router(__import__("server.routes_labmaps", fromlist=["router"]).router)   # lab names matched on import (#23)
 app.include_router(__import__("server.routes_oidc", fromlist=["router"]).router)      # sign in with OIDC (#1109): before settings, whose /api/settings/install/{key} would take its own
+app.include_router(__import__("server.routes_ocr", fromlist=["router"]).router)       # text recognition (#1129): before settings, too
 app.include_router(__import__("server.routes_settings", fromlist=["router"]).router)  # settings (#35)
 app.include_router(__import__("server.routes_host", fromlist=["router"]).router)      # General → Host (#1000)
 app.include_router(__import__("server.routes_watch", fromlist=["router"]).router)     # a watch receiver secret per profile (#46)

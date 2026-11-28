@@ -122,6 +122,8 @@ const WHAT = {
     return "read the provider directory's lists (" + [...Object.entries(d.read || {}).map(([id, n]) => `${name(id)}: ${n.toLocaleString("en-US")} entries`),
       ...Object.entries(d.failed || {}).map(([id, why]) => `${name(id)} not read: ${why}`)].join("; ") + ")";
   },
+  // a text recognition language added or removed (#1129)
+  "ocr.language": d => `${{imported: "imported", downloaded: "downloaded", removed: "removed"}[d.how] || "changed"} the text recognition language ${d.name} (${d.code})`,
   // records saved before #1022 that start-up couldn't key as they are now (#1044): left as they were, tried again
   "records.rekey": d => `couldn't key ${(d.left || []).length} older record${(d.left || []).length === 1 ? "" : "s"} as they are now, so left them as they were: ${(d.left || []).join(", ")}`,
   // the copies #1022's bug made, one record each once keyed alike (#1068): the latest kept

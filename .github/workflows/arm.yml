@@ -38,6 +38,14 @@ jobs:
           # what encryption at rest (server/crypto.py: cryptography's AESGCM), passkeys and passwords import
           docker run --rm sanguity-app python -c "import platform, cryptography, webauthn, argon2; from cryptography.hazmat.primitives.ciphers.aead import AESGCM; print(platform.machine(), 'cryptography', cryptography.__version__)"
 
+      - name: Text recognition (#1129) recognises a line of text on 32-bit ARM, and adds at most 40 MB
+        run: |
+          docker run --rm sanguity-app python -m server.ocr check
+          # the one layer that adds it (docker/app.Dockerfile): at most 40 MB (#1129's bar; about 16 MB in November 2026)
+          size=$(docker history --no-trunc --human=false --format '{{.Size}} {{.CreatedBy}}' sanguity-app | awk '/tessdata_fast/ {print $1; exit}')
+          echo "Text recognition's layer: $size bytes"
+          test -n "$size" && [ "$size" -le 41943040 ]
+
       - name: Start (docker compose up -d)
         run: docker compose up -d
 

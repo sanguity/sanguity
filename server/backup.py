@@ -5,6 +5,7 @@ A backup is one archive, sanguity-backup-YYYYMMDD-HHMMSS.tar.gz:
                    records, settings
   profiles/...     each profile's documents and uploads
   build/...        the setup build (what linked profiles are loaded from)
+  languages/...    the text recognition languages an admin added (#1129, ocr.py)
   watch/...        the watch receiver's data (#227), from its folder (config.WATCH_STORE, mounted read-only): each
                    profile's database, watch.db or profiles/<slot>/watch.db, and every upload it archived, raw/...
   manifest.json    format, time, database schema version, the SHA-256 of every file above, and the number of rows
@@ -37,7 +38,7 @@ The data it replaces is moved to DATA_DIR/before-restore-<time>/, and an older b
 date as it's restored. That folder
 may hold a profile deleted before the restore, or since, so it is deleted RESTORE_KEEP_DAYS (30) after the restore
 (#595): at start and hourly while the app runs (backup_jobs.sweep_replaced), or by an admin's Delete now on Admin ->
-Backups (replaced(), delete_replaced()). No backup takes it: a backup holds only the database, profiles/ and build/.
+Backups (replaced(), delete_replaced()). No backup takes it: a backup holds only the database, profiles/, build/ and languages/.
 The setup build's files are put back with the times they had (the manifest's "times", #1104): a build's version is
 its files' times (profiles.build_version), so a restored profile's saved version still matches it, and the build isn't
 loaded again at the first start, which would give every record a new id.
@@ -55,7 +56,7 @@ log = logging.getLogger("sanguity.backups")
 
 FORMAT = 1
 NAME = re.compile(r"^sanguity-backup-\d{8}-\d{6}\.tar\.gz$")
-CONTENTS = ("profiles", "build")   # folders under DATA_DIR, besides the database
+CONTENTS = ("profiles", "build", "languages")   # folders under DATA_DIR, besides the database (languages: #1129, ocr.py)
 LOCK_FILE = os.path.join(config.DATA_DIR, "app.lock")
 SNAPSHOT, CHECKING = ".sanguity-snapshot-", ".sanguity-check-"   # working folders in the backups folder, gone when done
 WATCH = "watch"          # the receiver's data in the archive (#227)

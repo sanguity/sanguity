@@ -586,6 +586,25 @@ define("directory.weekly", "directory", "Keep the lists up to date", False, yes_
        scope="install", private=False, kind="toggle",
        help="Once a week, this server reads Epic's and Oracle Health's lists again. A failed update keeps the lists it has.")
 
+# #1129: text recognition (ocr.py), in Install → General → Text recognition (gen-ocr.js, its own card)
+LANGUAGE_CODE = re.compile(r"^[a-z_]{3,16}$")   # a Tesseract language file's name, without .traineddata
+
+
+def language_codes(v):
+    """The languages text recognition reads besides English (built in, always used): Tesseract's codes, at most 8."""
+    if not isinstance(v, list) or len(v) > 8 or not all(isinstance(c, str) and LANGUAGE_CODE.match(c) and c not in ("eng", "osd") for c in v):
+        raise SettingError("Languages are at most 8 language files' names (like deu or chi_sim), English aside.")
+    return sorted(set(v), key=v.index)
+
+
+section("ocr", "Text recognition", "Scanned documents read on this server, so a search finds them by their words.")
+define("ocr.languages", "ocr", "Languages in use", [], language_codes, scope="install", private=False, kind="languages",
+       screen=False, help="English always; each other language a document may be in. More languages make reading slower.")
+define("ocr.downloads", "ocr", "Download languages from the tesseract-ocr project", False, yes_no("Downloading languages"),
+       scope="install", private=False, kind="toggle", screen=False,
+       help="Lets an admin download a language file from the tesseract-ocr project on GitHub, when they ask for one. "
+            "Off: nothing is downloaded; a language file you have can still be imported.")
+
 # #225: readings taken at home (and at visits) as Overview tiles beside the key labs, each with its latest value
 HOME_TILES = {"bp": "Blood pressure", "glucose": "Blood glucose", "temp": "Body temperature"}
 define("overview.homeTiles", "overview", "Home readings", [], some_of(HOME_TILES, "Home readings"), kind="choices",

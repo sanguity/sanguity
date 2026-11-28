@@ -115,6 +115,7 @@ jobs:
           for p in linux/amd64 linux/arm64 linux/arm/v7; do
             docker run --rm --platform "$p" "$IMAGE:$VERSION" python3 -c \
               "import os, platform, cryptography, webauthn, argon2; v = os.environ['SANGUITY_VERSION']; print('$p', platform.machine(), v); assert v == '$VERSION'"
+            docker run --rm --platform "$p" "$IMAGE:$VERSION" python3 -m server.ocr check   # (#1129) its Tesseract and English
           done
 
   release:

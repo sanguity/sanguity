@@ -326,7 +326,20 @@ $("#to").onchange = () => { const v = zParse($("#to").value + "T23:59"); if (!is
 let qT; $("#q").oninput = () => { clearTimeout(qT); qT = setTimeout(() => { state.q = $("#q").value.trim().toLowerCase(); renderAll(); }, 150); };
 
 const inRange = e => e.te >= state.from && e.ts <= state.to;
-const matchQ = e => !state.q || e._q.includes(state.q);
+/* (#1129) a search also finds the records whose documents' text has it (util.js docsFound): asked once a search, from
+   its third letter, and drawn again once they're in (DOC_GEN: the Timeline's drawing, timeline.js) */
+const DOC_HITS = new Map();
+let DOC_GEN = 0;
+function docHits(q) {
+  if (q.length < 3 || !PROFILE) return null;
+  const k = PROFILE.id + " " + q;
+  if (!DOC_HITS.has(k)) {
+    DOC_HITS.set(k, null);
+    docsFound(PROFILE.id, q).then(ids => { DOC_HITS.set(k, ids); if (ids.size) { DOC_GEN++; if (state.q === q) renderAll(); } });
+  }
+  return DOC_HITS.get(k);
+}
+const matchQ = e => !state.q || e._q.includes(state.q) || !!docHits(state.q)?.has(e.id);
 const visible = e => !e.hidden && state.cats.has(CAT_OF[e.k]?.k) && inRange(e) && matchQ(e);
 
 /* a chart's readout: .sg-follow (index.html), so it goes into a modal dialog with the rest (util.js liveFollow), painted

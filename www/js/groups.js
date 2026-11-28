@@ -113,7 +113,7 @@ const SG_PAGES = {
         ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches lab tests"]]},
     // Install: the Admin page's groups (#167: admin.js, admin-sources.js, admin-backups.js, outside.js, activity.js),
     // admins only. General (#998) first: the server's own settings, each of its sections (#1000-#1005) a part in its has
-    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-security", "gen-signin", "gen-backups", "gen-phone", "gen-notify", "gen-restart", "gen-experimental", "gen-demo", "gen-about"], place: "admin", words: "server install configuration",
+    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-security", "gen-signin", "gen-backups", "gen-phone", "gen-notify", "gen-restart", "gen-experimental", "gen-ocr", "gen-demo", "gen-about"], place: "admin", words: "server install configuration",
      finds: [["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names trusted proxies port bind forwarded"],
        // (each of its rows' labels finds it, #524; "onetime", not "one-time": a word typed is found at a word's start, so it's
        // still found by "one-time", but not whole, so "one-time password" finds Accounts first, where one is made, #502)
@@ -129,6 +129,7 @@ const SG_PAGES = {
        ["Notifications", "gen-notify", "notification server ntfy topic push access token test send"],   // (#1130)
        ["Needs a restart", "gen-restart", "restart now upload limits file size files journal photo sync attachment pulls timeout health links password checks at once hash parallel trusted proxies forwarded time zone unclaimed restore replaced kept server-settings"],   // (#1121)
        ["Experimental", "gen-experimental", "connected sources portals health plans fhir epic mychart sync find your provider turn on off"],   // (#1096)
+       ["Text recognition", "gen-ocr", "ocr tesseract scanned documents scans searchable search text languages language file traineddata import download tessdata"],   // (#1129)
        ["Demo profile", "gen-demo", "demo sample example fictional made-up look around try add remove demo"],   // (#1101)
        ["About", "gen-about", "version release releases what's new schema database deployed deployment truenas unraid casaos docker folders runs as user uid gid configuration limits upload size zip journal photo sync attachment timeout health links"]]},
     {id: "accounts", title: "Accounts", icon: "user-cog", part: "Install", admin: true, has: ["users"], place: "admin",

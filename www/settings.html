@@ -252,6 +252,14 @@
     <div id="genExpBody"></div>
     <span class="msg" id="genExpMsg" role="status"></span>
   </section>
+  <!-- General → Text recognition (#1129, gen-ocr.js): scanned documents read on this server, the languages it reads -->
+  <section class="card conn adm" id="gen-ocr" hidden>
+    <h2>Text recognition</h2>
+    <p class="hint">Scanned documents and pictures read on this server, so the Timeline's search and the palette find them by their words. Nothing leaves this server.</p>
+    <div id="genOcrReauth" class="reauth" hidden></div>
+    <div id="genOcr"></div>
+    <span class="msg" id="genOcrMsg" role="status"></span>
+  </section>
   <!-- General → Demo profile (#1101, gen-demo.js): the fictional demo as a profile of its own, added and removed here -->
   <section class="card conn adm" id="gen-demo" hidden>
     <h2>Demo profile</h2>
@@ -457,6 +465,7 @@
 <script src="js/gen-about.js"></script>
 <script src="js/gen-demo.js"></script>
 <script src="js/gen-restart.js"></script>
+<script src="js/gen-ocr.js"></script>
 <script src="js/settings-nav.js"></script>
 </body>
 </html>

@@ -121,7 +121,8 @@ ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "ac
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",
                    "labmap.remove", "labmap.undo", "settings.user", "settings.install", "connect.source", "outside",
                    "backup.create", "backup.check", "backup.fail", "backup.schedule", "backup.replaced", "directory.update",
-                   "records.rekey", "records.copies", "server.restart", "notify.test", "notify.fail", "notify.token", "notify.topic")
+                   "records.rekey", "records.copies", "server.restart", "notify.test", "notify.fail", "notify.token", "notify.topic",
+                   "ocr.language")
 COMMAND_LINE, SETUP_BUILD = "command line", "setup build"
 SCHEDULED_SYNC = "scheduled sync"   # a connected source's pull on its schedule (sync.py)
 SHARE_LINK = "share link"           # whoever holds a share link, opening it (share_links.py)

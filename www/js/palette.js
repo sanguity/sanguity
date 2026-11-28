@@ -275,6 +275,17 @@ const SgPalette = (() => {
      (timeline(), #470: its saved period counted no more), in the kinds it shows (its saved ones, util.js savedCats: a
      lab result has none, its lab day is listed) and its workouts when it lists them (timeline.js tlWorkListed) */
   const many = n => `${n.toLocaleString("en-US")} event${n === 1 ? "" : "s"}`;
+  /* (#1129) the records whose documents' text has lq: null until the server has said, then the list drawn again */
+  const TEXT = new Map();
+  function textHits(lq) {
+    const p = pid(), k = p + " " + lq;
+    if (lq.length < 3 || !p) return null;
+    if (!TEXT.has(k)) {
+      TEXT.set(k, null);
+      docsFound(p, lq).then(ids => { TEXT.set(k, ids); if (ids.size && dlg.open && input.value.trim().toLowerCase() === lq) draw(); });
+    }
+    return TEXT.get(k);
+  }
   function tlCount(lq, hit) {
     if (!onRecords) {
       let s = null;
@@ -356,10 +367,12 @@ const SgPalette = (() => {
       // each word at the start of one of theirs, the most recent first; the rest through the Timeline's search
       // (#463) a record the Timeline hides isn't listed (core.js visible), and a lab result's title is its panel as Labs
       // names it, as the drawer it opens does
-      const lq = typed.trim().toLowerCase(), hit = E.filter(e => !e.hidden && e._q.includes(lq)), kind = k => KIND_LABEL[k];
-      const found = ranked(hit.map(e => { const title = e.k === "labitem" ? panelName(e.title) : e.title;
-        return {icon: kindIcon(e.k), title, ts: e.ts || 0, s: score(title, e._q, words),
-          ctx: [kind(e.k), isFinite(e.ts) && fmtD(e.ts)].filter(Boolean).join(" · "), go: () => openEv(e.id)}; }), words, 6, (a, b) => b.ts - a.ts);
+      // (#1129) and those whose documents' text has it (util.js docsFound), after those found by their own words
+      const lq = typed.trim().toLowerCase(), inText = off ? null : textHits(lq), kind = k => KIND_LABEL[k];
+      const hit = E.filter(e => !e.hidden && (e._q.includes(lq) || inText?.has(e.id)));
+      const found = ranked(hit.map(e => { const title = e.k === "labitem" ? panelName(e.title) : e.title, own = e._q.includes(lq);
+        return {icon: kindIcon(e.k), title, ts: e.ts || 0, s: own ? score(title, e._q, words) : 3.5,
+          ctx: [!own && "Found in its text", kind(e.k), isFinite(e.ts) && fmtD(e.ts)].filter(Boolean).join(" · "), go: () => openEv(e.id)}; }), words, 6, (a, b) => b.ts - a.ts);
       if (hit.length > found.length) found.push([found.length ? found.at(-1)[0] : 3, {icon: "arrow-right", title: `Search the Timeline for “${typed.trim()}”`,
         ctx: tlCount(lq, hit), go: () => timeline(typed.trim())}]);
       groups.push(["Events", found]);

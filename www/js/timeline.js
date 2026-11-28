@@ -48,7 +48,7 @@ function renderTimeline(live) {   // live: a frame of a gesture, at the width it
   const w = live && tlSvg._geom ? tlSvg._geom.w : Math.max(300, tlSvg.parentElement.clientWidth - 32), narrow = w < 600, k = ckK();
   // drawn again with nothing changed but the record picked (the drawer opening or closing): the marks' selection only,
   // so nothing moves on the page behind it (#370); a gesture's frame is never the drawing to keep
-  const key = [state.from, state.to, w, k, [...state.cats].join(), state.q, EV, EV.length, MEDS, CYCLE, DOSES, STEPS, STAYS, MILESTONES];
+  const key = [state.from, state.to, w, k, [...state.cats].join(), state.q, DOC_GEN, EV, EV.length, MEDS, CYCLE, DOSES, STEPS, STAYS, MILESTONES];
   if (!live && tlSvg._key?.every((v, i) => v === key[i])) return tlSel();
   tlSvg._key = live ? null : key;
   const evs = tlLaneEvents(), steps = state.cats.has("watch") ? tlStepsIn() : [];

@@ -5,8 +5,29 @@
 # Stages: "app" is what compose.yaml builds from the checkout (the default: the last stage below is the same).
 # "release" is the published image, ghcr.io/sanguity/sanguity (.github/workflows/release.yml): the same plus all
 # the code, the web pages and nginx, so an install needs no checkout (compose.release.yaml, deploy/).
+# ---- Tesseract, for text recognition of scanned documents (#1129, server/ocr.py). Alpine's package brings its training
+# tools and what they need (pango, cairo, glib, ICU: about 35 MB); the recogniser is only the program, libtesseract and
+# leptonica, taken from here into the app's image (stage "app", one layer, its other libraries Alpine's own)
+FROM python:3.12-alpine AS tesseract
+RUN apk add --no-cache tesseract-ocr \
+ && mkdir -p /out/usr/bin /out/usr/lib \
+ && cp -a /usr/bin/tesseract /out/usr/bin/ \
+ && cp -a /usr/lib/libtesseract.so.5* /usr/lib/libleptonica.so.6* /out/usr/lib/
+
 FROM python:3.12-alpine AS app
 WORKDIR /app
+# Its English is tessdata_fast's (4 MB; Alpine's tesseract-ocr-data-eng is 23 MB), at a fixed commit, checked by its
+# SHA-256. Other languages are an admin's to add, in the data folder. CI checks this layer's size (about 16 MB; at most
+# 40 MB) and recognises a line of text with it (python -m server.ocr check).
+ARG TESSDATA_FAST=87416418657359cb625c412a48b6e1d6d41c29bd
+ARG TESSDATA_ENG_SHA256=7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
+RUN --mount=type=bind,from=tesseract,source=/out,target=/tmp/tesseract \
+    cp -a /tmp/tesseract/. / \
+ && apk add --no-cache giflib libgomp libjpeg-turbo libpng libstdc++ libwebp libwebpmux tiff \
+ && mkdir -p /usr/share/tessdata \
+ && wget -q -O /usr/share/tessdata/eng.traineddata "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/${TESSDATA_FAST}/eng.traineddata" \
+ && echo "${TESSDATA_ENG_SHA256}  /usr/share/tessdata/eng.traineddata" | sha256sum -c - \
+ && tesseract --list-langs
 COPY requirements.txt /app/requirements.txt
 # Prebuilt packages exist for x86-64 and 64-bit ARM. Where one is missing (32-bit ARM, e.g. a Raspberry Pi on a
 # 32-bit OS), cffi, argon2 and cryptography (encryption at rest and passkeys; it needs Rust, so this takes a while) are
