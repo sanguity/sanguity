@@ -97,9 +97,14 @@ def proxies(v):
             out.append(item)
             continue
         try:
-            n = ipaddress.ip_address(item) if "/" not in item else ipaddress.ip_network(item, strict=False)
+            n = ipaddress.ip_address(item) if "/" not in item else ipaddress.ip_network(item)
         except ValueError:
-            raise Refused(f"“{item[:60]}” isn't an address (like 172.18.0.2) or a network (like 172.16.0.0/12).") from None
+            try:   # a network with host bits set (10.0.0.5/8): said, never widened to its network in silence
+                net = ipaddress.ip_network(item, strict=False)
+            except ValueError:
+                raise Refused(f"“{item[:60]}” isn't an address (like 172.18.0.2) or a network (like 172.16.0.0/12).") from None
+            raise Refused(f"“{item}” isn't a network's start: it's in the network {net}. Give {net} to trust all of that "
+                          f"network, or {item.split('/')[0]} for that one address.") from None
         n = "*" if getattr(n, "prefixlen", None) == 0 else str(n)   # 0.0.0.0/0 and ::/0 trust everyone, as * does
         if n == "*":
             out.append(n)
@@ -110,7 +115,20 @@ def proxies(v):
         raise Refused("Give at least one trusted proxy: 127.0.0.1 is the server's own machine.")
     if "*" in out and len(out) > 1:
         raise Refused("* (or 0.0.0.0/0, ::/0) already trusts every address: give it alone.")
+    if "*" not in out:   # networks that together are every address (0.0.0.0/1 and 128.0.0.0/1): * by another name
+        nets = [ipaddress.ip_network(n) for n in out]
+        for version, name in ((4, "IPv4"), (6, "IPv6")):
+            if any(c.prefixlen == 0 for c in ipaddress.collapse_addresses(n for n in nets if n.version == version)):
+                raise Refused(f"Together these networks trust every {name} address: give * instead, which asks you to "
+                              "confirm that any client may then claim any address.")
     return ", ".join(out)
+
+
+def _env_proxies(text):
+    """The environment's FORWARDED_ALLOW_IPS: always its own text, as uvicorn reads it (never proxies()' form of it);
+    one proxies() wouldn't take raises, so lookup logs it, and keeps the text all the same."""
+    proxies(text)
+    return text
 
 
 def proxies_cover(value, address):
@@ -174,7 +192,7 @@ define("SHL_MAX_FILES", "Health Links", "Files in one link", whole(1, 500, "File
 define("SHL_TIMEOUT", "Health Links", "Wait for each request", whole(5, 120, "The wait for each request"), "seconds")
 define("HASH_PARALLEL", "Server", "Password checks at once", whole(1, 8, "Password checks at once"), "at a time",
        "Each uses 64 MiB of memory while it runs; more wait their turn.")
-define("FORWARDED_ALLOW_IPS", "Server", "Trusted proxies", proxies, kind="text", default="127.0.0.1", read=proxies,
+define("FORWARDED_ALLOW_IPS", "Server", "Trusted proxies", proxies, kind="text", default="127.0.0.1", read=_env_proxies,
        help="Whose forwarded headers (the visitor's address, HTTPS or not) the server believes: addresses or networks, "
             "comma-separated, or * where only the proxy can reach the app.")
 define("TZ", "Phone receiver", "Time zone", time_zone, kind="zone", default="UTC", read=time_zone, receiver=True, app=False,
