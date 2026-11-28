@@ -207,7 +207,11 @@ const SgPalette = (() => {
     ["labs", "compare", "-compare", "Compare", "side by side within ranges milestone before after"],
     ["labs", "latest", "-latest", "Latest", "latest results newest last every lab list now"],
     ["timeline", "journal", "-journal", "Journal", "notes diary entries photos symptoms"],
-    ["costs", "paid", "-paid", "What you paid", "out of pocket spent spending payments total hsa fsa premiums"]];
+    ["costs", "paid", "-paid", "What you paid", "out of pocket spent spending payments total hsa fsa premiums"],
+    // (#1127, #1128, #1136) cards of Costs' views, opened with focus on their heading (costs.js costJump)
+    ["costs", "claims", "", "Plan years", "deductible oop maximum max plan year limits family met", "plan"],
+    ["costs", "paid", "-paid", "Bills", "add a bill bills provider statement owe billed due", "bill"],
+    ["costs", "paid", "-paid", "Tax-year report", "tax report taxes year deduction itemized receipts zip csv pdf hsa", "tax"]];
   const FIRST_VIEW = {labs: "home", timeline: "timeline", costs: "claims"};   // (Labs where it opens, here as from another page: #1026)
   function tabs(all) {
     if (document.querySelector("header.topbar nav.tabs")?.hidden) return [];
@@ -219,7 +223,8 @@ const SgPalette = (() => {
     return SgNav.TABS.map(t => document.getElementById("tab-" + t)).filter(a => a && !a.hidden).flatMap(a => {
       const t = a.id.slice(4), title = a.textContent.trim();
       return [{icon: sgIcon(t), title, ctx: "Records tab", words: TAB_WORDS[t], go: FIRST_VIEW[t] ? open(a, t, FIRST_VIEW[t], "") : () => a.click()},
-        ...(all ? TAB_VIEWS.filter(v => v[0] === t).map(([, view, hash, vt, words]) => ({icon: sgIcon(t), title: vt, ctx: `Records tab › ${title}`, words, go: open(a, t, view, hash)})) : [])];
+        ...(all ? TAB_VIEWS.filter(v => v[0] === t).map(([, view, hash, vt, words, card]) => ({icon: sgIcon(t), title: vt, ctx: `Records tab › ${title}`, words,
+          go: card && onRecords ? () => { pickTab(t, view); requestAnimationFrame(() => costJump(card)); } : open(a, t, view, hash)})) : [])];
     });
   }
   /* the pages (not the one you're on) and, when something's typed, their groups and named parts; at: what else a
