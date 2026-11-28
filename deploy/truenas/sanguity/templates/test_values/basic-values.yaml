@@ -6,6 +6,8 @@ resources:
 TZ: Etc/UTC
 
 sanguity:
+  public_origins: ""
+  cookie_secure: auto
   additional_envs: []
 
 network:

@@ -459,7 +459,7 @@ def _proxies_guard(request, value, typed):
 def _restart_state():
     st = server_settings.state()
     if not settings.connected_sources():   # (#1096) none of theirs while they're off, as About's limits
-        st["settings"] = [r for r in st["settings"] if r["group"] != "Connected sources"]
+        st["settings"] = [r for r in st["settings"] if r["group"] != "Connected sources" and r["name"] not in ("CONNECT_TIMEOUT", "DIRECTORY_TIMEOUT")]
     kind = general.deployment()
     # (#1131's review) Restart now's question: it starts again only where something restarts it
     says = ("Sanguity stops, and starts again only because its container restarts it automatically (" +

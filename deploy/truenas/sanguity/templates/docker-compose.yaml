@@ -35,7 +35,15 @@
 {% do app.set_command(["python3", "-m", "server"]) %}
 {% do app.depends.add_dependency(values.consts.setup_container_name, "service_completed_successfully") %}
 {% do app.healthcheck.set_custom_test(["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/healthz',timeout=3)"]) %}
-{# (#1158) the server's settings are the app's, kept in its data (Settings → Install): only the container's own here #}
+{# (#1158) the server's settings are the app's, kept in its data (Settings → Install): only the container's own here,
+   and for this release the two legacy fields, passed only when filled, so an upgraded app carries them into the
+   one-time import (copied into Settings on first start; they can be cleared afterwards) #}
+{% if values.sanguity.cookie_secure not in ["", "auto"] %}
+  {% do app.environment.add_env("COOKIE_SECURE", values.sanguity.cookie_secure) %}
+{% endif %}
+{% if values.sanguity.public_origins %}
+  {% do app.environment.add_env("PUBLIC_ORIGINS", values.sanguity.public_origins) %}
+{% endif %}
 {# how it's deployed, named on Settings → General → About (#1004) #}
 {% do app.environment.add_env("SANGUITY_DEPLOYMENT", "truenas") %}
 {# the receiver's published port, for the phone upload address (#1007): the app can't see what's published #}

@@ -6,6 +6,8 @@ resources:
 TZ: Etc/UTC
 
 sanguity:
+  public_origins: "https://health.example.test"
+  cookie_secure: "1"
   additional_envs: []
 
 network:

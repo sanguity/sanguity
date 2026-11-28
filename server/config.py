@@ -56,7 +56,8 @@ CONTAINER = {
     "SANGUITY_CONFIG": "sources.json, settings.json and corrections.json, read by setup before the app starts: " + _MOUNT,
     "SANGUITY_APP": "where setup finds the app's code: " + _MOUNT,
     "SANGUITY_DEPLOYMENT": "which template started it, set by the template itself (About, Restart now's question)",
-    "SANGUITY_VERSION": "the image's version, set as it's built (a release's .env picks the image by it)",
+    "SANGUITY_IMAGE_VERSION": "the image's own version, baked in as it's built (a release's .env picks the image by "
+                              "its tag, SANGUITY_VERSION, which the app never reads)",
     "SANGUITY_SERVE_STATIC": "a server run without nginx (development) serves www/ itself",
     "SANGUITY_TESSERACT": "the text-recognition program, as installed in the image",
     "SANGUITY_TESSDATA": "the text-recognition program's language data, as installed in the image",
@@ -147,7 +148,7 @@ VARS = {}   # name -> Var
 # same): kept in data/server-settings.json and read as the server starts, before the default
 RESTART = {"UPLOAD_MAX_FILE_MB", "UPLOAD_MAX_TOTAL_MB", "UPLOAD_MAX_FILES", "UPLOAD_MAX_ZIP_RATIO", "JOURNAL_PHOTO_MAX_MB", "SYNC_HOURS",
            "SYNC_MAX_RESOURCES", "SYNC_MAX_ATTACHMENT_MB", "CONNECT_TIMEOUT", "SHL_MAX_MB", "SHL_MAX_FILES", "SHL_TIMEOUT",
-           "HASH_PARALLEL", "RESTORE_KEEP_DAYS"}
+           "HASH_PARALLEL", "RESTORE_KEEP_DAYS", "OIDC_TIMEOUT", "NOTIFY_TIMEOUT", "DIRECTORY_TIMEOUT", "DOWNLOAD_TIMEOUT"}
 
 
 def var(name, default, read=int, keep=None, about=""):
@@ -226,6 +227,12 @@ var("CONNECT_TIMEOUT", 30, about="seconds to wait for a vendor's answer")
 var("SHL_MAX_MB", 64)
 var("SHL_MAX_FILES", 50)
 var("SHL_TIMEOUT", 20)
+# (#1158) how long the server waits for another server, each changed under Needs a restart's Timeouts (with
+# CONNECT_TIMEOUT and SHL_TIMEOUT above)
+var("OIDC_TIMEOUT", 15, about="seconds to wait for the sign-in provider (its discovery, keys and token)")
+var("NOTIFY_TIMEOUT", 10, about="seconds to wait for the notification server")
+var("DIRECTORY_TIMEOUT", 60, about="seconds a provider directory list's host may go silent")
+var("DOWNLOAD_TIMEOUT", 60, about="seconds a text-recognition language file's download may go silent")
 var("RECEIVER_PORT", 8731, about="the watch receiver's published port, for the upload address (watch_keys.py)")
 var("WATCH_UPLOAD_URL", "", str.strip, about="the upload address, when the receiver is behind a reverse proxy")
 var("RESTORE_KEEP_DAYS", 30, _days, about="what a restore replaced is deleted this long after (backup.py; the receiver "

@@ -56,7 +56,7 @@ COPY www/ /usr/share/nginx/html/
 COPY nginx.conf /etc/sanguity/nginx.d/default.conf
 COPY docker/nginx-main.conf /etc/nginx/nginx.conf
 # Container paths of a released install (the same in every service and in the all-in-one container)
-ENV SANGUITY_VERSION=${VERSION} \
+ENV SANGUITY_IMAGE_VERSION=${VERSION} \
     SANGUITY_DATA=/data \
     SANGUITY_BACKUPS=/backups \
     SANGUITY_WATCH=/watch \

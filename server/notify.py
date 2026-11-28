@@ -66,7 +66,6 @@ BACKOFF = (60, 300, 1800)   # seconds after the first, second and third failure
 WINDOW = 15 * 60     # a dose whose time passed longer ago than this when first noticed isn't sent
 DOSE_LATE = 3600     # a dose's notification not sent by this long after it was made is dropped
 KEEP = 7 * 86400     # rows of notify_sent kept after they're done
-TIMEOUT = 10
 TOKEN_MOST = 500
 TEST_EVERY = 10      # seconds between one person's test notifications
 
@@ -297,7 +296,7 @@ def send(db, kind, uid, name=None, p=None):
     path = urllib.parse.urlsplit(full).path
     try:
         ip = _local_only(p, u) if urllib.parse.urlsplit(u).scheme == "http" else None
-        conn = net.connection(p, full, timeout=TIMEOUT, ip=ip)
+        conn = net.connection(p, full, timeout=config.setting("NOTIFY_TIMEOUT"), ip=ip)   # (#1158)
         try:
             conn.request("POST", path, body, headers)
             r = conn.getresponse()

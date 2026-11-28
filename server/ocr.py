@@ -832,7 +832,7 @@ def download(db, code, who=None, ip=None):
     f, tmp = _temp()
     try:
         with f:
-            conn = net.connection(outside.for_ocr(db, who, ip), url, timeout=60)
+            conn = net.connection(outside.for_ocr(db, who, ip), url, timeout=config.setting("DOWNLOAD_TIMEOUT"))   # (#1158)
             try:
                 conn.request("GET", u.path, headers={"User-Agent": "Sanguity"})
                 r = conn.getresponse()
