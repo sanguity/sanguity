@@ -2729,7 +2729,8 @@ def connected_sources_switch_check(check, browser, base, cookies):
                 pg.fill("#palQ", q)
                 pg.wait_for_timeout(250)
                 seen += [f"palette {q}: {t}" for t in pg.evaluate("[...document.querySelectorAll('dialog.palette [role=option]')].map(o => o.textContent.trim())")
-                         if re1096.search(r"ortal|onnected|rovider|Find your", t)]
+                         if re1096.search(r"ortal|onnected|rovider|Find your", t)
+                         and not t.startswith("Sign-in provider")]   # (#1109: the install's sign-in provider, not connected sources)
             pg.keyboard.press("Escape")
             if seen:
                 out.append([path, seen])
@@ -2850,6 +2851,12 @@ def oidc_check(check, browser, base, cookies):
     oidc1109.save(db, {**oidc1109.load(db), "issuer": idp.issuer, "client_id": "sanguity-check", "label": "Authentik (fictional)",
                        "only": False}, secret)
     other = acc1109.create(db, "oidc1109", password="a fictional passphrase for 1109")[0]
+    # the admin's own second factor for the while, as the run has it or not: Install needs one once there's another
+    # account (this one), and the provider's one-factor sign-in is followed by the account's own step
+    from server import crypto as crypto1109, twofactor as tf1109
+    had_totp = db.execute("SELECT totp_secret FROM users WHERE username=?", (USER,)).fetchone()[0]
+    if not had_totp:
+        db.execute("UPDATE users SET totp_secret=? WHERE username=?", (crypto1109.enc(tf1109.new_secret()), USER))
     db.close()
     errs = []
     ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
@@ -2884,7 +2891,12 @@ def oidc_check(check, browser, base, cookies):
     try:
         # ---- General → Sign-in provider
         page.goto(base + "/settings.html?profile=1#gen-signin")
-        page.wait_for_selector("#signin-issuer", timeout=20000)
+        try:
+            page.wait_for_selector("#signin-issuer", timeout=20000)
+        except Exception:   # (what the page shows instead, said)
+            raise RuntimeError("General → Sign-in provider not drawn: " + json.dumps(js("""[location.hash, ME?.user?.admin_needs_two_factor,
+              document.getElementById('gen-signin')?.hidden, document.getElementById('gen-signin')?.innerText.slice(0, 300),
+              document.querySelector('#setNav a[aria-current=page]')?.dataset.group]""")))
         fresh_check(page)
         got = js("""[document.getElementById('signin-issuer').value, document.getElementById('signin-secret').value,
           document.getElementById('signin-secret').placeholder, document.querySelector('#gen-signin code').textContent,
@@ -3016,6 +3028,8 @@ def oidc_check(check, browser, base, cookies):
         db.execute("DELETE FROM oidc_identities")
         db.execute("DELETE FROM meta WHERE k IN ('oidc', 'oidc.secret')")
         acc1109.remove(db, other)
+        if not had_totp:
+            db.execute("UPDATE users SET totp_secret=NULL, totp_last_step=0 WHERE username=?", (USER,))
         db.close()
     return errs
 
@@ -22483,6 +22497,9 @@ def main():
             check("…(#502) it finds Two-factor sign-in for recovery codes, new ones, and turning it on or off; Admin's Accounts for “one-time "
                   "password” and “make admin”; Passkeys for adding and removing one; Where you're signed in for “sign out everywhere”",
                   all(found502[q][:1] == [t] for q, t in want502.items()), found502)
+            # (#1109) a client secret or ID, an issuer, a redirect URI and testing the connection are General's Sign-in
+            # provider's words too: shared, either of the two may come first, the other second
+            shared1109 = lambda found, t: t in found[:2] and set(found[:2]) <= {t, "Sign-in provider"}
             # #506: Admin's Accounts first for adding or removing an account (Passkeys, Two-factor sign-in came first: their
             # "add remove", "make new", with "account" only their page's name); "-ies" finds "-y"; Make owner's, and a
             # source's Test's and Remove's, words. The first found of all, which Enter opens
@@ -22498,7 +22515,8 @@ def main():
             check("…(#506) Admin's Accounts first for “remove account”, “add account” and “new account”; a word in “-ies” finds it in “-y” "
                   "(activities, histories, directories, entries); Accounts for making an owner of a profile without one (“make owner”: one of "
                   "the first, after Sharing's Who has access, #524: an owner's of their own profile); Connected-source apps for testing and removing a source",
-                  all(found506[q][:1] == [t] for q, t in want506.items() if q not in ("activities", "entries", "make owner"))
+                  all(shared1109(found506[q], t) if q == "test connection" else found506[q][:1] == [t]
+                      for q, t in want506.items() if q not in ("activities", "entries", "make owner"))
                   and all(t in found506[q] for q, t in want506.items()), found506)
             # #510: and Share links, People's Who has access and Connected-source apps for what's done or typed there (it
             # found nothing for these), each first
@@ -22514,7 +22532,8 @@ def main():
             check("…(#510) Share links for removing or deleting a share link, Who has access (People) for removing a person or member, making "
                   "an editor and changing a role, Connected-source apps for a client secret or id, an issuer and Epic, each the first page found "
                   "(Epic's: one of the first three, #515: after Portals and health plans, a person's way in)",
-                  all((t in found510[q]) if q == "epic" else found510[q][:1] == [t] for q, t in want510.items()), found510)
+                  all((t in found510[q]) if q == "epic" else shared1109(found510[q], t) if q in ("client secret", "client id", "issuer")
+                      else found510[q][:1] == [t] for q, t in want510.items()), found510)
             # #515: Connected-source apps for deleting a source (Cycle tracking came first: its "delete data", with "source"
             # only its page's name), Accounts for enabling one, and Sources' Portals and health plans for a vendor's or
             # portal's name (only Admin's apps had them)
@@ -22541,7 +22560,7 @@ def main():
             page.keyboard.press("Escape")
             check("…(#519) Passkeys for “rename passkey”, Where you're signed in for “logout”, Connected-source apps for “return address”, "
                   "“redirect”, “redirect uri” and “new source”, Password for “new”, “reset” and “forgot password”, each first",
-                  all(found519[q][:1] == [t] for q, t in want519.items()), found519)
+                  all(shared1109(found519[q], t) if q in ("redirect", "redirect uri") else found519[q][:1] == [t] for q, t in want519.items()), found519)
             # #524: one sweep of the palette's words (each round found more it had none for). Every visible button's and menu
             # item's label on Sources, Sharing, Settings, Account and Admin, each group shown in turn, for an admin, an owner,
             # an editor and a viewer of the profile, finds a page or setting of its own page first (of one of its pages, for a

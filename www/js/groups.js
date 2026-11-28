@@ -114,7 +114,7 @@ const SG_PAGES = {
        ["Wrong tries before a wait", "gen-security", "password throttle attempts one account from place address any anywhere"],   // (an entry of its own: "create account" is Accounts')
        ["Require two-factor sign-in", "gen-security", "2fa everyone"],   // (#1001; #528: "require 2fa", Accounts' before)
        ["Sign-in provider", "gen-signin", "oidc openid connect single sign-on sso issuer client id secret redirect uri scopes acr " +
-        "authentik keycloak authelia google test connection sign in with oidc only passwords off"],   // (#1109)
+        "that counts as two factors button's name authentik keycloak authelia google test connection sign in with oidc only passwords off"],   // (#1109)
        ["Backups and logging", "gen-backups", "backups folder encryption key file keys logs log output docker security activity kept days how long delete older"],   // (the schedule's Backups', #532: it only links there)
        ["Phone receiver", "gen-phone", "upload address watch scale health connect receiver port time zone unclaimed restore replaced"],
        ["Experimental", "gen-experimental", "connected sources portals health plans fhir epic mychart sync find your provider turn on off"],   // (#1096)
