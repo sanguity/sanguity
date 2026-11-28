@@ -38,6 +38,7 @@ const FILES = [
   "js/admin-host.js",
   "js/gen-security.js",
   "js/gen-signin.js",
+  "js/notify.js",
   "js/gen-backups.js",
   "js/admin-phone.js",
   "js/gen-about.js",

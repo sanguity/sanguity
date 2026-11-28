@@ -3385,6 +3385,111 @@ def key_documents_check(check, browser, base, cookies):
     return errs
 
 
+def notify_check(check, browser, base, cookies):
+    """(#1130) Notifications, against a fake ntfy server (tests/fakentfy.py), as the admin whose cookies are given:
+    General → Notifications drawn, an http:// server on the internet refused, the server and its access token saved
+    from the group's bar (the token never on the page after), Send a test reaching it; You → Notifications shown only
+    once a server is set, each profile's New results and Dose reminders turned on at once; Outside connections listing
+    it. Each part at 320 px, at 200% text, dark, in forced colours, with no serious axe finding. Puts everything back
+    as it was. Returns script errors."""
+    from server import db as dbm1130, notify as notify1130
+    from fakentfy import FakeNtfy
+    token = "tk_fictional_1130_never_on_a_page"
+    ntfy = FakeNtfy()
+    errs, serious = [], []
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+    ctx.add_cookies([c for c in cookies if c["name"] == "sg_session"])
+    page = ctx.new_page()
+    page.on("pageerror", lambda e: errs.append(str(e)))
+    js = page.evaluate
+
+    def looks(where, sel):   # 320 px, 200% text, dark and forced colours: fits, no serious axe finding, nothing hidden
+        out = []
+        for w in (320, 412, 1400):
+            page.set_viewport_size({"width": w, "height": 900})
+            page.wait_for_timeout(150)
+            out += phone_fits(page, f"{where} at {w} px")
+        js("document.documentElement.style.fontSize = '200%'")
+        page.set_viewport_size({"width": 412, "height": 900})
+        page.wait_for_timeout(150)
+        out += phone_fits(page, f"{where} at 200% text")
+        js("document.documentElement.style.fontSize = ''")
+        page.set_viewport_size({"width": 1400, "height": 900})
+        for scheme in ("light", "dark"):
+            page.emulate_media(color_scheme=scheme)
+            serious.extend(axe_check(page, f"{where}, {scheme}")[0])
+        page.emulate_media(color_scheme="light", forced_colors="active")
+        out += [f"{where}: {t} not drawn in forced colours" for t in js(f"""[...document.querySelectorAll('{sel} :is(button, input)')]
+          .filter(e => e.checkVisibility() && (e.getBoundingClientRect().width < 8 || getComputedStyle(e).visibility === 'hidden'))
+          .map(e => e.id || e.textContent.trim())""")]
+        page.emulate_media(forced_colors="none")
+        return out
+
+    try:
+        # ---- General → Notifications: nothing set, so You → Notifications isn't there
+        page.goto(base + "/settings.html?profile=1#gen-notify")
+        page.wait_for_selector("#notifyUrl", timeout=20000)
+        fresh_check(page)
+        got = js("[[...document.querySelectorAll('#gen-notify button')].find(b => b.textContent === 'Send a test').disabled, document.getElementById('notify').hidden]")
+        check("General → Notifications (#1130): drawn with no server, Send a test off, and You → Notifications not offered before one is set",
+              got == [True, True], got)
+        page.fill("#notifyUrl", "http://ntfy.example.test/sanguity")
+        page.click("#setBar button:has-text('Save')")
+        page.locator("#setBar .msg", has_text="isn't saved").or_(page.locator("#setBar .msg", has_text="aren't saved")).first.wait_for(timeout=10000)
+        said = js("document.querySelector('#setBar .msg').textContent")
+        check("…an http:// server on the internet is refused, saying to use https://", "use https://" in said, said)
+        page.fill("#notifyUrl", ntfy.url)
+        page.fill("#notifyToken", token)
+        page.click("#setBar button:has-text('Save')")
+        page.locator("#gen-notify .set-msg", has_text="Saved the notification server and its access token.").wait_for(timeout=10000)
+        got = js("""t => [document.getElementById('notifyUrl').value, document.getElementById('notifyToken').value,
+          document.getElementById('notifyToken').placeholder, document.documentElement.outerHTML.includes(t),
+          document.getElementById('gen-notify').hasAttribute('data-dirty')]""", token)
+        check("…the server and its access token saved from the bar: the token never on the page after, only “Saved”",
+              got == [ntfy.url, "", "Saved", False, False], got)
+        page.get_by_role("button", name="Send a test").click()
+        page.wait_for_function("(m => /^Sent to/.test(m.textContent) || m.classList.contains('bad'))(document.querySelector('#gen-notify .row .msg'))", timeout=15000)
+        said = js("document.querySelector('#gen-notify .row .msg').textContent")
+        got = [(p["body"], p["headers"].get("Authorization")) for p in ntfy.posts]
+        check("…Send a test reaches it, with the token as its bearer and only the test's words", said.startswith("Sent to " + ntfy.host)
+              and got == [(notify1130.message("test"), "Bearer " + token)], [said, got])
+        fits = looks("General → Notifications", "#gen-notify")
+        # ---- You → Notifications: each profile's two kinds, turned on at once
+        page.goto(base + "/settings.html?profile=1#notify")
+        page.wait_for_selector("#notify:not([hidden]) input[data-kind=results]", timeout=20000)
+        rows = js("[...document.querySelectorAll('#notify [data-profile]')].map(r => [r.querySelector('.set-row-name').textContent, r.querySelectorAll('input[type=checkbox]').length])")
+        page.locator("#notify [data-profile='1'] label", has_text="Dose reminders").click()
+        page.locator("#notifyMsg", has_text="Dose reminders for").wait_for(timeout=10000)
+        db = dbm1130.connect()
+        kinds = [r[0] for r in db.execute("SELECT kind FROM notify_optins WHERE profile_id=1")]
+        db.close()
+        check("…You → Notifications, once a server is set: each profile this person can see with New results and Dose "
+              "reminders, a box turned on at once and said", len(rows) >= 2 and all(n == 2 for _, n in rows) and kinds == ["doses"], [rows, kinds])
+        fits += looks("You → Notifications", "#notify")
+        # ---- Outside connections lists it
+        page.goto(base + "/settings.html?profile=1#outside")
+        page.wait_for_function("document.getElementById('outsideBody')?.textContent.includes('Notification server')", timeout=20000)
+        txt = js("document.getElementById('outsideBody').innerText")
+        check("…and Outside connections lists the notification server's host, with its contact", txt.count(ntfy.host) >= 2, txt[-400:])
+        check("…each part fits 320–1400 px and 200% text, and draws in forced colours", not fits, fits)
+        check("…no serious axe finding there, light or dark", not serious, serious)
+    except Exception as e:
+        check("Notifications (#1130) ran", False, stopped(e))
+    finally:
+        try:
+            fresh_check(page)
+            page.request.put(base + "/api/settings/install/notify/token", headers={"X-Sanguity": "1", "Origin": base}, data={"token": ""})
+            page.request.put(base + "/api/settings/install/notify.url", headers={"X-Sanguity": "1", "Origin": base}, data={"value": ""})
+        finally:
+            ctx.close()
+            ntfy.stop()
+            db = dbm1130.connect()
+            db.execute("DELETE FROM notify_optins")
+            db.execute("DELETE FROM notify_sent")
+            db.close()
+    return errs
+
+
 def main():
     t0, sections = time.monotonic(), sections_of_main()   # (read before the file can change under a long run)
     srv, base = start_app()
@@ -28701,6 +28806,11 @@ def main():
             # emergency card, unmarked
             errs1135 = key_documents_check(check, browser, base, page.context.cookies())
             check("…and no script fails there (#1135)", not errs1135, errs1135)
+
+            # ---- #1130: notifications, against a fake ntfy server: General's Notifications (the token write-only, Send a
+            # test), You → Notifications, Outside connections
+            errs1130 = notify_check(check, browser, base, page.context.cookies())
+            check("…and no script fails there (#1130)", not errs1130, errs1130)
 
             # ---- #246: the Timeline list's row is .tl-row, so the pages' rows of buttons (.row) have no divider under them
             # and no pointer, and what's typed into a field isn't its label's semibold; every group of each page

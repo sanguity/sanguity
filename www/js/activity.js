@@ -89,6 +89,11 @@ const WHAT = {
   "passkey.remove": d => `removed the passkey “${d.name}”`,
   "oidc.link": d => d.username ? `linked the sign-in identity “${d.name}” to ${d.username}` : `linked the sign-in identity “${d.name}”`,   // (#1109)
   "oidc.unlink": d => d.username ? `unlinked the sign-in identity “${d.name}” from ${d.username}` : `unlinked the sign-in identity “${d.name}”`,
+  // notifications (#1130): turned on or off for a profile; the server's test, its token, and one that never went through
+  notify: d => `turned ${d.on ? "on" : "off"} notifications of ${d.kind === "doses" ? "dose reminders" : "new results"}`,
+  "notify.test": d => d.ok ? "sent a test notification" : `couldn't send a test notification (${d.why})`,
+  "notify.token": d => d.change === "remove" ? "removed the notification server's access token" : "saved the notification server's access token",
+  "notify.fail": d => `couldn't send a notification of ${d.kind === "doses" ? "a dose due" : "new results"} after ${d.tries} tries (${d.why})`,
   "settings.require_2fa": d => d.on ? "required two-factor sign-in for everyone" : "stopped requiring two-factor sign-in",
   "account.remove": d => `removed the account ${d.username}` +
     (d.handed_over && d.handed_over.length ? `, handing ${d.handed_over.join(", ")} to someone else` : ""),
