@@ -30,6 +30,54 @@ MB = 2**20
 CONNECT_ALLOW_HTTP = os.environ.get("CONNECT_ALLOW_HTTP", "") == "1"
 
 
+# ---------------------------------------------------------------- what only the container sets (#1158)
+# Every variable the server, the receiver and docker/ read is either a setting the page owns (VARS below, the restart
+# settings of server_settings.py, the secrets of SECRETS) or one of these: what the container itself needs to start,
+# or a fact of how it's built and deployed, each with why it can't be a setting. tests/test_env_audit.py reads the
+# code for every variable read and fails on one that's neither; deploy/check.py lets the templates set only these.
+_MOUNT = "a folder inside the container, which the template mounts there: moving it is the template's"
+_FILE = "a data file shipped in the image (the tests point it at their own)"
+_BIND = ("where the server listens inside its container: nginx, the healthcheck and the all-in-one container are built "
+         "around it, so a change on the page would cut the app off")
+CONTAINER = {
+    "PUID": "the user the container runs as, and owns its files with: set before anything starts",
+    "PGID": "the group the container runs as: set before anything starts",
+    "SANGUITY_DATA": "the data folder: the settings live in it, so it can't be one of them",
+    "SANGUITY_KEY_FILE": "the encryption key file: needed to read the database the settings are in",
+    "SANGUITY_AUTH": "the folder of the key and the receiver's secret (setup, the all-in-one container): " + _MOUNT,
+    "SANGUITY_BUILD": "where setup writes the built data: " + _MOUNT,
+    "SANGUITY_RECORDS": "the record exports: " + _MOUNT,
+    "SANGUITY_LEGACY_WWW": "an older install's www/ (documents in www/files*/): " + _MOUNT,
+    "SANGUITY_WATCH_FILE": "the receiver's daily summary: " + _MOUNT,
+    "SANGUITY_WATCH_KEYS": "the receiver's secrets, written by the app: " + _MOUNT,
+    "SANGUITY_WATCH_STORE": "the receiver's whole folder, read-only, for backups: " + _MOUNT,
+    "SANGUITY_WATCH": "the receiver's folder, as setup and the all-in-one container see it: " + _MOUNT,
+    "SANGUITY_BACKUPS": "where backups are written: " + _MOUNT,
+    "SANGUITY_CONFIG": "sources.json, settings.json and corrections.json, read by setup before the app starts: " + _MOUNT,
+    "SANGUITY_APP": "where setup finds the app's code: " + _MOUNT,
+    "SANGUITY_DEPLOYMENT": "which template started it, set by the template itself (About, Restart now's question)",
+    "SANGUITY_VERSION": "the image's version, set as it's built (a release's .env picks the image by it)",
+    "SANGUITY_SERVE_STATIC": "a server run without nginx (development) serves www/ itself",
+    "SANGUITY_TESSERACT": "the text-recognition program, as installed in the image",
+    "SANGUITY_TESSDATA": "the text-recognition program's language data, as installed in the image",
+    "SANGUITY_CORRECTIONS": _FILE, "SANGUITY_LAB_TEST_PAGES": _FILE, "SANGUITY_CONDITION_PRESETS": _FILE,
+    "SANGUITY_LAB_ALIASES": _FILE, "SANGUITY_DIRECTORY": _FILE,
+    "SANGUITY_SAVED_SETTINGS": "the way back in: off leaves the values saved in the app out while it's set; read at "
+                               "each use, never taken in, as it must work when the page can't be reached",
+    "CONNECT_ALLOW_HTTP": "tests only: a plain-HTTP connected source on this machine, never a real vendor",
+    "HOST": _BIND, "PORT": _BIND,
+    "RECEIVER_PORT": "the receiver's published port (compose's ports:), which the app can't see, given in the phone's "
+                     "upload address: the port mapping is the container's",
+    "PATH": "the program search path, passed on to the text-recognition program",
+    "DATA_DIR": "server/directory/build.py, a tool run by hand: the folder it writes the provider directory to",
+    "DATA": "the receiver's folder inside its container: " + _MOUNT,
+    "SECRET_FILE": "the receiver's first secret (from before #46): " + _MOUNT,
+    "KEYS_FILE": "the receiver's secrets, written by the app: " + _MOUNT,
+}
+# secrets the page keeps write-only (encrypted in the database, never shown): taken in from the environment once (#1158)
+SECRETS = {"NOTIFY_TOKEN": "Notifications' access token", "OIDC_CLIENT_SECRET": "Sign-in provider's client secret"}
+
+
 # ---------------------------------------------------------------- the settings that tune the server (#999)
 # Each is read where it's used, through setting(NAME), so a change applies at once. Its value is the environment's
 # when the variable is set (not empty: the compose files pass "${NAME:-}", which is empty while .env doesn't set it),

@@ -56,7 +56,6 @@ def main():
                  "as that user). Don't set --user; set PUID and PGID instead.")
     if UID == 0 or GID == 0:
         sys.exit("Set PUID and PGID to a user and group other than root (on Unraid: 99 and 100).")
-    tz = os.environ.get("TZ") or "UTC"
 
     log("setup: secrets, folders and the built data")
     r = subprocess.run([sys.executable, "-I", "/app/docker/setup.py"], env={**os.environ, "PUID": str(UID), "PGID": str(GID)})
@@ -67,11 +66,11 @@ def main():
     base = {k: v for k, v in os.environ.items() if k not in ("HOST", "PORT")}
     services = {
         # SANGUITY_DEPLOYMENT: how it's deployed, for Settings → General → About (#1004); Unraid's template sets its own.
-        # TZ: the receiver's time zone, which General → Phone receiver shows (#998)
-        "app": (["python3", "-m", "server"], {"SANGUITY_DEPLOYMENT": "allinone", **base, "TZ": tz, "HOST": "127.0.0.1", "PORT": "8000",
+        # the receiver's time zone is the app's to give it (receiver-settings.json, #1158), never its own environment's
+        "app": (["python3", "-m", "server"], {"SANGUITY_DEPLOYMENT": "allinone", **base, "HOST": "127.0.0.1", "PORT": "8000",
                                                "FORWARDED_ALLOW_IPS": "127.0.0.1"}),
         "web": (["nginx", "-e", "stderr", "-c", os.path.join(NGINX_TMP, "nginx.conf"), "-g", "daemon off;"], base),
-        "receiver": (["python3", "-I", "/app/receiver.py"], {**base, "DATA": WATCH, "PORT": "8081", "TZ_DEFAULT": tz,
+        "receiver": (["python3", "-I", "/app/receiver.py"], {**base, "DATA": WATCH, "PORT": "8081",
                                                           "SECRET_FILE": os.path.join(AUTH, "watch_secret")}),
     }
     procs = {}
