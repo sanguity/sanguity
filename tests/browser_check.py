@@ -6563,7 +6563,7 @@ def main():
             tctx = browser.new_context(viewport={"width": 844, "height": 390}, bypass_csp=True, has_touch=True, is_mobile=True)
             tctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
             tpg = tctx.new_page()
-            tpg.goto(base + "/?profile=1#labs")
+            tpg.goto(base + "/?profile=1#labs-chart")   # (its charts: Labs opens on Latest, #1160)
             tpg.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
             for on651 in (False, True):
                 tpg.evaluate("on => { state.tables.clear(); applyPreset('2y'); state.marks = on; medsOnTrends = on; renderAll(); }", on651)
@@ -14913,7 +14913,7 @@ def main():
             tctx = browser.new_context(viewport={"width": 844, "height": 390}, bypass_csp=True, has_touch=True, is_mobile=True)
             tctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
             tpg = tctx.new_page()
-            tpg.goto(base + "/?profile=1#labs")
+            tpg.goto(base + "/?profile=1#labs-chart")   # (its charts: Labs opens on Latest, #1160)
             tpg.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
             lost724.update(presets724(tpg, "844×390 touch"))
             tctx.close()
@@ -23848,7 +23848,7 @@ def main():
             # "labs" opens Labs where it opens (#1026: as from another page; it was the charts here), whichever view it was
             # left in; "compare" Labs › Compare (#297)
             views452, home452 = {}, js("labsHome()")
-            for q in ("heatmap", "what you paid", "out of pocket", "journal", "compare", "labs"):
+            for q in ("heatmap", "what you paid", "out of pocket", "journal", "compare", "chart", "labs"):
                 js("switchTab('overview')")
                 pal(q)
                 first = js(marked)
@@ -23858,12 +23858,13 @@ def main():
                 views452[q] = [first, ctx452, js("[location.hash, state.tab]")]
             js("costState.view = 'claims'; state.tlView = 'timeline'; switchTab('overview')")   # (the views as the checks after expect them)
             check("…views with an address are found by name, Enter opening them: “heatmap”, “what you paid”, “out of pocket”, “journal” (before Add's "
-                  "Journal entry), “compare” (#297), and “labs” Labs where it opens, whichever view it was left in (#452, #1026)",
+                  "Journal entry), “compare” (#297), “chart” Labs › Chart (#1160: Latest is Labs' first view), and “labs” Labs where it opens, whichever view it was left in (#452, #1026)",
                   views452 == {"heatmap": [["Records tabs", "Heatmap"], ", Records tab › Labs", ["#labs-heatmap", "labs"]],
                                "what you paid": [["Records tabs", "What you paid"], ", Records tab › Costs", ["#costs-paid", "costs"]],
                                "out of pocket": [["Records tabs", "What you paid"], ", Records tab › Costs", ["#costs-paid", "costs"]],
                                "journal": [["Records tabs", "Journal"], ", Records tab › Timeline", ["#timeline-journal", "timeline"]],
                                "compare": [["Records tabs", "Compare"], ", Records tab › Labs", ["#labs-compare", "labs"]],
+                               "chart": [["Records tabs", "Chart"], ", Records tab › Labs", ["#labs-chart", "labs"]],
                                "labs": [["Records tabs", "Labs"], ", Records tab", ["#labs-" + home452, "labs"]]}, [views452, home452])
             # opened from inside a menu, its item gone with the menu: Escape puts focus on the menu's button
             back403 = []
@@ -27234,7 +27235,7 @@ def main():
             db = dbm.connect()
             prof_r.delete_profile(db, apid)
             db.close()
-            # ---- Labs' Latest (#993, latest.js): Labs' fourth view, at #labs-latest. A row for each lab with a result in the
+            # ---- Labs' Latest (#993, latest.js): Labs' first view (#1160), at #labs-latest. A row for each lab with a result in the
             # period, its latest as its chart's table gives it (latest993: value and unit, flag, range and day), a line
             # saying how many have none in it; a list of links, each named by its lab and its latest. Activating a row (a
             # click, Enter, a tap) charts the lab, focus on its chart, the address #labs-chart; Back returns to Latest, focus on
@@ -27529,13 +27530,14 @@ def main():
                   and other996[0] == {"Hemoglobin": None, "WBC": None} and other996[2] == first996[1][2] != again996[2]
                   and [b[0] for b in blocked996] == [{"Hemoglobin": None, "WBC": None, "Ferritin": None}] * 2 and [b[1:] for b in blocked996] == [["Latest results", "blocked"]] * 2 and not err996,
                   [first996, again996, other996, blocked996, err996])
-            # ---- #997: Labs opens on Latest on a phone. In a browser that's shown nothing yet, Labs' own address (another
-            # page's tab bar links to it, ./#labs) opens Latest at 360 and 412 px and Chart at 900 and 1400 px; on a phone
+            # ---- #997, #1160: Labs opens on Latest, its first view. In a browser that's shown nothing yet, Labs' own address
+            # (another page's tab bar links to it, ./#labs) opens Latest at 360, 412, 900 and 1400 px, Latest first in the
+            # view switch, and each view's own address (#labs-chart, #labs-heatmap, #labs-compare) that view; on a phone
             # the tab bar's Labs too, marked as the tab shown, focus and the scroll as Body's tab leaves them. A view picked
             # is where Labs opens from then on: on a reload, and from another page's bar (Sources'), for that profile only
             cookies997 = [{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"]
             OPEN997 = "[state.tab, state.labsView, location.hash, !document.getElementById({latest: 'labsLatest', chart: 'labsChart', heatmap: 'labsHeatmap', compare: 'labsCompare'}[state.labsView]).hidden]"
-            opens997 = {}
+            opens997, order1160, named1160 = {}, {}, {}
             for w997 in (360, 412, 900, 1400):
                 c997 = browser.new_context(viewport={"width": w997, "height": 800}, bypass_csp=True, is_mobile=w997 < 700, has_touch=w997 < 700)
                 c997.add_cookies(cookies997)
@@ -27543,6 +27545,11 @@ def main():
                 p997.goto(base + "/?profile=1#labs")
                 p997.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
                 opens997[w997] = p997.evaluate(OPEN997)
+                order1160[w997] = p997.evaluate("[...document.querySelectorAll('#labsView button')].map(b => [b.dataset.view, b.textContent, b.checkVisibility()])")
+                for v1160 in ("chart", "heatmap", "compare"):
+                    p997.goto(base + "/?profile=1#labs-" + v1160)
+                    p997.wait_for_function("v => typeof booted !== 'undefined' && booted && state.labsView === v", arg=v1160, timeout=20000)
+                    named1160.setdefault(w997, []).append(p997.evaluate(OPEN997))
                 c997.close()
             c997 = browser.new_context(viewport={"width": 412, "height": 860}, bypass_csp=True, is_mobile=True, has_touch=True)
             c997.add_cookies(cookies997)
@@ -27580,12 +27587,15 @@ def main():
             db = dbm994.connect()
             prof994.delete_profile(db, o997)
             db.close()
-            check("Labs opens on Latest on a phone (#997): in a browser that's shown nothing yet, Labs' address (another page's tab bar) opens Latest at "
-                  "360 and 412 px and Chart at 900 and 1400 px; the phone's tab bar's Labs opens Latest, marked as the tab shown, focus and the scroll as "
-                  "Body's tab leaves them", opens997 == {360: ["labs", "latest", "#labs-latest", True], 412: ["labs", "latest", "#labs-latest", True],
-                                                         900: ["labs", "chart", "#labs-chart", True], 1400: ["labs", "chart", "#labs-chart", True]}
+            check("Labs opens on Latest (#997, #1160): in a browser that's shown nothing yet, Labs' address (another page's tab bar) opens Latest at "
+                  "360, 412, 900 and 1400 px; the phone's tab bar's Labs opens Latest, marked as the tab shown, focus and the scroll as "
+                  "Body's tab leaves them", opens997 == {w: ["labs", "latest", "#labs-latest", True] for w in (360, 412, 900, 1400)}
                   and bar997["labs"][:3] == ["labs", "latest", "page"] and bar997["health"][2] == "page"
                   and [bar997["labs"][3], bar997["labs"][4]] == [bar997["health"][3].replace("health", "labs"), bar997["health"][4]], [opens997, bar997])
+            check("…Latest is the first of Labs' views at every width, then Chart, Heatmap and Compare, and an address naming another view opens that "
+                  "view (#1160)", order1160 == {w: [["latest", "Latest", True], ["chart", "Chart", True], ["heatmap", "Heatmap", True], ["compare", "Compare", True]]
+                                                for w in (360, 412, 900, 1400)}
+                  and named1160 == {w: [["labs", v, "#labs-" + v, True] for v in ("chart", "heatmap", "compare")] for w in (360, 412, 900, 1400)}, [order1160, named1160])
             check("…a view picked is where it opens from then on, on a reload and from another page's tab bar (Heatmap, Latest, Chart), for that profile "
                   "only: another opens on Latest still", picked997 == {v: [["labs", v, "#labs-" + v, True]] * 2 for v in ("heatmap", "latest", "chart")}
                   and other997 == ["labs", "latest", "#labs-latest", True], [picked997, other997])

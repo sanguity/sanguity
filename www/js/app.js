@@ -14,7 +14,7 @@ function applyTabs(cfg) { ({order: TAB_ORDER, hidden: TAB_HIDDEN} = SgNav.layout
 /* the tab in the address (#208), with its view (#442): index.html#overview, #health, #medications (#275), #timeline,
    #timeline-journal (the Timeline as the journal, #277), Labs' views each at its own, #labs-chart (its charts),
    #labs-heatmap, #labs-compare (#297) and #labs-latest (#993), and #labs alone Labs where it opens (labsHome, core.js:
-   the view picked, else Latest on a phone and Chart wider, #997; another page's tab bar links there; #1026: it was the
+   the view picked, else Latest, #997, #1160; another page's tab bar links there; #1026: it was the
    charts too, so a chart reloaded came back as Latest or the view picked), #costs (Costs' claims) or #costs-paid (what
    you paid, #278); the old #trends and #heatmap still open Labs as charts or the heatmap. What follows a ? is for the tab: #costs?drug=metformin, the drug's claims (medications.js, #452). An
    address with no # opens the tab last used (save(), core.js). tabOfHash: the address's [tab, its
@@ -323,7 +323,7 @@ async function recordsDraw(data) {
   $("#meta").textContent = [PROFILE?.demo && DATA.source, DATA.built && "records imported " + nb(fmtD(DATA.built)), WATCH && WATCH.last_payload && "watch synced " + nb(fmtDT(WATCH.last_payload))]
     .filter(Boolean).join(" · ");
   restore();   // a saved period naming a milestone that's since gone is All (setPeriod)
-  // Labs opens on Latest on a phone and on Chart wider till a view's picked (#997), whatever was shown last; #labs
+  // Labs opens on Latest till a view's picked (#997, #1160), whatever was shown last; #labs
   // alone opens it there too, and each view's own address that view (#1026)
   if (!labsPicked) state.labsView = labsHome();
   const arrived = tabOfHash();

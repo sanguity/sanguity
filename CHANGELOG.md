@@ -4067,6 +4067,9 @@ Everything on `main` so far; it becomes the first tagged release.
   glucose reading typed in or sent by the phone after its last day ended every period before it (its mark not drawn,
   its tooltip found at the edge); a long period's first and newest weeks, whose Thursdays fall outside it, are drawn
   at its ends; a week alone is a dot.
+- **Labs opens on Latest** (#1160, the owner's request): Latest is the first of Labs' views (Latest, Chart, Heatmap,
+  Compare) and where Labs opens at every width till another is picked (Chart was, wider than a phone); `#labs-chart`
+  and the other views' addresses open theirs, and the command palette finds Chart by name.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 
