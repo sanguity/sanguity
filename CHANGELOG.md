@@ -3952,6 +3952,10 @@ Everything on `main` so far; it becomes the first tagged release.
 - **In-range results, grey or green** (#1108): Settings → You → Display → In-range results, each person's own: Grey
   (the default, as before) or Green for the Labs heatmap's in-range cells, from the page's first frame; green means only
   inside the range the report gave, out of range stays red with ▲/▼, and forced colours are unchanged.
+- **The page owns the settings it changes** (#1120): no deploy template, compose file, `.env.example`, the all-in-one
+  container or the image sets the public addresses, phone upload address, sign-in lengths and idle sign-out, security
+  limits, activity days or connected sources by default (each a commented example), so a fresh install's Settings →
+  Install → General can change every one; one set in `.env` or an app form still wins and pins it. deploy/check.py checks it.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

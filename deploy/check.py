@@ -12,6 +12,11 @@ environment sets is shown in the app as set there, fixed, so a default filled in
 install. Both compose files pass each one as "${NAME:-}" (empty unless .env sets it), and TrueNAS, Unraid and CasaOS
 none of them, unless changed from its default.
 
+None sets one the page owns (#1120: the install settings settings.py defines with env=NAME, which Settings → Install →
+General changes) by default, so a fresh install's page can change every one; setting one still pins it. The compose
+files pass each as "${NAME:-}" (empty is unset), .env.example has each only as a commented-out example, and the
+all-in-one container and the released image set none.
+
 --truenas-lib DIR       also render the TrueNAS app with TrueNAS's app library (library/<version> of
                         github.com/truenas/apps), as their CI does, and compare the rendered compose file
 
@@ -46,6 +51,16 @@ def _settings():
 
 
 SETTINGS = _settings()
+
+
+def _page_owned():
+    """(#1120) The settings the page owns: each install setting server/settings.py defines with env="NAME" (read as text:
+    the registry imports the server's encryption, which this check doesn't need)."""
+    with open(os.path.join(ROOT, "server", "settings.py"), encoding="utf-8") as f:
+        return set(re.findall(r'(?:^\s*|,\s*)env="(\w+)"', f.read(), re.M))   # a define()'s argument, not its docs
+
+
+PAGE_OWNED = _page_owned()
 # passed whatever it is (#1007): the receiver's published port, which the app can't see, for the phone upload address
 ALWAYS_PASSED = {"RECEIVER_PORT"}
 
@@ -153,11 +168,40 @@ def compose_settings(name):
     check(f"{name}: the app gets SANGUITY_SAVED_SETTINGS only as .env sets it (#1006)",
           app.get("SANGUITY_SAVED_SETTINGS") == "${SANGUITY_SAVED_SETTINGS:-}", app.get("SANGUITY_SAVED_SETTINGS"))
     receiver_values(name, compose["services"])
+    set_by_default = sorted(k for k in PAGE_OWNED if app.get(k) != "${" + k + ":-}")
+    check(f"{name}: sets none of the settings the page owns by default, each only as .env sets it (#1120)",
+          not set_by_default, set_by_default)
     for svc_name, svc in compose["services"].items():
         for k, v in env_of(svc).items():
             if k in SETTINGS:
                 check(f"{name}: {svc_name} gets {k} only as .env sets it (${{{k}:-}}, no default filled in)",
                       v == "${" + k + ":-}", v)
+
+
+def env_example():
+    """(#1120) .env.example has each setting the page owns as a commented-out example ("# NAME=..."), and sets none."""
+    with open(os.path.join(ROOT, ".env.example"), encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    set_ = {m.group(1) for m in (re.match(r"\s*(\w+)\s*=", l) for l in lines) if m}
+    examples = {m.group(1) for m in (re.match(r"#\s?(\w+)=", l) for l in lines) if m}
+    check(".env.example: sets none of the settings the page owns (#1120)", not (PAGE_OWNED & set_), sorted(PAGE_OWNED & set_))
+    check(".env.example: has each setting the page owns as a commented-out example (#1120)",
+          PAGE_OWNED <= examples, sorted(PAGE_OWNED - examples))
+
+
+def image_and_allinone():
+    """(#1120) Neither the all-in-one container (docker/allinone.py, beyond its docstring) nor the released image (an ENV
+    of docker/app.Dockerfile) sets a setting the page owns."""
+    import ast
+    tree = ast.parse(open(os.path.join(ROOT, "docker", "allinone.py"), encoding="utf-8").read())
+    doc = ast.get_docstring(tree, clean=False)
+    named = sorted({n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                    and n.value != doc and n.value in PAGE_OWNED})
+    check("the all-in-one container sets none of the settings the page owns (#1120)", not named, named)
+    docker = open(os.path.join(ROOT, "docker", "app.Dockerfile"), encoding="utf-8").read()
+    env = " ".join(re.findall(r"^ENV\s+((?:.*\\\n)*.*)$", docker, re.M))
+    named = sorted(k for k in PAGE_OWNED if re.search(r"\b" + k + r"\s*=", env))
+    check("the released image sets none of the settings the page owns (#1120)", not named, named)
 
 
 def release_shape():
@@ -242,6 +286,13 @@ def truenas(want, lib_dir):
         depth += len(re.findall(r"{%-?\s*(?:if|for)\b", line)) - len(re.findall(r"{%-?\s*end(?:if|for)\b", line))
         plain += [k for k in re.findall(r'add_env\("(\w+)"', line) if k in SETTINGS - ALWAYS_PASSED and depth <= 0]
     check("truenas: the app's settings are passed only when changed from their default (each add_env inside an if)", not plain, plain)
+    sanguity = next(q for q in files["questions.yaml"]["questions"] if q["variable"] == "sanguity")
+    defaults = {a["variable"]: a["schema"].get("default") for a in sanguity["schema"]["attrs"]}
+    filled = sorted(k for k, field in re.findall(r'add_env\("(\w+)",\s*values\.sanguity\.(\w+)\)', template)
+                    if k in PAGE_OWNED and defaults.get(field) not in ("", None))
+    check("truenas: a field for a setting the page owns is empty by default (#1120)", not filled, filled)
+    check("truenas: Additional Environment Variables is empty by default", defaults.get("additional_envs") == [],
+          defaults.get("additional_envs"))
     if not lib_dir:
         return
     lib = os.path.join(lib_dir, str(app["lib_version"])) if os.path.isdir(os.path.join(lib_dir, str(app["lib_version"]))) else lib_dir
@@ -416,8 +467,12 @@ def main():
     ap.add_argument("--truenas-lib")
     a = ap.parse_args()
     try:
+        check("every setting the page owns is one of the server's settings (server/config.py's VARS)",
+              bool(PAGE_OWNED) and PAGE_OWNED <= SETTINGS, sorted(PAGE_OWNED - SETTINGS))
         for name in ("compose.yaml", "compose.release.yaml"):
             compose_settings(name)
+        env_example()
+        image_and_allinone()
         _, want = release_shape()
         truenas(want, a.truenas_lib)
         unraid(want)

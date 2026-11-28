@@ -35,8 +35,8 @@ services:
       setup:
         condition: service_completed_successfully
     environment:
-      # the app's own settings (COOKIE_SECURE, PUBLIC_ORIGINS, SESSION_DAYS...: .env.example in the repository) are
-      # changed in the app; one added here is fixed, shown as set by the environment (#999)
+      # the app's own settings (COOKIE_SECURE, PUBLIC_ORIGINS, SESSION_DAYS...: .env.example in the repository): none
+      # here, so those Settings → Install → General changes are the page's; one added here is pinned there (#999, #1120)
       FORWARDED_ALLOW_IPS: "*"
       SANGUITY_DEPLOYMENT: casaos   # how it's deployed, named on Settings → General → About (#1004)
       RECEIVER_PORT: "8731"   # the receiver's published port below, for the phone upload address: change both together (#1007)
