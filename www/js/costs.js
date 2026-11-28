@@ -519,8 +519,8 @@ function planCard(y) {
   const card = el("div", {class: "card", id: "planCard"}, el("div", {class: "list-hd"}, el("h2", {tabindex: -1, text: "Deductible and out-of-pocket max"}), el("span", {class: "spacer"}),
     canEdit() ? el("button", {class: "btn needs-server", type: "button", id: "planAdd", "aria-expanded": planState.edit === "new", text: "Add a plan year",
       onclick: () => { planState.edit = planState.edit === "new" ? null : "new"; keepFocus(renderCosts); $("#plan-start")?.focus(); }}) : null),
-    el("p", {class: "hint", text: y && y.plan != null ? "Your share on each claim in the plan year, and the part of it toward the deductible where the claim says."
-      : "Your share on each claim in the calendar year. Add a plan year to see it against your plan's deductible and out-of-pocket max."}));
+    el("p", {class: "hint", text: y && y.plan != null ? "Your share on each claim in the plan year, and the part toward the deductible."
+      : "By calendar year. Add a plan year for your deductible and out-of-pocket max."}));
   if (planState.edit === "new") card.append(planForm(null));
   if (!y) card.append(el("p", {class: "hint", text: "No claim lists a share for you to pay yet, and no plan year is typed in."}));
   if (y) {
