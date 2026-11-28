@@ -224,7 +224,7 @@ function drawCosts() {
 const paidState = {q: "", open: null, limit: 200};   // limit: the amounts listed, 200 more at a time like the claims (#201)
 /* where a payment came from, one label each wherever it's said (#1163): its row, its editor, the hint (taxreport.py
    says the same in its CSV) */
-const OOP_SRC = {typed: "Typed in by you", records: "Imported with your records"};
+const OOP_SRC = {typed: "Typed in by you", file: "From a payments file you uploaded", records: "Imported with your records"};
 const usd2 = v => (v || 0).toLocaleString("en-US", {style: "currency", currency: "USD"});   // with its cents, as usd (#543)
 function oopRows() {
   const pays = (DATA.outOfPocket || {}).payments || [], o = DATA.oop || {};
@@ -232,7 +232,7 @@ function oopRows() {
   const claimOf = new Map((DATA.costs || []).filter(c => c.id != null).map(c => [c.id, c]));
   const rows = [];
   pays.forEach((p, i) => {
-    const x = info.get(i) || {i, key: p.key, src: /^manual:/.test(p.key || "") ? "typed" : "records", hsa: p.hsa || null, premium: /premium/i.test(p.group || "")};
+    const x = info.get(i) || {i, key: p.key, src: /^manual:/.test(p.key || "") ? "typed" : /^payments-csv:/.test(p.key || "") ? "file" : "records", hsa: p.hsa || null, premium: /premium/i.test(p.group || "")};
     rows.push({type: "pay", d: p.d, who: p.payee || "", group: p.group || "Other", amount: p.amount || 0, counted: x.dup != null ? 0 : (p.amount || 0),
       src: x.src, hsa: x.hsa || null, hsaFrom: x.hsaFrom, premium: !!x.premium, key: x.key, i, dup: x.dup, claim: x.claim != null ? claimOf.get(x.claim) || null : null,
       match: x.match, receipt: x.receipt, marked: x.marked, account: p.account || "", memo: p.memo || "", est: p.est});
@@ -336,7 +336,7 @@ function renderPaid(box, claimRows, periodLabel) {
   const pays = counted.filter(r => r.type === "pay"), shares = counted.filter(r => r.type === "claim");
   const has = s => all.some(r => r.src === s);
   // each source: its name, what the ⓘ adds, and its shorter name where all three are named (one line at 390 px, #467)
-  const ways = [has("typed") && ["payments typed in", ""], has("records") && ["payments imported with your records", "", "imported"],
+  const ways = [has("typed") && ["payments typed in", ""], has("file") && ["a payments file you uploaded", "", "a file"], has("records") && ["payments imported with your records", "", "imported"],
     has("claim") && ["claims' shares", " with no payment matched", "claims"]].filter(Boolean);
   const from = whole => "From " + (xs => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs.at(-1))(ways.map(w => whole ? w[0] + w[1] : ways.length > 2 && w[2] || w[0])) + ".";
   // the view's heading, its figures under it in their card (#448); its hint one line, where the amounts came from, and
@@ -344,14 +344,14 @@ function renderPaid(box, claimRows, periodLabel) {
   h2.append(aboutWords({title: "what you paid"}, from(true), "A payment that arrived two ways is counted once, and a claim's share only until a payment is matched to it. Click a row below to see where its number came from."));
   const top = [h2, el("p", {class: "hint", text: from(false)})];
   const tile = statTile, o = oopOf(counted), forCare = o.care.filter(r => r.type === "pay"), n = (k, w) => `${k} ${w}${k === 1 ? "" : "s"}`;
-  const typed = sum(forCare.filter(r => r.src === "typed")), imp = sum(forCare.filter(r => r.src !== "typed"));
+  const typed = sum(forCare.filter(r => r.src === "typed")), file = sum(forCare.filter(r => r.src === "file")), imp = sum(forCare.filter(r => r.src === "records"));
   const hsa = sum(counted.filter(r => r.hsa === "HSA")), fsa = sum(counted.filter(r => r.hsa === "FSA"));
   const dups = rows.filter(r => r.dup != null).length, matched = pays.filter(r => r.claim).length;
   // the figures (#278): out of pocket and its two parts first (with no claims, the HSA's), the rest under More
   // figures; premiums on a tile of their own, never in out of pocket (#1163)
   const hsaTile = tile("Paid with an HSA", usd(hsa), "tagged HSA", "oopHsa");
   const head = [tile("Total out of pocket", usd(o.total), `${n(forCare.length, "payment")} for care${shares.length ? ` + ${n(shares.length, "claim share")}` : ""}; premiums not included`, "oopTotal"),
-    tile("Paid for care", usd(o.paid), [typed && `${usd(typed)} typed in`, imp && `${usd(imp)} imported`].filter(Boolean).join(" · ") || "none in this period"),
+    tile("Paid for care", usd(o.paid), [typed && `${usd(typed)} typed in`, file && `${usd(file)} from a file`, imp && `${usd(imp)} imported`].filter(Boolean).join(" · ") || "none in this period"),
     claims ? tile("Claim shares with no payment", usd(o.shares), "per the insurers; counted until a payment matches") : hsaTile];
   const tiles = [];
   if (o.prem.length) tiles.push(tile("Premiums paid", usd(o.premiums), (o.prem.some(r => r.est) ? "includes estimated months; " : "") + "insurance premiums, apart from out of pocket", "oopPrem"));

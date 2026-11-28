@@ -1,0 +1,66 @@
+{
+ "data": {
+  "events": [],
+  "details": {},
+  "labs": [],
+  "costs": [],
+  "outOfPocket": {
+   "payments": [
+    {
+     "d": "2026-03-02",
+     "payee": "Lakeside Clinic (fictional)",
+     "group": "Medical bills",
+     "amount": 40.0,
+     "account": "HSA debit card",
+     "memo": "Office visit copay",
+     "est": false,
+     "key": "payments-csv:h:54be9a7978a37a5e"
+    },
+    {
+     "d": "2026-03-02",
+     "payee": "Lakeside Clinic (fictional)",
+     "group": "Medical bills",
+     "amount": 40.0,
+     "account": "HSA debit card",
+     "memo": "Office visit copay",
+     "est": false,
+     "key": "payments-csv:h:54be9a7978a37a5e:2"
+    },
+    {
+     "d": "2026-03-09",
+     "payee": "Corner Pharmacy (fictional)",
+     "group": "Pharmacy",
+     "amount": 12.5,
+     "account": "Visa card",
+     "memo": "",
+     "est": false,
+     "key": "payments-csv:h:79f08dda68e8310b"
+    },
+    {
+     "d": "2026-04-03",
+     "payee": "Example Health Plan (fictional)",
+     "group": "Health insurance premiums",
+     "amount": 186.0,
+     "account": "Checking",
+     "memo": "Monthly premium",
+     "est": false,
+     "key": "payments-csv:h:ff5162936dc5ff31"
+    },
+    {
+     "d": "2026-04-15",
+     "payee": "Bright Smile Dental (fictional)",
+     "group": "Dental",
+     "amount": 1240.0,
+     "account": "Checking",
+     "memo": "Crown",
+     "est": false,
+     "key": "payments-csv:h:992104e4ff89cd2d"
+    }
+   ]
+  }
+ },
+ "warnings": [
+  "payments.csv: every amount is negative, as a bank or budgeting app writes money paid out, so they were read as payments.",
+  "Skipped 1 row with no date: payments.csv line 8."
+ ]
+}

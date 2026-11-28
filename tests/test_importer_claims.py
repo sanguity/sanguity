@@ -21,7 +21,7 @@ IMP = os.path.join(FIXTURES, "importers")
 sys.path.insert(0, ROOT)
 
 from server import importers as reg   # noqa: E402
-from server.importers import _claims, claims_bcbs, claims_csv, claims_uhc, csv_labs   # noqa: E402
+from server.importers import _claims, claims_bcbs, claims_csv, claims_uhc, csv_labs, payments_csv   # noqa: E402
 
 INSURERS = {"uhc": "UnitedHealthcare", "bcbs": "Blue Cross Blue Shield"}
 
@@ -275,6 +275,58 @@ class Spreadsheet(Written):
     def test_nothing_readable(self):
         with self.assertRaisesRegex(ValueError, "No claims could be read"):
             claims_csv.parse(self.write("eob.csv", "Date,Provider,Billed,Plan paid,You owe\n,,,,\nx,y,1,1,1\n"))
+
+
+class Payments(Written):
+    """The payments spreadsheet (payments_csv.py, #1163): an export someone downloaded themselves."""
+
+    def pays(self, text, **kw):
+        return payments_csv.parse(self.write("payments.csv", text), **kw)
+
+    def test_detect_against_claims_and_labs(self):
+        pay = self.write("payments.csv", "Date,Description,Amount,Account\n2026-01-02,Lakeside Clinic,40.00,HSA\n")
+        self.assertEqual(reg.match(pay)["importer"].NAME, "payments-csv", "above the lab sheet's Date, Description, Amount")
+        self.assertGreater(payments_csv.detect(pay), csv_labs.detect(pay))
+        self.assertEqual(payments_csv.detect(fixture("claims-csv", "eob")), 0.0)
+        self.assertEqual(payments_csv.detect(self.write("labs.csv", "Date,Name,Amount,Unit\n2026-01-02,Ferritin,30,ng/mL\n")), 0.0)
+        self.assertEqual(payments_csv.detect(self.write("t.csv", payments_csv.TEMPLATE)), 0.85)
+        self.assertEqual(claims_csv.detect(self.write("t.csv", payments_csv.TEMPLATE)), 0.0)
+
+    def test_columns_and_what_it_was_for(self):
+        out = self.pays("Posted Date,Merchant,Debit Amount,Payment Method,Notes,Category,HSA/FSA\n"
+                        "2026-02-01,Corner Pharmacy,12.50,Visa,,,\n2026-02-03,Example Health,186.00,Checking,Monthly premium,,\n"
+                        "2026-02-05,Bright Smile Dental,90.00,Card,,Dentist,FSA\n")["data"]["outOfPocket"]["payments"]
+        self.assertEqual([(p["payee"], p["group"], p["account"], p.get("hsa")) for p in out],
+                         [("Corner Pharmacy", "Pharmacy", "Visa", None), ("Example Health", "Health insurance premiums", "Checking", None),
+                          ("Bright Smile Dental", "Dental", "Card", "FSA")])
+        self.assertTrue(all(p["key"].startswith("payments-csv:h:") for p in out))
+
+    def test_mapping(self):
+        text = "When,Who,How much\n2026-03-01,Lakeside Clinic,40\n"
+        with self.assertRaisesRegex(ValueError, "no column for the date, who was paid and the amount"):
+            self.pays(text)
+        by_name = self.pays(text, mapping={"date": "When", "payee": "Who", "amount": "How much"})["data"]["outOfPocket"]["payments"]
+        by_index = self.pays(text, mapping={"date": 0, "payee": 1, "amount": 2})["data"]["outOfPocket"]["payments"]
+        self.assertEqual(by_name, by_index)
+        self.assertEqual((by_name[0]["d"], by_name[0]["amount"]), ("2026-03-01", 40.0))
+        with self.assertRaisesRegex(ValueError, "no column called"):
+            self.pays(text, mapping={"date": "Nope"})
+
+    def test_signs_repeats_and_bad_rows(self):
+        out = self.pays("Date,Payee,Amount\n2026-04-01,Lakeside Clinic,-40.00\n2026-04-01,Lakeside Clinic,-40.00\n"
+                        "2026-04-02,Lakeside Clinic,(15.00)\n2026-04-03,,-5\n2026-04-04,Lakeside Clinic,lots\n")
+        pays, warns = out["data"]["outOfPocket"]["payments"], out["warnings"]
+        self.assertEqual([p["amount"] for p in pays], [40.0, 40.0, 15.0], "every amount negative: money out, read as payments")
+        self.assertEqual(len({p["key"] for p in pays}), 3, "two copays on one day are two payments, keyed apart")
+        self.assertTrue(pays[1]["key"].endswith(":2"))
+        self.assertTrue(any("every amount is negative" in w for w in warns))
+        self.assertTrue(any("with no payee" in w for w in warns) and any("no amount that could be read" in w for w in warns), warns)
+        mixed = self.pays("Date,Payee,Amount\n2026-04-01,Lakeside Clinic,40.00\n2026-04-09,Lakeside Clinic,-10.00\n")
+        self.assertEqual([p["amount"] for p in mixed["data"]["outOfPocket"]["payments"]], [40.0, -10.0])
+        self.assertIn("payments.csv: 1 amount is negative, read as a refund.", mixed["warnings"])
+        with self.assertRaisesRegex(ValueError, "No payments could be read"):
+            self.pays("Date,Payee,Amount\n,,\n")
+        self.assertEqual(reg.check(out, None), [])
 
 
 if __name__ == "__main__":

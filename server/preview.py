@@ -890,7 +890,7 @@ def _sample_value(p):
 def samples(new):
     """A few of what's new for the review screen (#282), latest first, SAMPLES of each: {"events": {kind: [{"t",
     "title"}]} (visible events), "results": [{"t", "name", "value", "unit"}] (the value as reported), "allergies",
-    "problems": [{"t", "title"}], "upcoming": [{"t", "title"}]}. Each "t" as the records give it, its offset kept, which
+    "problems": [{"t", "title"}], "upcoming", "payments": [{"t", "title"}]}. Each "t" as the records give it, its offset kept, which
     the review says as a day in the person's zone as the Timeline does (#1102: cut to its source's date, a stay at 21:40
     in Chicago was a day before the Timeline's); a problem's and an allergy's a date, as the Overview's."""
     by_kind = collections.defaultdict(list)
@@ -914,7 +914,15 @@ def samples(new):
             "allergies": listed([p for p in probs if p.get("type") == "Allergy"]),
             "problems": listed([p for p in probs if p.get("type") != "Allergy"]),
             "upcoming": _latest([{"t": str(u.get("t") or ""), "title": str(u.get("title") or "")}
-                                 for u in new.get("upcoming") or [] if isinstance(u, dict)])}
+                                 for u in new.get("upcoming") or [] if isinstance(u, dict)]),
+            # (#1163) a payments spreadsheet's: who was paid, and how much
+            "payments": _latest([{"t": str(p.get("d") or "")[:10], "title": _paid(p)}
+                                 for p in _meta_lists(new).get("outOfPocket.payments") or [] if isinstance(p, dict)])}
+
+
+def _paid(p):
+    a = p.get("amount") if isinstance(p.get("amount"), (int, float)) else 0.0
+    return f"{p.get('payee') or ''} · " + (f"${a:,.2f}" if a >= 0 else f"${-a:,.2f} refund")
 
 
 def report(data, dups, summarise):
@@ -957,8 +965,9 @@ def report(data, dups, summarise):
         for n in sorted(drop - changed["meta"].get(path, set())):
             x = lists.get(path, [])[n] if n < len(lists.get(path, [])) else None
             if isinstance(x, dict):
-                items.append({"ref": None, "kind": listed(path, x), "t": str(x.get("date") or x.get("t") or "")[:10],
-                              "title": str((x.get("relation") if path == "familyHistory" else None) or x.get("name") or x.get("title") or "")})
+                items.append({"ref": None, "kind": listed(path, x), "t": str(x.get("date") or x.get("t") or x.get("d") or "")[:10],
+                              "title": _paid(x) if path == "outOfPocket.payments" else   # (#1163: a payment, by who and how much)
+                              str((x.get("relation") if path == "familyHistory" else None) or x.get("name") or x.get("title") or "")})
     # (#920) what's updated in place, by kind: "1 medication and 1 problem already here ... updated"
     said = collections.Counter(str(events[i].get("k")) for i in changed["events"] if i in events)
     said.update(listed(path, lists[path][n]) for path, ns in changed["meta"].items() for n in ns)

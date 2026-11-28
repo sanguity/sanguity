@@ -720,6 +720,9 @@ def summarise(data):
     labs = [s for s in data["labs"] if isinstance(s, dict)]
     days = [str(e.get("t"))[:10] for e in data["events"] if isinstance(e, dict) and e.get("t")]
     days += [str(p[0])[:10] for s in labs for p in s.get("pts") or [] if isinstance(p, list) and p and p[0]]
+    oop = data.get("outOfPocket") if isinstance(data.get("outOfPocket"), dict) else {}
+    pays = [p for p in oop.get("payments") or [] if isinstance(p, dict)]
+    days += [str(p.get("d"))[:10] for p in pays if p.get("d")]   # (#1163) a payments spreadsheet's days too
     days = [d for d in days if re.match(r"^\d{4}-\d{2}-\d{2}$", d)]
     counts = {"events": sum(kinds.values()), "kinds": dict(sorted(kinds.items())), "series": len(labs),
               # a text result ("Negative") is a result too (#1103: "5 lab results in 6 tests" where one held only text)
@@ -728,7 +731,8 @@ def summarise(data):
     probs = [p for p in data.get("problems") or [] if isinstance(p, dict)]
     lists = {"allergies": sum(1 for p in probs if p.get("type") == "Allergy"),
              "problems": sum(1 for p in probs if p.get("type") != "Allergy"),
-             "upcoming": sum(1 for u in data.get("upcoming") or [] if isinstance(u, dict))}
+             "upcoming": sum(1 for u in data.get("upcoming") or [] if isinstance(u, dict)),
+             "payments": len(pays)}   # (#1163) a payments spreadsheet's, for Costs
     counts.update({k: n for k, n in lists.items() if n})
     return {"counts": counts, "range": {"from": min(days), "to": max(days)} if days else None}
 
