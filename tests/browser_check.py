@@ -1412,6 +1412,126 @@ def lab_matches_check(browser, base, cookies, check):
     return errs
 
 
+def png_square(size=24, rgb=(200, 60, 80)):
+    """A small fictional picture: a square of one colour, as a PNG."""
+    import struct, zlib
+    chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)  # noqa: E731
+    rows = b"".join(b"\0" + bytes(rgb) * size for _ in range(size))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
+def insurance_check(browser, base, cookies, check):
+    """Settings → This person → Insurance cards (#1137), as an owner whose sign-in cookies are given, on profile 1: a plan
+    added through its dialog (focus on its name, Escape back on Add), a photo of the front sent and shown; a share link
+    without Insurance cards shows nothing about insurance, one with it the plan's numbers and the card's photo. The card
+    at 320–1400 px and with text at 200%, light and dark, forced colours. Removes the plan and the links after. Returns
+    the pages' script errors."""
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+    ctx.add_cookies(cookies)
+    pg, errs = ctx.new_page(), []
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    api = lambda path, method="GET", body=None: pg.evaluate(  # noqa: E731
+        "([p, m, b]) => fetch('api/' + p, {method: m, headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
+        "body: b == null ? undefined : JSON.stringify(b)}).then(async r => [r.status, await r.json().catch(() => null)])", [path, method, body])
+    msg = lambda: pg.evaluate("document.getElementById('insuranceMsg').textContent")  # noqa: E731
+    member, links = "FICT-1137-MEMBER", []
+    try:
+        pg.goto(base + "/settings.html?profile=1#insurance")
+        pg.wait_for_selector("#insuranceBody > *", timeout=15000)
+        shown = pg.evaluate("[...document.querySelectorAll('main.sets > *, #sections > *')].filter(e => e.checkVisibility()).map(e => e.id).filter(Boolean)")
+        pg.focus("#insAdd")
+        pg.keyboard.press("Enter")
+        box = pg.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+        first = pg.evaluate("document.activeElement.id.endsWith('-name')")
+        pg.keyboard.press("Escape")
+        pg.wait_for_function("!document.querySelector('dialog.sg-ask')", timeout=10000)
+        back = pg.evaluate("document.activeElement.id")
+        check("Insurance cards: its own group in This person, the card alone there; Add a plan… opens its dialog with focus on the "
+              "plan's name, and Escape closes it with focus back on Add (#1137)",
+              "insurance" in shown and "labmatches" not in shown and first and back == "insAdd", [shown, first, back])
+        pg.click("#insAdd")
+        box = pg.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
+        box.query_selector("input[id$=-name]").fill("Fictional Health Plan 1137")
+        box.query_selector("input[id$=-member]").fill(member)
+        box.query_selector("input[id$=-group]").fill("G-42")
+        box.query_selector("input[id$=-pl1]").fill("Member services")
+        box.query_selector("input[id$=-pn1]").fill("1-800-555-0137")
+        box.query_selector(".sg-ask-acts button:last-child").click()
+        pg.wait_for_function("document.getElementById('insuranceMsg').textContent.startsWith('Added')", timeout=10000)
+        pg.wait_for_selector("#insuranceBody [data-plan]", timeout=10000)
+        pg.set_input_files("#insuranceBody [data-plan] input[id$=-front]",
+                           files=[{"name": "card-front.png", "mimeType": "image/png", "buffer": png_square()}])
+        pg.wait_for_function("document.getElementById('insuranceMsg').textContent.startsWith('Saved the photo of the front')", timeout=15000)
+        pg.wait_for_function("(() => { const i = document.querySelector('#insuranceBody [data-plan] .jpic img'); return i && i.complete && i.naturalWidth > 0; })()", timeout=10000)
+        row = pg.evaluate("(() => { const r = document.querySelector('#insuranceBody [data-plan]'); return [r.querySelector('h3').textContent, r.textContent.includes('Member ID " + member + "'), "
+                          "r.querySelector('img').alt, [...r.querySelectorAll('button, label.btn')].map(b => b.textContent).join('|'), document.activeElement.id.endsWith('-front')]; })()")
+        check("…a plan added there lists its name, member ID and number, and a photo of its front sent is shown, named for its side and plan, "
+              "with Change, Replace, Add back, Take off and Remove; focus back on the front's picker",
+              row[0] == "Fictional Health Plan 1137" and row[1] and row[2] == "Front of the card for Fictional Health Plan 1137"
+              and row[3] == "Change…|Replace front photo…|Add back photo…|Take off front photo|Remove" and row[4], [row, msg()])
+        # the card at 320–1400 px, text at 200%, light and dark, forced colours
+        fits, axes = {}, []
+        for w in (320, 412, 768, 1400):
+            pg.set_viewport_size({"width": w, "height": 900})
+            pg.wait_for_timeout(150)
+            o = pg.evaluate("""(() => { const c = document.getElementById('insurance').getBoundingClientRect();
+              return [document.documentElement.scrollWidth - innerWidth, [...document.querySelectorAll('#insurance *')].filter(e => e.checkVisibility()
+                && e.getBoundingClientRect().right > c.right + 0.5).length]; })()""")
+            if o != [0, 0]:
+                fits[w] = o
+        pg.set_viewport_size({"width": 412, "height": 900})
+        big = pg.add_style_tag(content=BIG_TEXT_CSS)
+        pg.wait_for_timeout(200)
+        fits["200%"] = pg.evaluate("document.documentElement.scrollWidth - innerWidth") or None
+        big.evaluate("s => s.remove()")
+        for theme in ("light", "dark"):
+            pg.emulate_media(color_scheme=theme)
+            pg.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+            pg.wait_for_timeout(200)
+            pg.locator("#insurance").scroll_into_view_if_needed()
+            clear_of_bar(pg)
+            axes += axe_check(pg, f"Insurance cards, {theme}")[0]
+        pg.evaluate("delete document.documentElement.dataset.theme")
+        pg.emulate_media(color_scheme=None, forced_colors="active")
+        pg.wait_for_timeout(200)
+        forced = pg.evaluate("""[...document.querySelectorAll('#insurance button, #insurance label.btn')].filter(b => b.checkVisibility())
+          .every(b => getComputedStyle(b).borderStyle !== 'none' && parseFloat(getComputedStyle(b).borderWidth) > 0)""")
+        pg.emulate_media(forced_colors="none")
+        pg.set_viewport_size({"width": 1400, "height": 900})
+        check("…the card fits from 320 to 1400 px and with text at 200%, axe-core finds nothing serious light or dark, and its buttons keep "
+              "their edges in forced colours", not any(fits.values()) and not axes and forced, [fits, axes[:4], forced])
+        # share links: nothing about insurance unless Insurance cards is ticked; ticked, the numbers and the photo
+        offered = [s["id"] for s in api("profiles/1/links")[1]["sections"]]
+        seen = {}
+        for name, sections in (("without", ["visits"]), ("with", ["visits", "insurance"])):
+            st, made = api("profiles/1/links", "POST", {"sections": sections, "hours": 1, "label": "Insurance check 1137"})
+            links.append(made["link"]["id"])
+            sp = ctx.new_page()
+            sp.on("pageerror", lambda e: errs.append(str(e)))
+            sp.goto(base + "/" + made["path"])
+            sp.wait_for_selector("#share-visits", timeout=15000)
+            if name == "with":
+                sp.wait_for_function("(() => { const i = document.querySelector('#share-insurance img'); return i && i.src.startsWith('data:') && i.naturalWidth > 0; })()", timeout=10000)
+            seen[name] = sp.evaluate("[document.body.innerText.includes(" + json.dumps(member) + "), /insurance card/i.test(document.body.innerText), "
+                                     "!!document.getElementById('share-insurance'), [...document.querySelectorAll('#share-insurance img')].map(i => i.alt)]")
+            sp.close()
+        check("…offered for a share link; a link without Insurance cards shows nothing about insurance, one with it the plan's member ID "
+              "and the photo of its card's front",
+              "insurance" in offered and seen["without"] == [False, False, False, []]
+              and seen["with"][:3] == [True, True, True] and seen["with"][3] == ["Front of the card for Fictional Health Plan 1137"], [offered, seen])
+    finally:
+        try:
+            for lid in links:
+                api(f"profiles/1/links/{lid}", "DELETE")
+            for plan in (api("profiles/1/insurance")[1] or {}).get("plans") or []:
+                if plan["name"] == "Fictional Health Plan 1137":
+                    api(f"profiles/1/insurance/{plan['id']}", "DELETE")
+        finally:
+            ctx.close()
+    return errs
+
+
 def clear_of_bar(page):
     """Scroll up just enough that no control lies half under the sticky top bar, before axe looks at a part scrolled
     into view: axe counts a control the bar half covers as too small a target (2.5.8), so where the scroll happened to
@@ -29874,6 +29994,9 @@ def main():
             # #1097: a profile's own lab name matches, in This person → Labs and ranges, and Labs' Same test as…
             errs1097 = lab_matches_check(browser, base, [c for c in page.context.cookies() if c["name"] == "sg_session"], check)
             check("…and no script fails there (#1097)", not errs1097, errs1097)
+            # #1137: insurance cards, in This person → Insurance cards, and in a share link only when ticked
+            errs1137 = insurance_check(browser, base, [c for c in page.context.cookies() if c["name"] == "sg_session"], check)
+            check("…and no script fails there (#1137)", not errs1137, errs1137)
             # the old Profiles tab's address opens Sharing → People (#168); a section link still lands on its card, in Settings (#991)
             page.goto(base + "/account.html#profiles")
             page.wait_for_url(re.compile(r"/sharing\.html(\?[^#]*)?#people$"), timeout=10000)

@@ -93,6 +93,16 @@ def parse(files):
                 inside = posixpath.normpath(posixpath.join(base, ph["file"])) if base else posixpath.normpath(ph["file"])
                 ph["file"] = inside if inside in files and not inside.startswith("../") else None
                 gone += ph["file"] is None
+    cards = 0
+    for c in data.get("insurance") or []:   # (#1137) each insurance card's photos, the same way
+        for side in ("front", "back"):
+            if isinstance(c, dict) and isinstance(c.get(side), str):
+                inside = posixpath.normpath(posixpath.join(base, c[side])) if base else posixpath.normpath(c[side])
+                c[side] = inside if inside in files and not inside.startswith("../") else None
+                cards += c[side] is None
+    if cards:
+        warnings.append(f"{cards} photo{'s' if cards != 1 else ''} of insurance cards {'are' if cards != 1 else 'is'} named in "
+                        f"{rel} but not in the upload; the plans are kept without them.")
     if gone:
         warnings.append(f"{gone} photo{'s' if gone != 1 else ''} of the journal {'are' if gone != 1 else 'is'} named in "
                         f"{rel} but not in the upload; the entries are kept without them.")

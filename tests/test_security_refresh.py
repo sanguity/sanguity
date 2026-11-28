@@ -115,6 +115,7 @@ ROUTES = {
 
     ("GET", "/api/profiles/{pid}/medications/reminders"): (USER, "viewer"),   # medication reminders (#162)
     ("GET", "/api/profiles/{pid}/medications/doses"): (USER, "viewer"),       # the medication log (#235)
+    ("GET", "/api/profiles/{pid}/insurance"): (USER, "viewer"), ("GET", "/api/profiles/{pid}/insurance/{iid}/{side}"): (USER, "viewer"),   # #1137
     ("GET", "/api/profiles/{pid}/medications/entries"): (USER, "viewer"),     # your own medications and changes (#1091)
     ("GET", "/api/profiles/{pid}/person"): (USER, "viewer"),           # about this person (#194)
     ("GET", "/api/profiles/{pid}/summary"): (USER, "viewer"), ("PUT", "/api/profiles/{pid}/summary/questions"): (USER, "viewer"),
@@ -156,6 +157,9 @@ ROUTES = {
     ("PATCH", "/api/profiles/{pid}/medications/reminders/{rid}"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/medications/reminders/{rid}"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/medications/doses"): (USER, "editor"),      # the medication log (#235)
+    ("POST", "/api/profiles/{pid}/insurance"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/insurance/{iid}"): (USER, "editor"),   # #1137
+    ("DELETE", "/api/profiles/{pid}/insurance/{iid}"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/insurance/{iid}/{side}"): (USER, "editor"),
+    ("DELETE", "/api/profiles/{pid}/insurance/{iid}/{side}"): (USER, "editor"),
     ("PUT", "/api/profiles/{pid}/medications/doses/{did}"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/medications/doses/{did}"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/medications/own"): (USER, "editor"),        # your own medications and changes (#1091)
@@ -439,6 +443,7 @@ PLAIN = {
     "med_entries": {"created_name", "changed_name"},   # #1091
     "family_entries": {"created_name", "changed_name"},   # #1134
     "cost_plans": {"created_name", "changed_name"}, "cost_bills": {"created_name", "changed_name"},   # #1127, #1128: as med_entries'
+    "insurance_plans": {"front", "front_type", "back", "back_type", "created_name", "changed_name"},   # #1137: random file names, jpeg/png/webp
     "labmaps": {"lookup", "importer", "created_name", "changed_name"},
     "memberships": {"role"}, "meta": {"k", "v"}, "outside_contacts": {"purpose"},
     "passkeys": {"credential_id", "public_key", "rp_id", "name", "transports"},

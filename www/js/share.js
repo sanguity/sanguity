@@ -113,6 +113,14 @@ const SH_DRAW = {
     el("dt", {text: "Birth date"}), el("dd", {text: a.birthDate ? shDay(a.birthDate) : "Not given"}),
     el("dt", {text: "Sex used for reference ranges"}), el("dd", {text: a.sex || "Not given"})),
     shTable(["Date", "Height"], (a.heights || []).map(h => [shDay(h.date), h.text]), "No heights written down in this range.")),
+  // insurance cards (#1137), only when the link's owner ticked them: each plan's numbers, then its card's photos
+  insurance: list => list.length ? el("div", {}, ...list.map(c => el("div", {class: "share-entry"},
+    el("div", {}, el("b", {text: c.name})),
+    el("dl", {class: "share-about"}, ...[["Member ID", c.member], ["Group number", c.group], ...c.phones.map(p => [p.label || "Phone", p.number])]
+      .filter(([, v]) => v).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
+    c.front || c.back ? el("div", {class: "share-pics"}, ...["front", "back"].filter(s => c[s]).map(s =>
+      shPhoto({alt: `${s === "front" ? "Front" : "Back"} of the card for ${c.name}`}, "", {card: c.id, side: s}))) : null)))
+    : el("p", {class: "muted", text: "No insurance plans."}),
   costs: shList("costs", ["Date", "Service", "Provider", "Billed", "Insurance paid", "Your share"],
     c => [shDay(c.t), c.title, c.provider, shUsd(c.billed), shUsd(c.paid), shUsd(c.owe)], "No claims in this range.", "claims"),
 };
@@ -276,12 +284,12 @@ for (const t of ["wheel", "touchstart", "keydown", "pointerdown"]) addEventListe
 /* a journal photo (#161), only in a link whose owner ticked "Photos in the journal": asked for by the token like the
    view itself, and shown from its own bytes as a data: address (the page's policy allows no other) */
 let SH_TOKEN = "";
-function shPhoto(p, fallback) {
+function shPhoto(p, fallback, which = {photo: p.id}) {   // which: {card, side} for an insurance card's (#1137)
   const img = el("img", {alt: p.alt || fallback}), fig = el("figure", {class: "share-pic"}, img, p.alt ? el("figcaption", {text: p.alt}) : null);
   (async () => {
     try {
       const r = await fetch("api/share/view", {method: "POST", cache: "no-store", credentials: "omit",
-        headers: {"X-Sanguity": "1", "Content-Type": "application/json"}, body: JSON.stringify({token: SH_TOKEN, photo: p.id})});
+        headers: {"X-Sanguity": "1", "Content-Type": "application/json"}, body: JSON.stringify({token: SH_TOKEN, ...which})});
       if (!r.ok) throw new Error(r.status);
       const blob = await r.blob();
       img.src = await new Promise((ok, no) => { const rd = new FileReader(); rd.onload = () => ok(rd.result); rd.onerror = no; rd.readAsDataURL(blob); });

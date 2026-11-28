@@ -895,7 +895,7 @@ function setStart() {
   // and its name and deleting it (profile-card.js, #402), with them too
   // (once the saves on their way are answered, #425: what's drawn is what the server keeps)
   const pick = () => { PID = +sel.value; const p = ME.profiles.find(x => x.id === PID);
-    return Promise.all([loadLabNames(), ...SAVING]).then(() => load(null, null, true)).then(() => { if (PID === p.id) { drawAbout(p); drawProfile(p); drawLabMatches(p); } }); };
+    return Promise.all([loadLabNames(), ...SAVING]).then(() => load(null, null, true)).then(() => { if (PID === p.id) { drawAbout(p); drawProfile(p); drawLabMatches(p); drawInsurance(p); } }); };
   document.addEventListener("about:changed", () => load());   // the ranges' preview matches ages and sexes against it
   sel.onchange = pick;
   return pick();

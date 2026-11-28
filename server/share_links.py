@@ -42,7 +42,7 @@ label and scope are encrypted at rest (atrest.FIELDS): lab names and a clinician
 import json, re
 from datetime import date
 
-from . import activity, crypto, db as dbm, journal, journal_photos, measures, medications, person, records, security as sec, settings, summary
+from . import activity, crypto, db as dbm, insurance, journal, journal_photos, measures, medications, person, records, security as sec, settings, summary
 
 SECTIONS = [   # #576: each line names everything its page shows, and _build sends nothing more (test_share_links.py ties them)
     ("visits", "Visits and hospital stays", "the date (a hospital stay's first and last days), the title, and the details its "
@@ -65,6 +65,8 @@ SECTIONS = [   # #576: each line names everything its page shows, and _build sen
                        "shows (only with Journal; offered when there are some)"),   # #161: never unless ticked
     ("costs", "Costs and claims", "each claim's date, the service or medicine it was for, the provider, what was billed, "
               "what insurance paid and your share"),   # #581: a pharmacy claim's service is the medicine
+    ("insurance", "Insurance cards", "each insurance plan's name, its member ID and group number, the phone numbers on "
+                  "its card, and the photos of the card's front and back, whatever the dates"),   # #1137: never unless ticked
     ("about", "About this person", "the birth date, the sex labs base reference ranges on, and each height written down, "
               "with its date (those in the dates chosen)"),   # #194: never unless ticked (the owner's page leaves it unticked)
     *measures.SECTIONS,   # #225: the phone's and watch's measures, immunizations, ECGs, BMI; never unless ticked
@@ -209,8 +211,9 @@ def offered(db, pid, uid):
     body = records.served(db, pid)
     have = set(measures.offered(measures.context(db, pid, json.loads(body) if body else {}, settings.merged(db, pid, uid))))
     photos = journal_photos.any_attached(db, pid)   # #161: offered only when an entry has some
+    plans = insurance.any_plan(db, pid)   # #1137: only when the profile has a plan
     return [{"id": i, "label": l, "what": w} for i, l, w in SECTIONS
-            if (i not in measures.IDS or i in have) and (i != "journal_photos" or photos)]
+            if (i not in measures.IDS or i in have) and (i != "journal_photos" or photos) and (i != "insurance" or plans)]
 
 
 def lab_names(db, pid):
@@ -258,6 +261,14 @@ def photo(db, link, photo_id):
                for p in j.get("photos") or []):
         return None
     return journal_photos.get(db, pid, photo_id)
+
+
+def card(db, link, iid, side):
+    """(bytes, media type) of a photo of an insurance card this link shows (#1137): Insurance cards ticked. None
+    otherwise."""
+    if "insurance" not in json.loads(crypto.dec(link["scope"]))["sections"]:
+        return None
+    return insurance.photo(db, link["profile_id"], iid, side)
 
 
 def _in(d, scope):
@@ -378,6 +389,10 @@ def _build(db, link, today, section):
     if mw:   # (#225) in the units of the owner who made the link
         c = measures.context(db, pid, data, owners())
         out.update(measures.blocks(c, mw, lambda d: _in(d, scope), most=measures.LINK_MOST))
+    if "insurance" in want:   # insurance cards (#1137), only when the owner ticked them: not dated, so every plan
+        out["insurance"] = [{"id": c["id"], "name": c["name"], "member": c["member"], "group": c["group"],
+                             "phones": [{"label": p["label"], "number": p["number"]} for p in c["phones"]],
+                             "front": bool(c["front"]), "back": bool(c["back"])} for c in insurance.listing(db, pid)]
     if "about" in want:   # About this person (#194), only when the owner ticked it
         p = person.of(settings.nest(settings.stored(db, "profile", pid)))
         out["about"] = {"birthDate": p["birthDate"], "sex": person.SEXES[p["sex"]] if p["sex"] else "",

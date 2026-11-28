@@ -160,6 +160,8 @@ async def lifespan(app):
                 print(f"Marked {stopped} import(s) the last stop interrupted as failed; nothing of them was saved.", flush=True)
             from . import journal_photos   # photos sent for a journal entry never saved, a day on (#591)
             journal_photos.sweep_all(db)
+            from . import insurance   # a card's photo no plan names (#1137): a stop between writing it and saving its row
+            insurance.sweep_all(db)
             backup_jobs.recover(db)   # backups and checks a stop interrupted (#200)
             with dbm.transaction(db):   # share links and feeds an older version left to come back with their person (#590)
                 accounts.end_lost_access(db)
@@ -1812,6 +1814,7 @@ app.include_router(__import__("server.routes_cycle", fromlist=["router"]).router
 app.include_router(__import__("server.routes_family", fromlist=["router"]).router)    # family history (#1134)
 app.include_router(__import__("server.routes_meds", fromlist=["router"]).router)      # medication reminders (#162) and log (#235)
 app.include_router(__import__("server.routes_notify", fromlist=["router"]).router)    # notifications to the install's own server (#1130)
+app.include_router(__import__("server.routes_insurance", fromlist=["router"]).router)  # insurance cards (#1137)
 
 
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here

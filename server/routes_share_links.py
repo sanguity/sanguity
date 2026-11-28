@@ -8,6 +8,8 @@
   POST   /api/share/view                   {"token"}: what the link shows. No session: the token is the credential
                                            {"token", "photo": id}: one of the journal's photos the link shows (#161,
                                            only with "Photos in the journal" ticked), the picture itself
+                                           {"token", "card": id, "side": "front" | "back"}: a photo of an insurance
+                                           card the link shows (#1137, only with "Insurance cards" ticked)
                                            {"token", "section": id}: one of the link's long sections in full, for its
                                            Show all (#498: the view sends their latest rows)
 
@@ -90,25 +92,26 @@ def _bare(status=404, retry=None):
 
 
 async def _ask(request: Request):
-    """(the token, a photo's id or None, a section's id or None) from a small JSON body, or ("", None, None) for
-    anything else (read here, so a bad body is a bare 404 too)."""
+    """(the token, a photo's id or None, a section's id or None, (an insurance plan's id, a side) or None) from a
+    small JSON body, or ("", None, None, None) for anything else (read here, so a bad body is a bare 404 too)."""
     raw = b""
     async for chunk in request.stream():
         raw += chunk
         if len(raw) > 1024:
-            return "", None, None
+            return "", None, None, None
     try:
         body = json.loads(raw)
-        t, photo, section = body.get("token"), body.get("photo"), body.get("section")
+        t, photo, section, card, side = (body.get(k) for k in ("token", "photo", "section", "card", "side"))
     except (ValueError, AttributeError):
-        return "", None, None
-    photo = photo if isinstance(photo, int) and not isinstance(photo, bool) else None
-    return (t if isinstance(t, str) else ""), photo, (section if isinstance(section, str) else None)
+        return "", None, None, None
+    whole = lambda v: v if isinstance(v, int) and not isinstance(v, bool) else None
+    card = (whole(card), side) if whole(card) is not None and side in ("front", "back") else None
+    return (t if isinstance(t, str) else ""), whole(photo), (section if isinstance(section, str) else None), card
 
 
 @router.post("/api/share/view")
 def view(request: Request, ask=Depends(_ask), db=Depends(get_db)):
-    token, photo, section = ask
+    token, photo, section, card = ask
     ip = _client_ip(request)
     bad = "bad:" + ip
     # a working token opens its link even while this address is waiting for wrong ones (#203): behind a reverse
@@ -122,7 +125,7 @@ def view(request: Request, ask=Depends(_ask), db=Depends(get_db)):
         if token:
             _audit("share.refused", request, warn=False)
         return _bare()
-    key = ("photo:" if photo is not None else "link:") + link["token_hash"]   # #161: a photo has its own allowance
+    key = ("photo:" if photo is not None or card else "link:") + link["token_hash"]   # #161: a photo has its own allowance
     wait = links.throttle.wait(key)
     if wait:
         return _bare(429, wait)
@@ -133,6 +136,12 @@ def view(request: Request, ask=Depends(_ask), db=Depends(get_db)):
             return _bare()
         return Response(got[0], media_type=got[1], headers={"Cache-Control": "no-store",
                                                             "Content-Disposition": f'inline; filename="photo-{photo}"'})
+    if card:   # a photo of an insurance card (#1137), part of the view like a journal photo
+        got = links.card(db, link, *card)
+        if got is None:
+            return _bare()
+        return Response(got[0], media_type=got[1], headers={"Cache-Control": "no-store",
+                                                            "Content-Disposition": f'inline; filename="card-{card[0]}-{card[1]}"'})
     if section is not None and not links.shows(link, section):   # not one of this link's long sections
         return _bare()
     prof.sync_build(db, link["profile_id"])

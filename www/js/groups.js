@@ -85,6 +85,8 @@ const SG_PAGES = {
        ["Lab charts", "sec-trends", "labs selected at first saved views add view no default"]]},
     {id: "about", title: "About this person", icon: "user", part: "This person", has: ["about", "targets"],   // #194, #234; on Sharing before #267
      finds: [["Birth date, sex and height", "about", "age birthday date of birth dob born child baby due date growth tall cm inches maximum heart rate measured bpm early add blood type group abo rh emergency contacts ice phone"], ["Targets of your own", "targets", "goals"]]},
+    {id: "insurance", title: "Insurance cards", icon: "clipboard", part: "This person", has: ["insurance"],   // #1137
+     words: "health plan insurer member id group number card photo front back phone add change remove"},
     {id: "labs", title: "Labs and ranges", icon: "ruler", part: "This person", has: ["sec-names", "labmatches", "sec-ranges"], words: "reference ranges normal high low add",
      finds: [["Names", "sec-names", "nicknames rename lab names result sources records shown"],
        ["Lab name matches", "labmatches", "same test match matched charted with keep separate own test move results add change remove forget aliases import results " +

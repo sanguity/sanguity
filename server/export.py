@@ -10,8 +10,10 @@ The zip:
                       under another test, #1097, labmap.for_export); the journal (notes, symptoms, side effects and moods
                       people wrote, journal.py) as its "journal" list, each photo an entry lists naming its file below
                       ("file"); the medication log (#235, med_log.py) as "doses" and medication reminders (#162) as
-                      "reminders". Loading the export puts all of these back (restore())
+                      "reminders"; the insurance plans (#1137, insurance.py) as "insurance", each side's photo naming
+                      its file below ("front", "back"). Loading the export puts all of these back (restore())
   journal/photos/<id>.<jpg|png|webp>  the journal's photos (#161), as kept: their metadata was taken out when sent
+  insurance/<id>-<front|back>.<jpg|png|webp>  the photos of the insurance cards (#1137), as kept
   settings.json      the settings set for the profile, shaped like settings.example.json (none: all at their defaults)
   documents/<id>/...  every document, and for HTML records the pictures and stylesheets they show
   watch/daily.json    the watch and scale summary shown with the profile (if any): its daily measures, home blood
@@ -33,7 +35,7 @@ visit summary drafts, and which import each record came from (they load as one i
 """
 import contextlib, datetime, gzip, json, os, posixpath, re, secrets, shutil, urllib.parse, zipfile
 
-from . import (costplan, crossmatch, crypto, cycle_tracking, db as dbm, ecg, edits, family, journal, journal_photos, labmap, med_log, med_reminders, medications, oop,
+from . import (costplan, crossmatch, crypto, cycle_tracking, db as dbm, ecg, edits, family, insurance, journal, journal_photos, labmap, med_log, med_reminders, medications, oop,
                profiles as prof, records, settings, uploads, watch_store)
 
 DOC_URL = re.compile(r"^api/profiles/\d+/documents/([^/#?]+)")
@@ -63,10 +65,13 @@ def plan(db, pid, cycle=False, activity=False, shown=False):
         own = {k: v for k, v in (("journal", journal.listing(db, pid)), ("reminders", med_reminders.listing(db, pid)),
                                  ("doses", med_log.listing(db, pid)), ("medEntries", medications.listing(db, pid)),
                                  ("costPlans", costplan.plans(db, pid)), ("costBills", costplan.bills(db, pid)),
-                                 ("familyEntries", family.listing(db, pid))) if v}
+                                 ("familyEntries", family.listing(db, pid)),
+                                 ("insurance", insurance.for_export(db, pid))) if v}
         data = {"events": [], "details": {}, "labs": [], "costs": [], **own} if own or _has_corrections(db, pid) else None
     if data is not None and not shown and (fixes := corrections(db, pid, data["events"])):
         data["corrections"] = fixes
+    if data is not None and not shown and (plans := insurance.for_export(db, pid)):   # (#1137) not records: their own table
+        data["insurance"] = plans
     watch =watch_store.load(db, pid)   # the merged summary (receiver + imports), or None
     waves = {}   # ECG samples (#225): file name -> where they are, for each recording the summary lists
     for e in (watch or {}).get("ecg") or []:
@@ -78,7 +83,8 @@ def plan(db, pid, cycle=False, activity=False, shown=False):
             "data": data, "uploads": uploads.stored_files(db, pid),
             "settings": settings.to_file(db, pid), "watch": watch, "waves": waves,
             "cycle": cycle_tracking.for_export(db, pid) if cycle else None,
-            "photos": journal_photos.stored(db, pid)}   # #161
+            "photos": journal_photos.stored(db, pid),   # #161
+            "cards": [] if shown else insurance.stored(db, pid)}   # #1137
 
 
 def _dec(text):
@@ -247,6 +253,8 @@ def stream(p, exported_by, now=None):
     for photo_id, kind, path in p.get("photos") or []:   # #161: pictures are compressed already
         if os.path.isfile(path):
             yield from add_file(journal_photos.export_name(photo_id, kind), path, False)
+    for name, path in p.get("cards") or []:   # #1137: the insurance cards' photos
+        yield from add_file(name, path, False)
     if p["activity"] is not None:   # an owner's export only (#589)
         yield add_bytes("activity.json", json.dumps(p["activity"], indent=1).encode())
     got = p["data"] or {}
@@ -264,12 +272,13 @@ no longer need.
                      the medication reminders ("reminders": {len(got.get('reminders') or [])}) and the medications of
                      your own and your changes to those of the records ("medEntries": {len(got.get('medEntries') or [])}),
                      and the plan years and bills typed in on Costs ("costPlans": {len(got.get('costPlans') or [])},
-                     "costBills": {len(got.get('costBills') or [])}; a bill's file is among the documents), and
-                     the family history of your own and the records' you hid ("familyEntries": {len(got.get('familyEntries') or [])})
+                     "costBills": {len(got.get('costBills') or [])}; a bill's file is among the documents),
+                     the family history of your own and the records' you hid ("familyEntries": {len(got.get('familyEntries') or [])}),
+                     and the insurance plans ("insurance": {len(got.get('insurance') or [])})
   settings.json     the profile's settings{'' if len(p['settings']) > 1 else ' (none set: all at their defaults)'}
   documents/         the documents, one folder each
   watch/daily.json   watch and scale summary{'' if p['watch'] else ' (none)'}
-{f"  watch/ecg/         each ECG recording's samples, by the key in daily.json: {len(p['waves'])}" + chr(10) if p.get('waves') else ''}{"  cycle/cycle.json   menstrual cycle records from the phone apps, ticked in for this export" + chr(10) if p.get('cycle') else ''}{f"  journal/photos/    the photos attached to journal entries: {len(p['photos'])}" + chr(10) if p.get('photos') else ''}  uploads/           the files uploaded to import, as they were sent (zips unpacked): {len({u for u, _, _ in p['uploads']})} upload(s)
+{f"  watch/ecg/         each ECG recording's samples, by the key in daily.json: {len(p['waves'])}" + chr(10) if p.get('waves') else ''}{"  cycle/cycle.json   menstrual cycle records from the phone apps, ticked in for this export" + chr(10) if p.get('cycle') else ''}{f"  journal/photos/    the photos attached to journal entries: {len(p['photos'])}" + chr(10) if p.get('photos') else ''}{f"  insurance/         the photos of the insurance cards: {len(p['cards'])}" + chr(10) if p.get('cards') else ''}  uploads/           the files uploaded to import, as they were sent (zips unpacked): {len({u for u, _, _ in p['uploads']})} upload(s)
 {"  activity.json      who opened, shared or changed this profile, and when" + chr(10) if p['activity'] is not None else ''}{f'''
 {len(missing)} document link(s) pointed at files that are no longer on the server and are left out.
 ''' if missing else ''}
@@ -277,7 +286,7 @@ To load it into a Sanguity install (into an empty profile, or replacing one's re
   python -m server.manage create-profile "Name" USERNAME      (prints the new profile's number)
   python -m server.manage import PROFILE_NUMBER /path/to/this.zip
 That brings back the records, the corrections made to them (which can still be undone there), the journal and its
-photos, the medication log and reminders, the settings, documents, watch data and uploads. Uploaded on a profile's
+photos, the medication log and reminders, the insurance cards, the settings, documents, watch data and uploads. Uploaded on a profile's
 import page instead, the records with their documents, corrections, journal, medication log and reminders are added
 to that profile's. Neither brings back the activity log, who the profile is shared with, share links, calendar
 feeds, connected sources and their sign-ins, the watch receiver's key, or which import each record came from (they
@@ -291,7 +300,8 @@ arrive as one import).
 # ---------------------------------------------------------------- loading an export
 
 ALLOWED = re.compile(r"^(data\.json|settings\.json|README\.txt|activity\.json|watch/daily\.json|watch/ecg/[0-9a-f]{16}\.json|"
-                     r"cycle/cycle\.json|documents/[^/]+/.+|uploads/\d+/.+|journal/photos/\d+\.(?:jpg|png|webp))$")
+                     r"cycle/cycle\.json|documents/[^/]+/.+|uploads/\d+/.+|journal/photos/\d+\.(?:jpg|png|webp)|"
+                     r"insurance/\d+-(?:front|back)\.(?:jpg|png|webp))$")
 WAVE = re.compile(r"^watch/ecg/([0-9a-f]{16})\.json$")   # (#225) kept as the app keeps them: gzipped, then sealed
 LEFT_OUT = {"cycle/cycle.json",   # cycle records (#183): not loaded into the profile, nor kept in its folder
             "activity.json"}     # nor the activity log: history from the other install, its owners' only (#589, #918)
@@ -507,7 +517,7 @@ def check_parts(data):
     "doses", "reminders"}, each a list of what its table keeps, or ValueError saying which one can't be loaded and
     why (an export Sanguity wrote always loads; a damaged or hand-made one is refused whole, before anything is
     kept). Needs no database: the importer checks an upload with it before its review (importers/sanguity.py)."""
-    out = {k: [] for k in ("edits", "same", "marks", "journal", "doses", "reminders", "medEntries", "costPlans", "costBills", "familyEntries")}
+    out = {k: [] for k in ("edits", "same", "marks", "journal", "doses", "reminders", "medEntries", "costPlans", "costBills", "familyEntries", "insurance")}
     checks = (("edits", ("corrections", "edits"), "correction", _edit),
               ("same", ("corrections", "same"), "same-result decision", None),
               ("marks", ("corrections", "marks"), "Costs mark", None),
@@ -517,7 +527,8 @@ def check_parts(data):
               ("medEntries", ("medEntries",), "medication of your own or change", _med_entry),
               ("costPlans", ("costPlans",), "plan year", _cost_plan),
               ("costBills", ("costBills",), "bill", _cost_bill),
-              ("familyEntries", ("familyEntries",), "family history entry", family.restore_body))   # (#1134)
+              ("familyEntries", ("familyEntries",), "family history entry", family.restore_body),   # (#1134)
+              ("insurance", ("insurance",), "insurance plan", insurance.check))   # (#1137)
     for name, path, what, check in checks:
         for n, x in enumerate(_list(data, *path)):
             try:
@@ -553,7 +564,7 @@ def brings(data):
            "journal": len(got["journal"]),
            "photos": sum(len(x.get("photos") or []) for x, _ in got["journal"]), "doses": len(got["doses"]),
            "reminders": len(got["reminders"]), "medEntries": len(got["medEntries"]), "costPlans": len(got["costPlans"]),
-           "costBills": len(got["costBills"]), "familyEntries": len(got["familyEntries"])}
+           "costBills": len(got["costBills"]), "familyEntries": len(got["familyEntries"]), "insurance": len(got["insurance"])}
     return {k: n for k, n in out.items() if n}
 
 
@@ -570,7 +581,7 @@ def restore(db, pid, data, photo, written):
     left as the profile has it, and counted as "here". Returns {"corrections", "journal", "photos", "doses",
     "reminders", "here", "photos_missing"}: what was put back."""
     got = check_parts(data)
-    n = dict.fromkeys(("corrections", "journal", "photos", "doses", "reminders", "medEntries", "costPlans", "costBills", "familyEntries", "here",
+    n = dict.fromkeys(("corrections", "journal", "photos", "doses", "reminders", "medEntries", "costPlans", "costBills", "familyEntries", "insurance", "here",
                        "photos_missing"), 0)
 
     # corrections, by the keys of the records they change
@@ -729,7 +740,10 @@ def restore(db, pid, data, photo, written):
         db.execute("""INSERT INTO family_entries(profile_id, body, created_by, created_name, created, changed_by, changed_name,
                       changed) VALUES(?, ?, NULL, ?, ?, NULL, ?, ?)""", (pid, _enc(body), by, at or dbm.now(), changed_by, changed))
         n["familyEntries"] += 1
-    if any(n[k] for k in ("corrections", "journal", "doses", "reminders", "medEntries", "costPlans", "costBills", "familyEntries")):
+    # (#1137) the insurance plans (one of the same name and member ID is here already), each card's photos by their files
+    for k, v in insurance.restore(db, pid, got["insurance"], photo, written, _who).items():
+        n[k] += v
+    if any(n[k] for k in ("corrections", "journal", "doses", "reminders", "medEntries", "costPlans", "costBills", "familyEntries", "insurance")):
         records._bump(db, pid)
     return n
 
@@ -750,8 +764,11 @@ def photo_files(pid):
     try:
         yield written
     except BaseException:
-        for f in written:
-            journal_photos._unlink(pid, f)
+        for f in written:   # (#1137: an insurance card's photo, "insurance/<file>")
+            if f.startswith("insurance/"):
+                insurance._unlink(pid, f[len("insurance/"):])
+            else:
+                journal_photos._unlink(pid, f)
         raise
 
 
@@ -790,7 +807,7 @@ def _import_archive(db, pid, archive, new):
             if (m := UPLOAD.match(i.filename)):
                 sent.setdefault(int(m.group(1)), []).append((m.group(2), i))
                 continue
-            if i.filename in LEFT_OUT or i.filename.startswith("journal/"):   # a journal photo: restore() keeps it (#589)
+            if i.filename in LEFT_OUT or i.filename.startswith(("journal/", "insurance/")):   # a photo: restore() keeps it (#589, #1137)
                 continue
             target = os.path.join(new, *parts)
             os.makedirs(os.path.dirname(target), exist_ok=True)
@@ -808,7 +825,7 @@ def _import_archive(db, pid, archive, new):
                 uploads.fits([(rel, i.file_size) for rel, i in entries])
             except uploads.UploadError as e:
                 raise ValueError(f"upload {sid} in the zip can't be kept on this server ({e}): nothing was imported") from None
-        photos = {i.filename: i for i in files if i.filename.startswith("journal/photos/")}
+        photos = {i.filename: i for i in files if i.filename.startswith(("journal/photos/", "insurance/"))}
 
         def then(db, data, folder):   # what people wrote and decided, with the records (#589); the phone's summary
             restore(db, pid, data, lambda name: zf.read(photos[name]) if name in photos else None, written)

@@ -59,7 +59,7 @@ const FILES = [
   "js/event-track.js",
   "js/store.js",
   "js/groups.js", "js/palette.js",
-  "js/profile-card.js",
+  "js/profile-card.js", "js/insurance.js",
   "js/emergency.js",
   "js/offline-page.js",
   "js/qr.js",
