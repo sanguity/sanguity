@@ -4070,6 +4070,13 @@ Everything on `main` so far; it becomes the first tagged release.
 - **Labs opens on Latest** (#1160, the owner's request): Latest is the first of Labs' views (Latest, Chart, Heatmap,
   Compare) and where Labs opens at every width till another is picked (Chart was, wider than a phone); `#labs-chart`
   and the other views' addresses open theirs, and the command palette finds Chart by name.
+- **Medications: Stopped taking** (#1161, the owner's request): your own medications and the records' have Stopped
+  taking in their drawer (the day, today unless changed, and why in your own words, optional): the medication moves
+  from Current to Past with its dates and reason, its history and doses kept, and its schedule ends that day (Today,
+  the calendar feed, notifications); Started again takes it up from a day, the time before kept; each has an Undo.
+  It's kept by the medication, as your other changes to the records' are, so a re-import keeps it; records that later
+  give an end date show as stopped the same way. The visit summary and the emergency card list current medications
+  only, and the FHIR export says stopped, with the end date and the reason.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

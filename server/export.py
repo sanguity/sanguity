@@ -496,6 +496,8 @@ def _med_entry(x):
     body = {"key": key, "own": own, **medications.check({k: x[k] for k in medications.FIELDS if k in x}, own)}
     if not own and x.get("hidden"):
         body["hidden"] = True
+    if x.get("again"):   # (#1161) the times it was started again
+        body["again"] = medications.check_again(x["again"])
     if not own and len(body) == 2:
         raise ValueError("it changes nothing")
     return body

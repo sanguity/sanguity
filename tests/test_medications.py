@@ -435,6 +435,168 @@ class InTheRecords(unittest.TestCase):
         finally:
             db.close()
 
+    def test_stopped_taking_kept_in_the_history(self):   # #1161
+        """Stopped taking: one of your own and one of the records' marked stopped on a day with a reason or none, out of
+        Current with their dates and reason, the schedule ended there (the calendar feed, the doses a day gives), not on
+        the visit summary or the emergency card, the FHIR export saying stopped with the end date; kept through a
+        re-import of the records; Undo puts each back; Started again a span after the time before, current again, and
+        stopped again; what can't be (stopped already, a day before it started) refused; a viewer can do none of it.
+        Records that later give an end date show as stopped the same way."""
+        import io, zipfile
+        from datetime import date
+        from server import emergency, export, med_log, med_reminders, profiles
+        db = dbm.connect()
+        uid = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()[0]
+        pid = profiles.create_profile(db, "Stopped taking (fictional)", owner_id=uid)
+        vid = accounts.create(db, "kit", password=PW)[0]
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (vid, pid))
+
+        def store(*rows):
+            db = dbm.connect()
+            with dbm.transaction(db):
+                for (iid,) in db.execute("SELECT id FROM imports WHERE profile_id=?", (pid,)).fetchall():
+                    records.drop(db, pid, [iid])
+                records.store(db, pid, records_of(*rows), "connection:9", fmt="fhir")
+            db.close()
+        FIC = med("a", "2026-03-01T08:00:00", "Fictorin 5 mg tablet", instructions="Once daily", status="Active", src="Fictional clinic")
+        PLC = med("b", "2026-02-01T08:00:00", "Placebex 2 mg tablet", instructions="At night", status="Active", src="Fictional clinic")
+        store(FIC, PLC)
+        db.close()
+        p = f"/api/profiles/{pid}"
+
+        def meds():
+            return {m["name"]: m for m in self.c.get(p + "/data").json().get("medications") or []}
+
+        def current():
+            return sorted(m["name"] for m in meds().values() if m["spans"] and m["spans"][-1]["open"])
+
+        def summary_and_card():
+            r = self.c.post(p + "/summary/preview", headers=H, json={"sections": ["medications"]})
+            self.assertEqual(r.status_code, 200, r.text)
+            db = dbm.connect()
+            try:
+                card = emergency.card(db, pid, uid, "x")
+            finally:
+                db.close()
+            return [n for n in ("Calmora", "Fictorin", "Placebex") if n in json.dumps(r.json())], [m["name"].split()[0] for m in card["medications"]]
+
+        def fhir():
+            r = self.c.get(p + "/export?format=fhir")
+            self.assertEqual(r.status_code, 200, r.text[:300])
+            z = zipfile.ZipFile(io.BytesIO(r.content))
+            bundle = json.loads(z.read(next(n for n in z.namelist() if n.endswith(".json"))))
+            return sorted((x["resource"]["medicationCodeableConcept"]["text"].split()[0], x["resource"]["status"],
+                           x["resource"]["effectivePeriod"].get("end"), [c.get("text") for c in x["resource"].get("statusReason") or []])
+                          for x in bundle["entry"] if x["resource"]["resourceType"] == "MedicationStatement")
+
+        def feed():
+            db = dbm.connect()
+            try:
+                return len(med_reminders.feed_events(db, pid, False, date(2026, 11, 20))[0])
+            finally:
+                db.close()
+
+        def doses(key, day):
+            db = dbm.connect()
+            try:
+                m = med_reminders.current(db, pid)[key]
+                return med_log.scheduled([r for r in self.c.get(p + "/data").json()["reminders"] if r["med"] == key], date.fromisoformat(day), m.get("stop"))
+            finally:
+                db.close()
+
+        r = self.c.post(p + "/medications/own", headers=H, json={"name": "Calmora", "dose": "1 tablet", "start": "2026-10-01", "status": "Active"})
+        self.assertEqual(r.status_code, 201, r.text)
+        own, fic, plc = r.json()["key"], meds()["Fictorin 5 mg tablet"]["key"], meds()["Placebex 2 mg tablet"]["key"]
+        for k in (own, fic):
+            r = self.c.post(p + "/medications/reminders", headers=H, json={"med": k, "times": ["21:00"], "days": ["mo", "tu", "we", "th", "fr", "sa", "su"],
+                                                                            "start": "2026-11-01", "tz": "America/New_York"})
+            self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual((current(), feed(), summary_and_card()), (["Calmora", "Fictorin 5 mg tablet", "Placebex 2 mg tablet"], 2,
+                                                                    (["Calmora", "Fictorin", "Placebex"], ["Calmora", "Fictorin", "Placebex"])))
+
+        # marked stopped: your own with a reason, the records' without
+        r = self.c.post(p + "/medications/stopped", headers=H, json={"key": own, "day": "2026-11-10", "reason": "  Made me dizzy, my words  "})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIn("records", r.json())
+        was_own = r.json()["was"]
+        r = self.c.post(p + "/medications/stopped", headers=H, json={"key": fic, "day": "2026-11-12"})
+        self.assertEqual(r.status_code, 200, r.text)
+        was_fic = r.json()["was"]
+        self.assertEqual(was_fic, {}, "nothing changed of it before")
+        m = meds()
+        self.assertEqual(current(), ["Placebex 2 mg tablet"])
+        self.assertEqual([(x["stop"], x["spans"][-1]["to"], x["spans"][-1]["stopped"], x["spans"][-1].get("reason"), x["spans"][0]["from"]) for x in (m["Calmora"], m["Fictorin 5 mg tablet"])],
+                         [("2026-11-10", "2026-11-10", True, "Made me dizzy, my words", "2026-10-01"), ("2026-11-12", "2026-11-12", True, None, "2026-03-01")])
+        self.assertEqual(m["Fictorin 5 mg tablet"]["listed"]["spans"][-1]["open"], True, "the records stay as they are")
+        self.assertEqual((feed(), doses(own, "2026-11-10"), doses(own, "2026-11-11"), doses(fic, "2026-11-13")),
+                         (0, [("21:00", {"amount": None, "unit": ""})], [], []), "the schedule ends on the day it stopped")
+        self.assertEqual(summary_and_card(), (["Placebex"], ["Placebex"]), "the summary and the card list current ones only")
+        self.assertEqual(fhir(), [("Calmora", "stopped", "2026-11-10", ["Made me dizzy, my words"]), ("Fictorin", "stopped", "2026-11-12", []),
+                                  ("Placebex", "active", None, [])])
+        for body, why in (({"key": own, "day": "2026-11-11"}, "stopped already"), ({"key": plc, "day": "2026-01-31"}, "before it started"),
+                          ({"key": plc, "day": "2026-02-30"}, "no such day"), ({"key": plc, "day": "soon"}, "not a day"),
+                          ({"key": plc, "day": "2026-11-11", "reason": "x" * 501}, "too long")):
+            self.assertEqual(self.c.post(p + "/medications/stopped", headers=H, json=body).status_code, 400, why)
+        self.assertEqual(self.c.post(p + "/medications/stopped", headers=H, json={"key": "no such", "day": "2026-11-11"}).status_code, 404)
+
+        # a re-import that says something new of Fictorin keeps the mark; Undo puts each back
+        store(FIC, med("c", "2026-06-01T08:00:00", "Fictorin 5 mg tablet", instructions="Once daily with food", status="Active", src="Fictional clinic"), PLC)
+        m = meds()["Fictorin 5 mg tablet"]
+        self.assertEqual((m["stop"], m["spans"][-1]["dose"], m["listed"]["dose"]), ("2026-11-12", "Once daily with food", "Once daily with food"), "kept through it")
+        r = self.c.put(p + "/medications/taking", headers=H, json={"key": fic, "was": was_fic})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertNotIn("change", meds()["Fictorin 5 mg tablet"], "Undo: as the records list it, nothing kept")
+        self.assertEqual(self.c.put(p + "/medications/taking", headers=H, json={"key": own, "was": was_own}).status_code, 200)
+        self.assertEqual((current(), feed()), (["Calmora", "Fictorin 5 mg tablet", "Placebex 2 mg tablet"], 2))
+        self.assertEqual(meds()["Calmora"]["own"]["status"], "Active")
+
+        # Started again: stopped, then taken again from a later day; the time before kept, current again; stopped again
+        self.assertEqual(self.c.post(p + "/medications/stopped", headers=H, json={"key": own, "day": "2026-10-20", "reason": "Ran out"}).status_code, 200)
+        self.assertEqual(self.c.post(p + "/medications/again", headers=H, json={"key": own, "day": "2026-10-19"}).status_code, 400, "before it stopped")
+        self.assertEqual(self.c.post(p + "/medications/again", headers=H, json={"key": plc, "day": "2026-11-19"}).status_code, 400, "taken now")
+        r = self.c.post(p + "/medications/again", headers=H, json={"key": own, "day": "2026-11-05"})
+        self.assertEqual(r.status_code, 200, r.text)
+        was_again = r.json()["was"]
+        m = meds()["Calmora"]
+        self.assertEqual([(s["from"], s["to"], s["open"], s.get("reason"), bool(s.get("again"))) for s in m["spans"]],
+                         [("2026-10-01", "2026-10-20", False, "Ran out", False), ("2026-11-05", None, True, None, True)])
+        self.assertEqual((m["stop"], "Calmora" in current(), feed(), summary_and_card()[1]), (None, True, 2, ["Calmora", "Fictorin", "Placebex"]))
+        r = self.c.put(f"{p}/medications/own/{m['own']['id']}", headers=H, json={**{k: m["own"].get(k, "") for k in medications.FIELDS}, "note": "Edited"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(len(meds()["Calmora"]["spans"]), 2, "Edit keeps the times it was started again")
+        self.assertEqual(self.c.post(p + "/medications/stopped", headers=H, json={"key": own, "day": "2026-11-15", "reason": "Done"}).status_code, 200)
+        m = meds()["Calmora"]
+        self.assertEqual([(s["from"], s["to"], s.get("reason")) for s in m["spans"]], [("2026-10-01", "2026-10-20", "Ran out"), ("2026-11-05", "2026-11-15", "Done")])
+        self.assertEqual((m["stop"], feed()), ("2026-11-15", 1))
+        self.assertIn(("Calmora", "stopped", "2026-11-15", ["Done"]), fhir())
+        self.assertIn(("Calmora", "stopped", "2026-10-20", ["Ran out"]), fhir(), "each time, its own statement")
+        # an export carries the times it was started again, and an import of it takes them
+        (row,) = [x for x in self.c.get(p + "/medications/entries").json()["entries"] if x["key"] == own]
+        self.assertEqual(export._med_entry(row)["again"], [{"from": "2026-11-05", "to": "2026-11-15", "reason": "Done"}])
+        with self.assertRaises(ValueError):
+            export._med_entry({**row, "again": [{"from": "2026-11-05", "to": "2026-11-01"}]})
+        self.assertEqual(self.c.put(p + "/medications/taking", headers=H, json={"key": own, "was": was_again}).status_code, 200)
+        self.assertEqual([(s["from"], s["to"]) for s in meds()["Calmora"]["spans"]], [("2026-10-01", "2026-10-20")], "Undo of Started again")
+
+        # records that later give an end date: stopped the same way, current no more
+        store(FIC, med("c", "2026-06-01T08:00:00", "Fictorin 5 mg tablet", instructions="Once daily", status="Completed", end="2026-11-01", src="Fictional clinic"), PLC)
+        m = meds()["Fictorin 5 mg tablet"]
+        self.assertEqual((m["stop"], "Fictorin 5 mg tablet" in current(), summary_and_card()[1]), ("2026-11-01", False, ["Placebex"]))
+        r = self.c.post(p + "/medications/again", headers=H, json={"key": fic, "day": "2026-11-20"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(([s["from"] for s in meds()["Fictorin 5 mg tablet"]["spans"]][-1], "Fictorin 5 mg tablet" in current()), ("2026-11-20", True))
+
+        kit = TestClient(main.app, base_url="http://testserver")
+        self.assertEqual(kit.post("/api/login", json={"username": "kit", "password": PW}, headers=H).status_code, 200)
+        for method, path, body in (("POST", "/medications/stopped", {"key": plc, "day": "2026-11-11"}), ("POST", "/medications/again", {"key": own, "day": "2026-11-11"}),
+                                   ("PUT", "/medications/taking", {"key": own, "was": {}})):
+            self.assertEqual(kit.request(method, p + path, headers=H, json=body).status_code, 403, path)
+        db = dbm.connect()
+        try:
+            profiles.delete_profile(db, pid)
+        finally:
+            db.close()
+
     def test_a_rename_takes_what_hangs_on_its_medication(self):   # #921, #954
         """A rename groups a medication as it's shown (as before #921): it joins a medication of its new name, or
         leaves one it shared a key with. What hangs on a medication's key goes with it in the same save (#954): its
