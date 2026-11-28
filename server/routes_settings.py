@@ -51,7 +51,8 @@ def _values(d, old, new):
 
 
 def _said(v):
-    return str("" if v is None else v).replace(",", "").strip()
+    """What's typed to confirm, as compared: without commas or case, trimmed ("Trust everyone" is "trust everyone")."""
+    return str("" if v is None else v).replace(",", "").strip().casefold()
 
 
 def _confirmed(db, request, s, d, value, typed):
