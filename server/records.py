@@ -3,7 +3,8 @@
 The page reads one object per profile (GET /api/profiles/{pid}/data), in the shape build.py has always written
 to data.json, and each part of it has its place:
 
-  events     [{id, t, k, title, sub, end, abn, hidden...}]   one row each in events (body)
+  events     [{id, t, k, title, sub, end, abn, hidden...}]   one row each in events (body); a key document's with its
+                                                             "keyDoc": {kind, kept} (keydocs.py, #1135: a profile setting)
   details    {event id: {...}}                               events.detail; the page's data has only some (page(),
                                                              #217): the rest come when a record is opened (details())
   costs      [{id: event id, d, billed, paid, owe...}]       events.cost, the claim's own row
@@ -764,6 +765,8 @@ def _assemble(db, pid, raw=False):
         encounters.tidy(events, details)   # chart activity, plain visit titles, reminders (#236); corrections have the last word
         out = edits.apply(db, pid, {**out, "events": events, "details": details, "labs": labs, "costs": costs})
         hidden = out.pop(edits.UNLISTED, None)   # (#950) the lab events hidden by hand
+        from . import keydocs
+        keydocs.annotate(db, pid, out)   # (#1135) the documents marked as key ones, found by their keys
         for e in out.get("events") or []:
             e.pop("orig", None)            # what tidy() changed, kept only for the corrections to find their events
         out = crossmatch.apply(db, pid, out)

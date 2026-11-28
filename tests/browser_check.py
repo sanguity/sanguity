@@ -3320,6 +3320,68 @@ def emergency_card_check(check, browser, base, cookies):
     return errs
 
 
+def key_documents_check(check, browser, base, cookies):
+    """(#1135) Key documents, as the owner whose cookies are given, on profile 1: a document's drawer marks it as an
+    advance directive with where it's kept (its ⋯ menu's Mark as a key document…), said in the drawer; the Overview's
+    Key documents lists it, a tap opening it; the palette finds it as "advance directive"; the emergency card says it's
+    on file and where; Unmark takes it off each. Returns script errors."""
+    errs = []
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+    ctx.add_cookies([c for c in cookies if c["name"] == "sg_session"])
+    page = ctx.new_page()
+    page.on("pageerror", lambda e: errs.append(str(e)))
+    js = page.evaluate
+    doc = None
+    try:
+        page.goto(base + "/?profile=1#overview")
+        page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=30000)
+        doc = js("""(() => { const e = DATA.events.find(e => e.k === 'document' && !e.hidden && !e.keyDoc);
+          return e && {id: e.id, title: e.title}; })()""")
+        check("Key documents: the demo has a document to mark (#1135)", bool(doc), doc)
+        if not doc:
+            return errs
+        js("id => openEvent(byId.get(id))", doc["id"])
+        page.wait_for_timeout(200)
+        page.click("#dmoreBtn")
+        page.click("#dmoreList button:text-is('Mark as a key document…')")
+        page.select_option("#keyDocKind", "advance_directive")
+        page.fill("#keyDocKept", "Original in the hall desk (fictional)")
+        page.click("#dbody .edit-form button:text-is('Save')")
+        page.wait_for_selector("#dKeyDoc", timeout=15000)
+        check("…marked from its drawer: the drawer says its kind and where it's kept (#1135)",
+              js("document.getElementById('dKeyDoc').innerText").replace("\n", " ").startswith("Key document Advance directive or living will · kept at Original in the hall desk (fictional)")
+              and js("id => byId.get(id).keyDoc?.kind", doc["id"]) == "advance_directive", js("document.getElementById('dKeyDoc')?.innerText"))
+        js("closeDrawer()")
+        tab_click(page, "#tab-overview")
+        page.wait_for_selector("#ovKeyDocs .ov-row", timeout=15000)
+        row = js("document.querySelector('#ovKeyDocs .ov-row').innerText")
+        page.click("#ovKeyDocs .ov-row")
+        page.wait_for_function("id => document.getElementById('drawer').classList.contains('open') && state.selEv === id", arg=doc["id"], timeout=10000)
+        check("…the Overview's Key documents lists it, one tap opening it (#1135)", doc["title"] in row and "Advance directive" in row, row)
+        js("closeDrawer()")
+        page.keyboard.press("Control+k")
+        page.wait_for_selector("dialog.palette[open]", timeout=5000)
+        page.fill("#palQ", "advance directive")
+        page.wait_for_timeout(400)
+        found = js("[...document.querySelectorAll('#palList [role=option]')].map(o => o.textContent.trim())")
+        page.keyboard.press("Escape")
+        check("…the palette finds it as “advance directive” (#1135)", any(doc["title"] in f for f in found), found[:6])
+        card = js("fetch('api/profiles/1/emergency').then(r => r.json()).then(c => c.sections.find(s => s.heading === 'Key documents')?.lines)")
+        check("…the emergency card says it's on file, and where (#1135)",
+              card == ["Advance directive or living will: on file (kept at Original in the hall desk (fictional))"], card)
+        js("id => openEvent(byId.get(id))", doc["id"])
+        page.wait_for_selector("#dKeyDoc button", timeout=10000)
+        page.click("#dKeyDoc button")
+        page.wait_for_function("id => !document.getElementById('dKeyDoc') && !byId.get(id)?.keyDoc", arg=doc["id"], timeout=15000)
+        js("closeDrawer()")
+        check("…Unmark takes it off: no longer a key document, nor on the Overview (#1135)", not js("document.getElementById('ovKeyDocs')"))
+    finally:
+        if doc:
+            js("id => fetch('api/profiles/1/keydocs/' + id, {method: 'DELETE', headers: {'X-Sanguity': '1'}})", doc["id"])
+        ctx.close()
+    return errs
+
+
 def main():
     t0, sections = time.monotonic(), sections_of_main()   # (read before the file can change under a long run)
     srv, base = start_app()
@@ -28527,6 +28589,11 @@ def main():
             # preview, its PDF and lock-screen PNG, the "I carry the printed card" switch
             errs1126 = emergency_card_check(check, browser, base, page.context.cookies())
             check("…and no script fails there (#1126)", not errs1126, errs1126)
+
+            # ---- #1135: key documents: marked in a document's drawer, on the Overview, found by the palette, on the
+            # emergency card, unmarked
+            errs1135 = key_documents_check(check, browser, base, page.context.cookies())
+            check("…and no script fails there (#1135)", not errs1135, errs1135)
 
             # ---- #246: the Timeline list's row is .tl-row, so the pages' rows of buttons (.row) have no divider under them
             # and no pointer, and what's typed into a field isn't its label's semibold; every group of each page

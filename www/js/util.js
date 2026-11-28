@@ -23,6 +23,10 @@ const el = (tag, attrs = {}, ...kids) => {
 const present = (...kids) => kids.flat().filter(k => k != null);
 /* each kind of record's name: the Timeline's and the drawer's (core.js), and the command palette's on every page, an
    event's words as the Timeline searches them (store.js, palette.js: #463) */
+/* key documents (#1135, server/keydocs.py KINDS): a mark's kinds; keyDocWords(e) what a search finds a marked one by */
+const KEYDOC = {advance_directive: "Advance directive or living will", poa: "Healthcare power of attorney", polst: "POLST or MOLST",
+  dnr: "DNR order", organ: "Organ donation", other: "Other key document"};
+const keyDocWords = e => e.keyDoc ? `key document ${KEYDOC[e.keyDoc.kind] || ""} ${{poa: "power of attorney proxy", polst: "physician orders", dnr: "do not resuscitate", organ: "donor"}[e.keyDoc.kind] || ""}` : "";
 const KIND_LABEL = {lab:"Lab draw",imaging:"Imaging",procedure:"Procedure",study:"Report / study",message:"Conversation",appt_msg:"Appointment message",auto_msg:"Automated message",letter:"Letter",document:"Document",stay:"Hospital stay",visit:"Visit",contact:"Chart activity",labitem:"Lab result",exercise:"Workout (watch)",med:"Medication",rx:"Pharmacy fill",claim:"Insurance claim",journal:"Journal",mood:"Mood and energy",immunization:"Immunization",ecg:"ECG (watch)",rhythm:"Irregular rhythm notification (watch)",cycle:"Cycle tracking"};
 /* the app's neutral inks for a mark JS colours: the system's text in forced colours (--fc-ink, app.css), where SVG
    keeps the app's, under 3:1 on the system's background with the app's theme opposite (#1053). Not --ink2 itself:

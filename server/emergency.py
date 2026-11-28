@@ -28,7 +28,7 @@ turns it on.
 """
 import datetime, re
 
-from . import pdfdoc, person, records, settings, summary
+from . import keydocs, pdfdoc, person, records, settings, summary
 
 NKA_CODES = {"716186003", "409137002", "429625007", "428607008"}   # SNOMED CT: no known allergy, drug, food, environmental
 _NKA = re.compile(r"^\s*(no known|nka\b|nkda\b|no allerg)", re.I)
@@ -148,7 +148,7 @@ def card(db, pid, uid, name):
     meds = [{"name": m["name"], "instructions": m["instructions"]} for m in summary._medications(data, today)]
     out = {"profile": name, "asOf": today, "date_format": summary.date_format(db, uid),
            "allergies": allergies, "nka": "" if allergies else nka, "medications": meds, "problems": _problems(data),
-           "blood": blood, "contacts": about["contacts"], "documents": [], "insurance": []}
+           "blood": blood, "contacts": about["contacts"], "documents": keydocs.on_card(data), "insurance": []}
     for k, rows in PARTS.items():
         out[k] = rows(db, pid, data)
     return out
