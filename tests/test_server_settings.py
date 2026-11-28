@@ -271,8 +271,8 @@ class RestartSettings(unittest.TestCase):
         self.assertEqual(rows[-4:], ["settings.install"] * 3 + ["server.restart"])
 
     def test_i_the_receiver_reads_its_copy(self):
-        """The receiver takes the app's copy as it starts, the environment's winning, a zone it doesn't know left at
-        UTC; and it sees the copy change (then restarts)."""
+        """The receiver takes the app's copy as it starts, never its own environment's (#1158), a zone it doesn't know
+        left at UTC; and it sees the copy change (then restarts)."""
         ss.write_receiver({"TZ": "Europe/Paris", "SLOT_GRACE_DAYS": 10, "RESTORE_KEEP_DAYS": 60}, say=QUIET)
 
         def receiver(**env):
@@ -284,8 +284,8 @@ class RestartSettings(unittest.TestCase):
         rx = receiver()
         self.assertEqual((rx.DEFAULT_TZ, rx.SLOT_GRACE, rx.RESTORE_KEEP), ("Europe/Paris", 10 * 86400, 60 * 86400))
         self.assertFalse(rx.settings_changed())
-        rx2 = receiver(TZ_DEFAULT="Asia/Tokyo", SLOT_GRACE_DAYS="3")
-        self.assertEqual((rx2.DEFAULT_TZ, rx2.SLOT_GRACE), ("Asia/Tokyo", 3 * 86400))
+        rx2 = receiver(TZ_DEFAULT="Asia/Tokyo", TZ="Asia/Tokyo", SLOT_GRACE_DAYS="3", RESTORE_KEEP_DAYS="5")
+        self.assertEqual((rx2.DEFAULT_TZ, rx2.SLOT_GRACE, rx2.RESTORE_KEEP), ("Europe/Paris", 10 * 86400, 60 * 86400))
         ss.write_receiver({"SLOT_GRACE_DAYS": 11, "HASH_PARALLEL": 4}, say=QUIET)
         self.assertTrue(rx.settings_changed())
         with open(ss.receiver_path()) as f:

@@ -334,6 +334,8 @@ def start(now=None, say=_say):
                 _started = pending
         else:
             _started = good
+        if not _state["fell_back"]:   # (#1158) the receiver reads only its copy: the values this start uses
+            write_receiver(_started, say)
         return dict(_started)
 
 
@@ -588,7 +590,12 @@ def write_receiver(values, say=_say):
     """The receiver's settings (TZ, SLOT_GRACE_DAYS, RESTORE_KEEP_DAYS, as set on the page) into its folder, for it to
     read as it starts; only when they differ from what's there (it restarts itself on a change). False when its folder
     isn't there (no receiver) or can't be written."""
-    want = {n: v for n, v in values.items() if DEFS[n].receiver}
+    want = {n: v for n, v in values.items() if n in DEFS and DEFS[n].receiver}
+    for n, d in DEFS.items():   # the environment's, where it sets one: the receiver used to read it itself
+        if d.receiver and os.environ.get(n, "").strip():
+            src, v = lookup(n)
+            if src == "environment" and v != d.default:
+                want[n] = v
     target = receiver_path()
     if not os.path.isdir(os.path.dirname(target)):
         return False
@@ -596,6 +603,9 @@ def write_receiver(values, say=_say):
         with open(target, encoding="utf-8") as f:
             if json.load(f) == want:
                 return True
+    except FileNotFoundError:
+        if not want:   # none: the receiver's defaults, as no file is (and nothing to restart it for)
+            return True
     except (OSError, ValueError):
         pass
     try:
