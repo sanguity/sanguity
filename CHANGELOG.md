@@ -3987,7 +3987,7 @@ Everything on `main` so far; it becomes the first tagged release.
   one or new, in its entry's form; a spot's panel shows its photos oldest first, any two side by side or one over the
   other with a slider (arrow keys, touch, said with both photos' dates and notes), each with its date and its entry's
   note, and nothing said about the pictures. Spots can be renamed and merged, and a photo taken off one; they're in
-  backups and "Export everything" (schema version 56).
+  backups and "Export everything" (schema version 50).
 - **Family history** (#1134): relatives and their conditions, with the age each began at and whether the relative is
   living or died (and at what age), read from FHIR's FamilyMemberHistory and a C-CDA's Family History section (no longer
   skipped; a re-import adds no copy) or typed in. The Overview's Health record lists them by relative; owners and
