@@ -591,7 +591,9 @@ too. With none set, every name works, as before.
   ([Connected sources](#connected-sources)), the server talks to that vendor only, through an app your install
   registers with it (see [docs/connected-sources-oauth.md](docs/connected-sources-oauth.md)); and the provider
   directory's two lists, from open.epic.com and raw.githubusercontent.com, only when an admin presses Add the lists
-  or Update now, or weekly once an admin turns that on ([Finding your provider](#finding-your-provider)). **Settings → Install →
+  or Update now, or weekly once an admin turns that on ([Finding your provider](#finding-your-provider)); and, once an
+  admin sets up a sign-in provider ([Sign in with OIDC](#sign-in-with-oidc)), that provider, as someone signs in with it
+  or an admin tests it. **Settings → Install →
   [Outside connections](www/settings.html)** (`settings.html#outside` on your install, for admins) lists every host the install
   may contact, grouped by purpose, with the scopes asked for and granted and when each was last contacted, for
   the whole install. Every outbound request goes through one gateway
@@ -611,6 +613,8 @@ too. With none set, every name works, as before.
   **Settings → You → Sign-in and security**; admins can require it for everyone (**Settings → Install → General → Security**). With it on, a password may be as short as 8 characters.
 - **Passkeys** (Face ID, Touch ID, Windows Hello, a phone or a security key), under **Settings → You → Sign-in and security**: sign in with one on
   its own, or use it as the step after the password. They need HTTPS; see [Passkeys](#passkeys).
+- **Sign in with OIDC** (Authentik, Keycloak, Authelia, Google…): one provider for the install, each person linking
+  their own identity there; optionally the only way in. See [Sign in with OIDC](#sign-in-with-oidc).
 - **Every request for records or documents checks the account's role on that profile.** Documents are served
   only through that check, read-only, with scripts blocked; no folder of health data is served directly.
 - **Admins manage accounts, not records:** being an admin doesn't show anyone's records.
@@ -747,6 +751,60 @@ Your password keeps working alongside passkeys. Where an admin requires two-fact
 (the only passkey, with no authenticator app) can't be removed, so nobody locks themselves out. An admin's
 **Turn off 2FA** (or `server.manage disable-2fa NAME`) removes the authenticator app and every passkey, for someone
 who lost the phone holding them.
+
+### Sign in with OIDC
+
+An install can have one OpenID Connect provider, set up by an admin under **Settings → Install → General → Sign-in
+provider**; the sign-in page then offers **Sign in with** it (the button's name is yours to choose). Nobody is
+contacted until it's set up.
+
+1. At the provider, make an app (a client) for Sanguity: OpenID Connect, the authorization code flow, confidential
+   (with a client secret) or public (PKCE alone; Sanguity always uses PKCE with S256), ID tokens signed with RS256 or
+   ES256. Its **redirect URI** is your Sanguity's sign-in page, exactly as General → Sign-in provider shows it:
+   `https://health.example.com/login.html` (made from the first address under General → Host, `PUBLIC_ORIGINS`).
+2. In Sanguity, give the **issuer** (exactly as the provider shows it), the **client ID** and the **client secret**,
+   and press **Test connection**. The secret is kept encrypted and never shown again; or set `OIDC_CLIENT_SECRET` in
+   `.env` (or the app's environment), which then wins.
+3. Each person links their identity under **Settings → You → Sign-in and security → Sign-in provider** (after
+   confirming it's them, as for adding a passkey), or an admin links one for an account under **Settings → Install →
+   Accounts**, by its subject (the provider's ID for the person, the `sub` of its ID tokens). No account is made
+   automatically: an identity linked to no account is refused.
+
+The provider's sign-in counts as two-factor sign-in when its ID token says so: `amr` naming a multi-factor method
+(`mfa`, `otp`, `hwk` or `sc`), or an `acr` you set under Sign-in provider. Otherwise Sanguity asks for the account's
+own code or passkey after it, where the account has one, as after a password.
+
+**Sign in with OIDC only** turns off passwords and passkeys on their own for every account: everyone signs in with the
+provider. It's offered only once your own identity there has signed in, and while it's on the provider's settings
+can't be changed. If the provider stops working, turn it back on the server:
+`docker compose exec app python -m server.manage oidc-only off`.
+
+Examples (`health.example.com` is your Sanguity's address):
+
+- **Authentik:** Applications → Providers → Create → OAuth2/OpenID Provider: client type Confidential, redirect URI
+  `https://health.example.com/login.html` (strict), signing key your certificate (RS256). Its issuer is
+  `https://auth.example.com/application/o/<application slug>/`, with the last slash. With an MFA stage in its flow,
+  its ID tokens say `amr: ["pwd", "mfa"]`.
+- **Keycloak:** your realm → Clients → Create client: OpenID Connect, Client authentication on, Standard flow,
+  valid redirect URI `https://health.example.com/login.html`; under Advanced, PKCE method S256. The issuer is
+  `https://auth.example.com/realms/<realm>`; the secret is under Credentials. Keycloak says two factors with `acr`
+  (set up under Authentication → Flows and the realm's ACR to LoA mapping): put that acr value under Sign-in provider.
+- **Authelia:** under `identity_providers.oidc.clients` in its configuration:
+
+  ```yaml
+  - client_id: sanguity
+    client_name: Sanguity
+    client_secret: '$pbkdf2-sha512$...'   # the hashed secret; give Sanguity the plain one
+    authorization_policy: two_factor
+    redirect_uris: ['https://health.example.com/login.html']
+    scopes: [openid, email, profile]
+    require_pkce: true
+    pkce_challenge_method: S256
+    token_endpoint_auth_method: client_secret_basic
+  ```
+
+  The issuer is Authelia's own address, like `https://auth.example.com`; with `two_factor` its ID tokens say
+  `amr` with `mfa`.
 
 ### Install as a phone app
 
