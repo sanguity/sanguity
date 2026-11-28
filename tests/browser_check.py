@@ -3051,6 +3051,7 @@ def main():
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
+        pw_devices = p.devices   # (#1113's phone and tablet)
         # headless Chromium has no PDF viewer (navigator.pdfViewerEnabled false), as a phone's Chrome hasn't; every page
         # here says it has one, as a desktop's browser does, so a PDF shows in its frame; #636's check says it hasn't
         pdf_viewer_js = "Object.defineProperty(Navigator.prototype, 'pdfViewerEnabled', {get: () => true, configurable: true})"
@@ -17880,18 +17881,46 @@ def main():
             got = js(f"fetch({json.dumps(src.split('#')[0])}).then(async r => [r.status, r.headers.get('content-type'), (await r.text()).slice(0, 8)])")
             check("…and the letter's PDF opens in the drawer", "/documents/" in src and got == [200, "application/pdf", "%PDF-1.4"], [src, got])
             # #636 (the owner's phone): where the browser can't show a PDF in a page (Chrome on Android), no frame, which
-            # showed "This content is blocked", but a card with Open first and Download, fitting 360 px
+            # showed "This content is blocked", but a card with Open the PDF first and Download, fitting 360 px
             js("closeDrawer(); Object.defineProperty(navigator, 'pdfViewerEnabled', {get: () => false, configurable: true}); openEvent(EV.find(e => e.title === 'Typed referral letter'))")
             page.wait_for_selector("#drawer.open #dbody .doc-card", timeout=5000)
             page.set_viewport_size({"width": 360, "height": 800})
             settle(300)
             pdf636 = js("""(() => { const acts = [...document.querySelectorAll('#drawer a.btn')].filter(a => a.href.includes('/documents/'));
               return {frame: !!document.querySelector('#dbody iframe.doc'), acts: acts.map(a => [a.textContent, a.classList.contains('primary'), a.hasAttribute('download')]),
-                card: document.querySelector('#dbody .doc-card').textContent.includes("can't show it here"), fits: document.getElementById('drawer').scrollWidth <= document.getElementById('drawer').clientWidth}; })()""")
+                card: document.querySelector('#dbody .doc-card').textContent.includes("can't show a PDF here"), fits: document.getElementById('drawer').scrollWidth <= document.getElementById('drawer').clientWidth}; })()""")
             page.set_viewport_size({"width": 1400, "height": 900})
             js("closeDrawer(); delete navigator.pdfViewerEnabled")
-            check("…and where the browser can't show a PDF in a page, the drawer has no frame but a card, Open first and Download, fitting 360 px (#636)",
-                  pdf636 == {"frame": False, "acts": [["Open", True, False], ["Download", False, True]], "card": True, "fits": True}, pdf636)
+            check("…and where the browser can't show a PDF in a page, the drawer has no frame but a card, Open the PDF first and Download, fitting 360 px (#636)",
+                  pdf636 == {"frame": False, "acts": [["Open the PDF", True, False], ["Download", False, True]], "card": True, "fits": True}, pdf636)
+            # #1113 (the owner's Vivaldi on an Android tablet, which says it has a PDF viewer): on Android no frame
+            # whatever pdfViewerEnabled says, as a frame's PDF went to a tab of its own, unasked, and left the frame blank.
+            # A phone's Chrome (it says none) and a tablet's Chromium (it says one) both get the card with the PDF's name and
+            # size, no tab opens until Open the PDF is pressed, and then one does
+            seen1113 = {}
+            for dev, viewer in (("Pixel 7", "false"), ("Galaxy Tab S4", "true")):
+                c1113 = browser.new_context(**{k: v for k, v in pw_devices[dev].items() if k != "default_browser_type"},
+                                            storage_state=page.context.storage_state(), bypass_csp=True)
+                c1113.add_init_script(f"Object.defineProperty(Navigator.prototype, 'pdfViewerEnabled', {{get: () => {viewer}, configurable: true}})")
+                p1113 = c1113.new_page()
+                tabs1113 = []
+                c1113.on("page", lambda q: tabs1113.append(q))
+                p1113.goto(page.url)
+                p1113.wait_for_function("typeof EV !== 'undefined' && EV.some(e => e.title === 'Typed referral letter')", timeout=20000)
+                p1113.evaluate("openEvent(EV.find(e => e.title === 'Typed referral letter'))")
+                p1113.wait_for_function("/PDF, \\d/.test(document.querySelector('#drawer.open #dbody .doc-card')?.textContent)", timeout=5000)
+                p1113.wait_for_timeout(1000)   # a frame's PDF would have gone to a tab of its own by now
+                got1113 = p1113.evaluate("""[navigator.pdfViewerEnabled, !!document.querySelector('#dbody iframe, #dbody object, #dbody embed'),
+                  document.querySelector('#dbody .doc-card b').textContent, /PDF, \\d+ (bytes|KB|MB)/.test(document.querySelector('#dbody .doc-card').textContent)]""")
+                before1113, href1113 = len(tabs1113), p1113.get_attribute("#dbody .doc-card a.btn.primary", "href")
+                with c1113.expect_page(timeout=5000):
+                    p1113.click("#dbody .doc-card a.btn.primary")
+                seen1113[dev] = got1113 + [before1113, len(tabs1113), "/documents/" in href1113]
+                c1113.close()
+            check("…and on Android, whether or not the browser says it can show a PDF, no frame but its name, its size and Open the PDF, "
+                  "which opens a tab only when it's pressed (#1113)",
+                  seen1113 == {"Pixel 7": [False, False, "Typed referral letter", True, 0, 1, True],
+                               "Galaxy Tab S4": [True, False, "Typed referral letter", True, 0, 1, True]}, seen1113)
             js("closeDrawer(); switchTab('costs')")
             page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
             js("applyPreset('all')")

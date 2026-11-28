@@ -283,6 +283,18 @@ class Api(unittest.TestCase):
         self.assertEqual(sam.get("/api/profiles/1/members").status_code, 404)
         doc_id = urls[0].rsplit("/", 1)[1]
         self.assertEqual(alex.get(f"/api/profiles/{alex_pid}/documents/{doc_id}").status_code, 404)
+        # its size without its bytes, for the drawer's "Open the PDF" (#1113): the size it's sent at, and not logged as
+        # opened; nothing for someone without access
+        def opened():
+            c = dbm.connect()
+            try:
+                return c.execute("SELECT COUNT(*) FROM activity WHERE action='document'").fetchone()[0]
+            finally:
+                c.close()
+        before, head = opened(), alex.head("/" + urls[-1])
+        self.assertEqual((head.status_code, head.headers["content-type"], head.content, opened()), (200, "application/pdf", b"", before))
+        self.assertEqual(head.headers["content-length"], str(len(alex.get("/" + urls[-1]).content)))
+        self.assertEqual(sam.head("/" + urls[0]).status_code, 404)
 
         # the last owner can't leave or be demoted
         self.assertEqual(ben.delete("/api/profiles/1/members/1", headers=H).status_code, 409)
