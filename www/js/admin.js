@@ -46,10 +46,12 @@ function codeNotice(rows) {
 }
 
 /* connected sources that stopped syncing, across the install (#102): counts per source, no profiles named */
+let SYNC_ROWS = [];   // the sources needing attention, as last read: shown again when connected sources are (csShown)
 function syncNotice(rows) {
   const box = $("#syncNotice");
-  box.hidden = !rows.length;
-  if (!rows.length) return;
+  SYNC_ROWS = rows;
+  box.hidden = !rows.length || !sgConnected(ME);   // (#1153) off, nothing of theirs: the group shows the switch alone
+  if (box.hidden) return;
   const part = r => [r.access && `${r.access} with access ended`, r.failing && `${r.failing} failing`,
     r.stale && `${r.stale} not synced lately`].filter(Boolean).join(", ");
   box.replaceChildren(el("b", {text: "Connected sources need attention: "}),
@@ -481,6 +483,7 @@ async function csShown(on) {
   ME.connected_sources = on;
   for (const g of SG_PAGES.settings.groups) for (const id of g.csHas || []) $("#" + id).hidden = !on;
   $("#csOffWhy").hidden = on;
+  syncNotice(SYNC_ROWS);   // (#1153) their notice too
   SgOutside.load();
   await Promise.all([loadGenAbout(), hostWords(), on && loadSetup(), on && loadSync(), on && loadDirectory()]);
   SET_NAV.again();
