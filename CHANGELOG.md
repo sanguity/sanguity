@@ -3956,6 +3956,10 @@ Everything on `main` so far; it becomes the first tagged release.
 - **In-range results, grey or green** (#1108): Settings → You → Display → In-range results, each person's own: Grey
   (the default, as before) or Green for the Labs heatmap's in-range cells, from the page's first frame; green means only
   inside the range the report gave, out of range stays red with ▲/▼, and forced colours are unchanged.
+- **Passkeys never left blank** (#1117): when your passkeys can't be loaded, Settings → You → Sign-in and security
+  says why, with Try again. Before, it showed only the card's heading: no list, no Add and no message. The list and
+  Add are drawn separately. A browser that can't make passkeys at an https:// address now says that, not "open its
+  https:// address".
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

@@ -30304,6 +30304,65 @@ def main():
                   "message below the screen)", add519[0] == "Rename" and add519[1] and add519[2] and add519[3] == f"Added “{add519[1]}”."
                   and add519[4] == add519[1] and add519[5] and not add519[6], add519)
             pk.set_viewport_size({"width": 1400, "height": 900})
+            # #1117: Settings → Sign-in and security at an https name, https://sanguity.test (this server's pages served
+            # there), on an Android tablet (the checks above are at localhost): the account's passkeys listed (made at
+            # localhost: “works at localhost only”), with Add; its list not loaded (a request that failed), the card says
+            # why, with Try again, which draws them, focus on the first (it was its heading alone: no hint, no list, no
+            # Add, nothing said); and in a browser without passkeys, the list still, and why there's no Add
+            at1117, fail1117 = "https://sanguity.test", []
+            c1117 = browser.new_context(**p.devices["Galaxy Tab S4"], bypass_csp=True, service_workers="block")
+            c1117.add_cookies([{**{k: c[k] for k in ("name", "value", "path", "httpOnly", "sameSite")}, "domain": "sanguity.test", "secure": True}
+                               for c in ctx.cookies() if c["name"] == "sg_session"])
+
+            def serve1117(route):
+                path = route.request.url[len(at1117):]
+                if fail1117 and path.startswith("/api/me/passkeys?"):
+                    return route.fulfill(status=502, content_type="text/plain", body="Bad gateway")
+                route.fulfill(response=route.fetch(url=base + path))
+            c1117.route(re.compile("^" + re.escape(at1117) + "/"), serve1117)
+            CARD1117 = """() => [window.isSecureContext, document.getElementById('pkHint').textContent !== '',
+              [...document.querySelectorAll('#pkList tbody tr')].map(r => r.querySelector('input').value + (r.querySelector('.muted')?.textContent || '')),
+              document.getElementById('pkWhy').hidden ? null : document.getElementById('pkWhy').textContent,
+              [...document.querySelectorAll('#pkList .msg, #pkList button:not(tr button)')].map(e => e.textContent),
+              [...document.querySelectorAll('#pkBody button[type=submit]')].map(b => b.textContent)]"""
+            p1117 = c1117.new_page()
+            p1117.on("pageerror", lambda e: problems.append(f"script error (#1117, Settings at an https name): {e}"))
+            card1117 = {}
+            for case in ("listed", "not loaded", "Try again", "no passkeys in this browser"):
+                if case == "not loaded":
+                    fail1117.append(1)
+                if case == "no passkeys in this browser":
+                    p1117.add_init_script("delete window.PublicKeyCredential")
+                if case == "Try again":
+                    fail1117.clear()
+                    if p1117.get_by_role("button", name="Try again").count():   # (none before: the check fails below, not here)
+                        p1117.get_by_role("button", name="Try again").click()
+                elif case == "listed":
+                    p1117.goto(at1117 + "/settings.html?profile=1#security")
+                else:
+                    p1117.reload()
+                try:
+                    p1117.wait_for_function("document.querySelector('#pkList table, #pkList .msg')", timeout=10000)
+                except Exception:   # (not drawn: said below)
+                    pass
+                p1117.wait_for_timeout(300)
+                card1117[case] = p1117.evaluate(CARD1117)
+                if case == "Try again":
+                    card1117["focus"] = p1117.evaluate("document.activeElement.getAttribute('aria-label')")
+            c1117.close()
+            named1117 = card1117["listed"][2]
+            check("…(#1117) Settings at an https name on an Android tablet lists the account's passkeys, with Add; its list not loaded, says why "
+                  "with Try again, which lists them, focus on the first; in a browser without passkeys, lists them and says why there's no Add "
+                  "(the card was its heading alone: no list, no Add, nothing said)",
+                  len(named1117) >= 1 and all(n.endswith("works at localhost only") for n in named1117)
+                  and card1117["listed"] == [True, True, named1117, None, [], ["Add a passkey"]]
+                  and card1117["not loaded"][:4] == [True, True, [], None] and card1117["not loaded"][5] == []
+                  and len(card1117["not loaded"][4]) == 2 and card1117["not loaded"][4][0].startswith("Your passkeys couldn't be loaded: ")
+                  and card1117["not loaded"][4][1] == "Try again"
+                  and card1117["Try again"] == card1117["listed"] and card1117["focus"] == "Passkey name"
+                  and card1117["no passkeys in this browser"][:3] == [True, True, named1117]
+                  and card1117["no passkeys in this browser"][3].startswith("This browser can't make passkeys. Add one in a browser or on a device")
+                  and card1117["no passkeys in this browser"][5] == [], card1117)
             # #502: Remove, its row gone with it, puts focus on the next passkey's Remove, else the one before's, in sight (it
             # fell to the page), as Sign out does (#493). Two more, made up here, removed in turn
             from server import db as pk_db
