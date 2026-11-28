@@ -28,6 +28,9 @@ Everything on `main` so far; it becomes the first tagged release.
 - Export everything (#66), delete a profile (#67), remove an account (#68), and repair of profiles left without
   an active owner (#69).
 - An account page in three tabs (#88).
+- Sign in with OIDC (Authentik, Keycloak, Authelia, Google…): one provider per install, each person's identity linked
+  by them or an admin, the provider's two factors counted where its ID token says so, and an optional "Sign in with
+  OIDC only" that `server.manage oidc-only off` turns back (#1109).
 - A security review against OWASP ASVS (`docs/security-review.md`) with its accepted deviations (#79, #81).
 - `docker/dev-stack.sh`: a test copy of any branch beside a real install, also as a TrueNAS custom app (#14).
   `--compose FILE` keeps the app definition out of the branch's hands; it fetches only a branch or tag of that

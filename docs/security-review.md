@@ -670,7 +670,8 @@ What each added, and how it keeps to the rules above. Each file named has its ow
   database in memory only. Cycle records (#183) are compared but never named on the page or in a check's result: only a
   profile's owners and editors may know they're kept. A restore writes the receiver's data to its `keys/restore/`,
   which the receiver takes at start, keeping what it had aside; nothing in the API reaches either.
-- A restore brings back records only (#917): accounts, passwords, passkeys, two-factor sign-in, memberships, share
+- A restore brings back records only (#917): accounts, passwords, passkeys, two-factor sign-in, linked sign-in
+  identities and the sign-in provider (#1109), memberships, share
   links, calendar feeds, phone upload secrets and connected sources' sign-ins (the vendors' client secrets and each
   connection's tokens) stay as they are, from the database it replaces, so access ended
   after the backup stays ended; everyone is signed out. With no database to replace (disaster recovery), a damaged
@@ -681,6 +682,34 @@ What each added, and how it keeps to the rules above. Each file named has its ow
   a link or a path, with the fresh check; each deletion an account event (`backup.replaced`). No backup includes it.
   The phone and watch data a restore leaves in `DATA_DIR/watch-restored-<time>/` to be moved in by hand (#603) is
   listed and deleted the same way.
+
+### Sign in with OIDC (#1109)
+- One provider per install (`server/oidc.py`, `routes_oidc.py`): the authorization code flow with PKCE (S256), `state`
+  and `nonce` (each 256 random bits), kept in memory for 10 minutes against a random browser token set as an HttpOnly,
+  SameSite=Strict cookie scoped to `/api/login/oidc`; a state is used up as it comes back, whatever follows, and refused
+  from another browser. The redirect URI is the install's sign-in page at its public address, exactly.
+- The ID token's signature is checked against the provider's JWKS with `cryptography`: RS256 (2048-bit keys at least)
+  or ES256 only; `none`, HS* and any other alg refused, as is a header naming keys of its own (`jku`, `jwk`, `x5u`) or
+  `crit`. Then `iss` (the discovery document's, which must name the issuer set up), `aud` (and `azp` where there are
+  several audiences, or it's given), `exp`, `iat` (not in the future, at most 10 minutes old) and `nbf`, with 2
+  minutes' skew, and the nonce (constant-time). The issuer must be https.
+- An identity is found by (issuer, sub) in `oidc_identities` (schema 49; unique); none is made automatically. A sign-in
+  ends in `main._start_session` as a password's: the lengths, the device cookie, `login.ok` in the security log; a
+  failure is `login.fail` (step `oidc`), counted by the address's throttle and the admins' failed sign-ins notice.
+- The provider's second factor counts only where its ID token says so (`amr` with `mfa`, `otp`, `hwk` or `sc`, or the
+  admin's `acr`), for that session alone (`sessions.idp_mfa`); otherwise the account's own code or passkey follows,
+  with the same ticket as after a password.
+- Linking adds a way in: one's own after the fresh check, by signing in at the provider (`prompt=login`), finished only
+  for the session that started it; an admin's for an account by its subject, after the fresh check. Unlinking ends the
+  account's other sessions (an admin's, all of them).
+- The client secret is encrypted with the data key (meta `oidc.secret`, resealed by a key rotation) and never sent to a
+  page; `OIDC_CLIENT_SECRET` in the environment wins. Each change to the provider asks for the fresh check and is in
+  the install's log (the secret by name only). Contact goes through the gateway to the issuer's host and the hosts its
+  discovery names for the token endpoint and JWKS, none while no provider is set up, each listed under Outside
+  connections for admins.
+- Sign in with OIDC only refuses a password sign-in and a passkey on its own; it's refused until the admin's own
+  identity has signed in with the provider as set up now, the provider can't be changed while it's on, and nobody can
+  unlink their own last identity then. `server.manage oidc-only off` is the way back.
 
 ### Big records stay fast (#201) and the anonymiser (#34)
 - Performance budgets change no access or storage. The anonymiser is out of scope (see the top of this document).
