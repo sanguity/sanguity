@@ -601,7 +601,8 @@ def start_app():
     """Demo build in a temporary data folder, one account owning it plus a second empty profile, then the API."""
     os.environ.update(SANGUITY_DATA=TMP, SANGUITY_RECORDS=os.path.join(TMP, "records"), SANGUITY_SERVE_STATIC="1",
                       SANGUITY_WATCH_FILE=os.path.join(TMP, "watch", "daily.json"), SANGUITY_KEY_FILE=os.path.join(TMP, "keys", "data_key"),
-                      SANGUITY_WATCH_KEYS=os.path.join(TMP, "watch-keys", "receiver-secrets.json"))
+                      SANGUITY_WATCH_KEYS=os.path.join(TMP, "watch-keys", "receiver-secrets.json"),
+                      SANGUITY_TESSERACT="off")   # (#1129) no text recognition of its own: the checks put in what it would find
     os.makedirs(os.path.join(TMP, "watch-keys"), exist_ok=True)
     subprocess.run([sys.executable, "-I", os.path.join(ROOT, "demo", "generate.py"), os.path.join(TMP, "build"), "--end", "2026-11-15",
                     "--watch", os.path.join(TMP, "watch")], check=True, stdout=subprocess.DEVNULL)
@@ -10309,6 +10310,80 @@ def main():
                 const n = document.querySelectorAll('#charts [data-rename], #dbody [data-rename]').length; PROFILE.role = role; return n; })()""") == 0)
             js("n => { const s = SERIES.find(s => s.name === n); s.pts[s.pts.length - 1].length = 6; state.tables.delete(n); renderLabs(); }", lab)
 
+            # ---- (#1129) a scanned document found by its text: the Timeline's search lists its record, the palette finds it
+            # ("Found in its text"), and its drawer has the text, closed, under "Text found by text recognition"; and
+            # General → Text recognition. The reading itself is tests/test_ocr.py's: its row is put in here as it leaves it
+            from server import crypto as crypto1129, db as dbm1129
+            ev1129 = None
+            try:
+                ev1129 = js("""(async () => { await loadDetails(DATA.events.map(e => e.id));
+                    const e = DATA.events.find(e => !e.hidden && DATA.details[e.id]?.type === 'file' && DATA.details[e.id].ext === 'pdf' && DATA.details[e.id].url);
+                    return e && {id: e.id, title: e.title, doc: /\\/documents\\/([^/#?]+)/.exec(DATA.details[e.id].url)[1]}; })()""")
+                db = dbm1129.connect()
+                db.execute("INSERT OR REPLACE INTO document_text(doc_id, state, source, pages, read, tries, at, body) VALUES(?, 'found', 'ocr', 2, 2, 1, 0, ?)",
+                           (ev1129["doc"], crypto1129.enc("FICTIONAL CLINIC\nA scanned letter about zinnwaldite,\nread by text recognition.")))
+                db.close()
+                js("pickTab('timeline')")
+                page.fill("#q", "Zinnwaldite")
+                page.wait_for_function("id => state.q === 'zinnwaldite' && !!document.querySelector(`#list .tl-row[data-id='${id}']`)", arg=ev1129["id"], timeout=10000)
+                rows1129 = js("[...document.querySelectorAll('#list .tl-row')].map(r => +r.dataset.id)")
+                page.fill("#q", "")
+                settle(300)
+                js("SgPalette.open()")
+                page.fill("#palQ", "zinnwaldite")
+                page.wait_for_function("[...document.querySelectorAll('#palList [role=option]')].some(o => /Found in its text/.test(o.textContent))", timeout=10000)
+                pal1129 = js("[...document.querySelectorAll('#palList [role=option]')].map(o => o.textContent)")
+                page.keyboard.press("Enter")   # opens it, as the palette does
+                page.wait_for_selector("#dbody .doc-text summary", timeout=10000)
+                closed1129 = js("[document.querySelector('#dbody .doc-text details').open, document.querySelector('#dbody .doc-text summary').textContent, document.getElementById('dtitle').textContent]")
+                page.focus("#dbody .doc-text summary")
+                page.keyboard.press("Enter")
+                text1129 = js("document.querySelector('#dbody .doc-words').innerText")
+                fits1129 = []
+                for w in (320, 412):
+                    page.set_viewport_size({"width": w, "height": 800})
+                    settle(200)
+                    fits1129 += phone_fits(page, f"a document's recognised text at {w} px")
+                page.set_viewport_size({"width": 1400, "height": 900})
+                axe1129 = []
+                for scheme in ("light", "dark"):
+                    page.emulate_media(color_scheme=scheme)
+                    axe1129 += axe_check(page, f"a document's recognised text, {scheme}")[0]
+                page.emulate_media(color_scheme="light")
+                page.keyboard.press("Escape")
+                check("a scanned document is found by its text (#1129): the Timeline's search lists its record, the palette finds it, "
+                      "“Found in its text”, and opens it",
+                      rows1129 == [ev1129["id"]] and any(ev1129["title"] in o and "Found in its text" in o for o in pal1129), [ev1129, rows1129, pal1129])
+                check("…its drawer has the text closed, under “Text found by text recognition”, opened by keyboard; it fits 320 and 412 px, "
+                      "no serious axe finding, light or dark",
+                      closed1129[:2] == [False, "Text found by text recognition"] and "scanned letter about zinnwaldite" in text1129
+                      and not fits1129 and not axe1129, [closed1129, text1129, fits1129, axe1129])
+                gp = page.context.new_page()
+                try:
+                    gp.goto(base + "/settings.html?profile=1#gen-ocr")
+                    gp.wait_for_selector("#ocrPass", timeout=15000)
+                    gen1129 = gp.evaluate("[document.querySelector('#gen-ocr h2').textContent, document.getElementById('ocrPass').textContent, "
+                                          "[...document.querySelectorAll('#genOcr [data-code]')].map(i => [i.dataset.code, i.checked, i.disabled]), !!document.getElementById('ocrFile'), "
+                                          "document.getElementById('ocrDl').checked]")
+                    gfits = []
+                    for w in (320, 1400):
+                        gp.set_viewport_size({"width": w, "height": 900})
+                        gp.wait_for_timeout(200)
+                        gfits += phone_fits(gp, f"General, Text recognition at {w} px")
+                    gaxe = axe_check(gp, "General, Text recognition")[0]
+                finally:
+                    gp.close()
+                check("…General → Text recognition says this server has no Tesseract here, English built in and always used, "
+                      "Import a language file, downloads off; it fits 320 and 1400 px, no serious axe finding",
+                      gen1129[0] == "Text recognition" and "no Tesseract" in gen1129[1] and gen1129[2] == [["eng", True, True]] and gen1129[3]
+                      and gen1129[4] is False and not gfits and not gaxe, [gen1129, gfits, gaxe])
+            except Exception as e:
+                check("Searchable scanned documents (#1129) ran", False, stopped(e))
+            finally:
+                if ev1129:
+                    db = dbm1129.connect()
+                    db.execute("DELETE FROM document_text WHERE doc_id=?", (ev1129["doc"],))
+                    db.close()
             # ---- an HTML record shows in the drawer with the stylesheet and picture saved beside it, scripts off
             js("openEvent(DATA.events.find(e => e.title === 'Visit summary (HTM)'))")   # ids are the database's
             page.wait_for_function("""(() => { const f = document.querySelector('#dbody iframe.doc'), d = f && f.contentDocument;
@@ -30225,7 +30300,7 @@ def main():
             # no longer the only account: admin actions now wait for the admin's own second factor (issue #75)
             check("with a second account, the admin is asked for a second factor",
                   js("!document.getElementById('adminTf').hidden && document.getElementById('adminTools').hidden"))
-            check("…and every other part of Install the server now refuses says so", js("['gen-host', 'gen-security', 'gen-signin', 'gen-backups', 'gen-phone', 'gen-demo', 'gen-about', 'backups', 'admin', 'sec-sync', 'directory', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
+            check("…and every other part of Install the server now refuses says so", js("['gen-host', 'gen-security', 'gen-signin', 'gen-backups', 'gen-phone', 'gen-ocr', 'gen-demo', 'gen-about', 'backups', 'admin', 'sec-sync', 'directory', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
             # two-factor sign-in: turn it on from the key shown, confirm with a code, get recovery codes
             from server import twofactor
             import time as _time

@@ -25,6 +25,10 @@ way out, under a permit made here from what the install was told to contact:
         the provider directory's two published lists (#992; directory/update.py): the hosts directory/build.py names
         for them, only when an admin presses Add the lists or Update now, or once a week after an admin turned that
         on. Account-level: no profile is involved.
+  for_ocr(db, who, ip)   (#1129, ocr.py)
+        a text recognition language an admin downloads from the tesseract-ocr project's tessdata_fast: its host
+        (raw.githubusercontent.com) only while an admin has turned that on (the install setting ocr.downloads), and
+        contacted only when one presses Download. Account-level too.
 
 Each contact is recorded before the request is sent, so an attempt that fails is listed too:
   - as a profile activity entry "outside" with {"host", "purpose"} (account-level when no profile is involved);
@@ -115,6 +119,17 @@ def for_directory(db, who=None, ip=None, actor=None):
     return net.Permit(DIRECTORY, lambda: directory_hosts() if settings.connected_sources() else set(), _recorder(db, None, who, ip, actor))
 
 
+def ocr_hosts():
+    """(#1129) tessdata_fast's host while downloading languages is on, else none."""
+    from . import ocr
+    return {net.host_of(ocr.DOWNLOAD)} if settings.install_value("ocr.downloads") else set()
+
+
+def for_ocr(db, who=None, ip=None):
+    from . import ocr
+    return net.Permit(ocr.PURPOSE, ocr_hosts, _recorder(db, None, who, ip))
+
+
 # ---------------------------------------------------------------- the view
 
 def _profiles(db, s):
@@ -187,11 +202,14 @@ def view(db, s):
     from . import notify, oidc
     signin = oidc.hosts(db) if admin else []   # (#1109) the sign-in provider's: an admin's to see, as the directory's
     told = sorted(notify.hosts())   # (#1130) the notification server: everyone's to see, as anyone may turn them on
-    allowed = sorted({h for x in sources for h in x["may_contact"]} | set(signin) | set(told))
+    from . import ocr
+    languages = sorted(ocr_hosts()) if admin else []   # (#1129) tessdata_fast's, while downloads are on
+    allowed = sorted({h for x in sources for h in x["may_contact"]} | set(signin) | set(told) | set(languages))
     pick = lambda *ps: [c for c in contacts if c["purpose"] in ps]
     return {"nothing_else": NOTHING_ELSE, "admin": admin, "connected_sources": on, "may_contact": allowed, "sources": sources,
             "health_links": pick(LINK, LINK_FILE), "card_keys": pick(CARD_KEYS),
             **({"directory": {"hosts": sorted(directory_hosts()), "contacts": pick(DIRECTORY)}} if admin and on else {}),
             **({"sign_in": {"hosts": signin, "contacts": pick(oidc.PURPOSE)}} if signin else {}),
             **({"notifications": {"hosts": told, "contacts": pick(notify.PURPOSE)}} if told else {}),
+            **({"languages": {"hosts": languages, "contacts": pick(ocr.PURPOSE)}} if admin and (languages or pick(ocr.PURPOSE)) else {}),
             "earlier": [c for c in contacts if c["purpose"].startswith(SOURCE) and c["host"] not in allowed]}

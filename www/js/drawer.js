@@ -333,6 +333,29 @@ function resultBody(d, eid, top) {
 const uniq = xs => [...new Set(xs.filter(Boolean))].join("; ");
 const goBtn = (text, onclick) => el("button", {class: "btn", type: "button", text, onclick});
 const note = text => el("p", {class: "hint dnote", text});
+/* (#1129) a scanned document's text, read on the server by text recognition (or a PDF's own) so a search finds it:
+   closed, under its own name, never as the document's data; or a line saying why there's none. Filled in once the
+   server says (GET document-text), in the place kept for it */
+const TEXT_TYPES = new Set(["pdf", "png", "jpg", "jpeg", "gif", "tif", "tiff", "webp", "bmp"]);
+function docText(d) {
+  const doc = /\/documents\/([^/#?]+)/.exec(d.url)?.[1];
+  if (!doc || !TEXT_TYPES.has(d.ext) || !PROFILE) return null;
+  const box = el("div", {class: "doc-text"});
+  api(`profiles/${PROFILE.id}/document-text/${doc}`).then(r => r.ok ? r.json() : null).then(t => {
+    if (!t || !box.isConnected) return;
+    const of = `${t.read} of its ${t.pages} pages`, part = t.capped === "pages" ? `Only the first ${of} were read.`
+      : t.capped === "time" ? `Reading stopped after ${t.max_minutes} minutes, with ${of} read.` : t.pages > t.read ? `${of[0].toUpperCase() + of.slice(1)} could be read.` : "";
+    const name = t.source === "ocr" ? "Text found by text recognition" : "Text in this PDF";
+    if (t.state === "found") box.replaceChildren(el("details", {class: "res"}, el("summary", {text: name}), el("div", {},
+      el("p", {class: "hint", text: (t.source === "ocr" ? "Read from the scan by this server, so a search finds this document. It can have mistakes: the document itself is what it says. "
+        : "The PDF's own text, so a search finds this document. ") + part}),
+      scrollBox({class: "doc-words", "aria-label": name}, el("pre", {text: t.text})))));
+    else if (t.state === "none") box.replaceChildren(note(`Text recognition found no words in it (a photo, or a blank page), so a search can't find it by its text. ${part}`));
+    else if (t.state === "failed") box.replaceChildren(note("Text recognition couldn't read it, so a search can't find it by its text."));
+    else if (t.state === "waiting") box.replaceChildren(note("Its text hasn't been read yet: this server reads scanned documents in the background, so a search can find them by their words."));
+  }).catch(() => {});
+  return box;
+}
 function openEvent(e) {
   if (!e) return;
   if (e.k === "journal" || e.k === "mood") return openJournal(e);   // journal.js (a mood: #161)
@@ -384,6 +407,8 @@ function openEvent(e) {
     else if (noPdf) main.push(pdfCard(d.url, e.title));
     else if (d.ext === "pdf") { body.classList.add("fill"); main.push(el("iframe", {class: "doc", src: d.url + (d.url.includes("#") ? "" : "#view=FitH"), title: e.title})); }
     else if (d.ext === "tif" || d.ext === "tiff") main.push(note("Scanned TIFF document — browsers can't preview TIFF; use Download and open it in Photos or a PDF viewer."));
+    const text = docText(d);
+    if (text) main.push(text);
   } else if (d.type === "stay") {
     if (d.discharge) {
       facts([["Where", d.where], ["Admission", d.admission], ["Transferred from", d.transfer_from], ["Transferred to", d.transfer_to]]);

@@ -209,6 +209,11 @@ ROUTES = {
     ("DELETE", "/api/settings/install/demo"): (ADMIN, None),
     ("GET", "/api/settings/install/restart"): (ADMIN, None), ("PUT", "/api/settings/install/restart/values"): (ADMIN, None),   # General → Needs a restart (#1121)
     ("POST", "/api/settings/install/restart"): (ADMIN, None),
+    # General -> Text recognition (#1129): the pass, a language imported, downloaded or removed; and a document's text and
+    # the search of documents' text, as the records are
+    ("GET", "/api/settings/install/ocr"): (ADMIN, None), ("PUT", "/api/settings/install/ocr/languages/{name}"): (ADMIN, None),
+    ("POST", "/api/settings/install/ocr/download"): (ADMIN, None), ("DELETE", "/api/settings/install/ocr/languages/{code}"): (ADMIN, None),
+    ("GET", "/api/profiles/{pid}/document-text/{doc}"): (USER, "viewer"), ("POST", "/api/profiles/{pid}/documents/search"): (USER, "viewer"),
     ("GET", "/api/labmaps"): (ADMIN, None), ("PATCH", "/api/labmaps/{mid}"): (ADMIN, "viewer"), ("DELETE", "/api/labmaps/{mid}"): (ADMIN, "viewer"),
     ("POST", "/api/labmaps/undo/{cid}"): (ADMIN, "viewer"),   # (#1114: from a profile's card, ?profile= one the admin sees; PATCH and DELETE with it too)
     ("GET", "/api/connect/sources"): (ADMIN, None), ("POST", "/api/connect/sources"): (ADMIN, None),
@@ -363,7 +368,8 @@ class Reach(unittest.TestCase):
         with open(os.path.join(ROOT, "www", "settings.html"), encoding="utf-8") as f:
             scripts = re.findall(r'<script src="js/([\w-]+\.js)"></script>', f.read())
         install = ["admin.js", "admin-sources.js", "admin-backups.js", "outside.js", "activity.js", "admin-host.js",
-                   "gen-security.js", "gen-signin.js", "gen-backups.js", "admin-phone.js", "gen-about.js", "gen-demo.js", "gen-restart.js"]   # General's sections (#998, #1101, #1109, #1121)
+                   "gen-security.js", "gen-signin.js", "gen-backups.js", "admin-phone.js", "gen-about.js", "gen-demo.js", "gen-restart.js",
+                   "gen-ocr.js"]   # General's sections (#998, #1101, #1109, #1121, #1129)
         self.assertEqual([s for s in install if s not in scripts], [], "Install's scripts on the Settings page")
         heads = set()
         for s in install:
@@ -441,6 +447,7 @@ PLAIN = {
     "connections": {"source", "issuer", "fhir_base", "credential", "scopes", "state", "cursor", "pending_cursor",
                     "error_kind", "kinds", "since", "attach"},   # source, issuer: the admin's vendor setting (accepted)
     "cost_marks": {"target"}, "devices": {"token_hash"}, "documents": {"id", "ext"},
+    "document_text": {"doc_id", "state", "source", "why", "capped", "langs"},   # (#1129) a document's random id, how it was read
     "edits": {"target", "action", "other"}, "events": {"key_hash"}, "import_undos": {"by_name"},
     "imports": {"origin", "format"}, "jobs": {"state", "stage", "importer", "keep", "same"},
     "journal": {"created_name", "changed_name"}, "journal_photos": {"file", "type"}, "med_reminders": {"created_name", "changed_name"},
@@ -476,7 +483,8 @@ PLAIN_SETTINGS = {"sync.attachAuto", "sync.attachMaxMB", "sync.attachTypes", "sy
                   "security.triesAddress", "security.triesAccount",
                   "directory.weekly",   # on or off (#992)
                   "experimental.connectedSources",   # (#1096) on or off
-                  "costs.taxStart"}   # (#1136) a month, 1 to 12, for Costs' tax-year report: nothing about anyone's health
+                  "costs.taxStart",   # (#1136) a month, 1 to 12, for Costs' tax-year report: nothing about anyone's health
+                  "ocr.languages", "ocr.downloads"}   # (#1129) language codes, and on or off
 
 
 class AtRest(unittest.TestCase):

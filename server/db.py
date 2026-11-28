@@ -1394,6 +1394,28 @@ SCHEMA = [
         changed INTEGER);
     CREATE INDEX records_requests_profile ON records_requests(profile_id);
     """,
+    # version 58: a document's text, for finding it
+    # (#1129; ocr.py), never read for anything else. One row per document once it's been read, or while it's being
+    # read: state reading (tries: how many times its reading began; a stop in the middle reads it again, twice at
+    # most), found, none (no text: a photo, a blank page) or failed (why: a short reason); source: ocr (text
+    # recognition read some of its pages) or layer (a PDF's own text alone); pages, read: its pages and how many were
+    # read; capped: pages or time when not all were; langs: the languages it was read with. The text is in body,
+    # encrypted. A document deleted takes its row with it.
+    """
+    CREATE TABLE document_text(
+        doc_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+        state TEXT NOT NULL,
+        source TEXT,
+        why TEXT,
+        pages INTEGER,
+        read INTEGER,
+        capped TEXT,
+        langs TEXT,
+        tries INTEGER NOT NULL DEFAULT 0,
+        at INTEGER NOT NULL,
+        body TEXT);
+    CREATE INDEX document_text_state ON document_text(state);
+    """,
 ]
 
 

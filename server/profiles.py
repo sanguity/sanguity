@@ -268,6 +268,9 @@ def index_documents(db, pid, details, locate, known=None):
         frag = d["url"].split("#", 1)[1] if "#" in d["url"] else ""
         d["url"] = document_url(pid, doc, path, ext) + ("#" + frag if frag else "")
         n += 1
+    if n:   # (#1129) its text read once the import is saved (else at the thread's next look, ocr.TICK)
+        from . import ocr
+        dbm.after_commit(db, ocr.wake)
     return keep, n
 
 

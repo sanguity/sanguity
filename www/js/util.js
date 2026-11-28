@@ -394,6 +394,19 @@ const api = (path, opts = {}) => fetch("api/" + path, {cache: "no-store", creden
    the server doesn't count it as use (main.py _session), and idle sign-out ends a sign-in left open on a page that
    polls. Every poll and background refresh asks with these: api(path, background()), or background(opts) */
 const background = (opts = {}) => ({...opts, headers: {"X-Sanguity-Background": "1", ...opts.headers}});
+/* (#1129) the records of profile pid whose documents' text (a scan's, read by text recognition, or a PDF's own) has
+   q, all of it, as the Timeline's search finds an event's words: a promise of a Set of their ids, from the server, asked
+   in a request's body so what's searched is in no address. The last 30 kept; one that couldn't be asked, not kept */
+const DOCS_FOUND = new Map();
+function docsFound(pid, q) {
+  const k = pid + " " + q;
+  if (!DOCS_FOUND.has(k)) {
+    DOCS_FOUND.set(k, api(`profiles/${pid}/documents/search`, {method: "POST", body: JSON.stringify({q})})
+      .then(r => r.ok ? r.json() : Promise.reject()).then(j => new Set(j.events || []), () => { DOCS_FOUND.delete(k); return new Set(); }));
+    if (DOCS_FOUND.size > 30) DOCS_FOUND.delete(DOCS_FOUND.keys().next().value);
+  }
+  return DOCS_FOUND.get(k);
+}
 
 /* A whole-value setting (a list, a map) saved as the page made it from the value it read (read), which the server
    refuses (409) if the setting holds another by then: a change made in another tab or by someone else (#923). One save
