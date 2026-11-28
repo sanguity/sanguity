@@ -491,6 +491,39 @@ class OIDC(unittest.TestCase):
         self.assertEqual(client().post("/api/login", json={"username": "kim", "password": PW["kim"]}, headers=H).status_code, 200)
         self.assertFalse(client().get("/api/login/oidc").json()["only"])
 
+    def test_with_oidc_only_nobody_is_held_at_a_password_change_and_no_password_is_reset(self):
+        """A password that signs in nowhere needn't be replaced: an account marked to change its password signs in with
+        the provider and isn't held; an admin's Reset password says passwords are off. OIDC only off, the mark holds again."""
+        ada = self.set_up()
+        self.idp.person = {"sub": "ada-subject-1"}
+        r = ada.post("/api/me/oidc/start", headers=H)
+        back = q(self.idp.authorize(r.json()["url"]))
+        self.assertEqual(ada.post("/api/login/oidc/return", json={"code": back["code"], "state": back["state"]}, headers=H).status_code, 200)
+        self.assertEqual(ada.put("/api/settings/install/oidc", json={"only": True}, headers=H).status_code, 200)
+        self.link("kim", "kim-subject-1")
+        db = dbm.connect()
+        db.execute("UPDATE users SET must_change_pw=1 WHERE id=?", (self.uid["kim"],))
+        db.close()
+        try:
+            self.idp.person = {"sub": "kim-subject-1"}
+            c, r = self.oidc_sign_in()
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertFalse(r.json()["must_change_pw"])
+            self.assertFalse(c.get("/api/me").json()["user"]["must_change_pw"])
+            self.assertEqual(c.get("/api/me/oidc").status_code, 200, "not held at a password change")
+            self.assertEqual(c.get("/api/lab-names").status_code, 200)
+            r = ada.patch(f"/api/users/{self.uid['kim']}", json={"reset_password": True}, headers=H)
+            self.assertEqual(r.status_code, 409)
+            self.assertIn("Passwords are off while Sign in with Authentik (fictional) only is on", r.json()["detail"])
+            with redirect_stdout(io.StringIO()):
+                manage.run(["oidc-only", "off"])
+            self.assertEqual(c.get("/api/me/oidc").json()["detail"], "password_change_required", "off again: the mark holds")
+            self.assertTrue(c.get("/api/me").json()["user"]["must_change_pw"])
+        finally:
+            db = dbm.connect()
+            db.execute("UPDATE users SET must_change_pw=0 WHERE id=?", (self.uid["kim"],))
+            db.close()
+
     def test_restoring_keeps_todays_provider_and_identities(self):   # (the access tables, test_backups has the restore)
         from server import backup
         self.assertIn("oidc_identities", backup.ACCESS_TABLES)

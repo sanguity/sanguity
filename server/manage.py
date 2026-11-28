@@ -320,6 +320,8 @@ def _command(db, argv):
             print("Note: this account is disabled, so it still can't sign in. Add --enable to turn it back on.")
         elif u["disabled"]:
             print("The account is enabled again.")
+        if oidc.only(db):   # (#1109)
+            print("Note: Sign in with OIDC only is on, so passwords don't sign in: it works once `oidc-only off` turns that off.")
     elif cmd == "share" and len(args) == 3 and args[2] in main.RANK:
         pid, u = int(args[0]), _user(db, args[1])
         if not db.execute("SELECT 1 FROM profiles WHERE id=?", (pid,)).fetchone():
