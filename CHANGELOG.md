@@ -4058,7 +4058,8 @@ Everything on `main` so far; it becomes the first tagged release.
   PDF before adding."
 - **The newest reading is drawn on Body and activity's charts** (#1155): a blood pressure, temperature, oxygen or
   glucose reading typed in or sent by the phone after its last day ended every period before it (its mark not drawn,
-  its tooltip found at the edge); a long period reaches its first and newest weeks' averages; a week alone is a dot.
+  its tooltip found at the edge); a long period's first and newest weeks, whose Thursdays fall outside it, are drawn
+  at its ends; a week alone is a dot.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 
