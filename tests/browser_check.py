@@ -2555,10 +2555,10 @@ CHART_ACCENT_JS = r"""sel => {
 }"""
 
 
-# a tab opened for the tile checks (#330, #339, #351), from [tab, period]: "costs" is Costs' Claims and "costs-paid" its
-# What you paid, each with its More figures open, so every figure is measured (#278)
+# a tab opened for the tile checks (#330, #339, #351), from [tab, period]: "costs" is Costs' Claims, "costs-paid" its
+# Payments and bills and "costs-summary" its Summary (#1163), each with its More figures open, so every figure is measured (#278)
 TILE_TAB_JS = """([t, p]) => { if (p) setPeriod(p);
-  if (t.startsWith('costs')) Object.assign(costState, {view: t === 'costs' ? 'claims' : 'paid', more: true}); switchTab(t.split('-')[0]); }"""
+  if (t.startsWith('costs')) Object.assign(costState, {view: {costs: 'claims', 'costs-paid': 'paid', 'costs-summary': 'summary'}[t], more: true}); switchTab(t.split('-')[0]); }"""
 
 
 # a unit as the pages say it (#1103: util.js unitSaid, server/units.py said, test_units holding them alike), for what's
@@ -6155,7 +6155,7 @@ def main():
             js("window._was330 = [state.tab, state.preset, state.from, state.to]")
             for width in (1400, 1100, 375, 320):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
-                for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-paid", "all")):
+                for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-summary", None), ("costs-paid", "all")):
                     js(TILE_TAB_JS, [tab, preset])
                     settle(300)
                     got = js(TILE_LINES_JS)
@@ -6345,7 +6345,7 @@ def main():
             seen260, odd260 = {}, []
             page.set_viewport_size({"width": 1400, "height": 900})
             page.mouse.move(1, 1)   # no tile under the pointer, in its hover look
-            for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-paid", "all")):
+            for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-summary", None), ("costs-paid", "all")):
                 js(TILE_TAB_JS, [tab, preset])
                 settle(300)
                 got260 = js(look260)
@@ -6368,7 +6368,7 @@ def main():
             fit351, rows351 = [], {}
             for width in (1400, 375, 320):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
-                for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-paid", "all")):
+                for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-summary", None), ("costs-paid", "all")):
                     js(TILE_TAB_JS, [tab, preset])
                     settle(300)
                     got = js(TILE_FIT_JS)
@@ -6386,13 +6386,13 @@ def main():
             # Glucose at 768 to 1100 px and "$4,681" past What you paid's at 700 to 900 px and sideways (#753). The unit
             # goes under the value, and every grid takes fewer columns as text grows (app.css, --tile-em)
             def records753(width):
-                for tab, preset in (("overview", None), ("health", "2y"), ("costs", "all"), ("costs-paid", "all")):
+                for tab, preset in (("overview", None), ("health", "2y"), ("costs", "all"), ("costs-summary", None), ("costs-paid", "all")):
                     js(TILE_TAB_JS, [tab, preset])
                     yield tab
             text722, n722 = tiles_big753(page, settle, records753)
             check("…and with text at 200% at 320 to 1400 px and on a phone held sideways, every word of every tile and figure on the Overview, Body and activity "
                   "and Costs inside its tile, none overlapping another (#722, #753, 1.4.4): a unit under its value, fewer tiles a row as text grows",
-                  not text722 and all(n >= 6 for n in n722.values()), text722[:10] or n722)
+                  not text722 and all(n >= (4 if k.startswith("costs-summary") else 6) for k, n in n722.items()), text722[:10] or n722)   # (#1163: the Summary has four)
             js("[state.preset, state.from, state.to] = window._was330.slice(1); Object.assign(costState, {view: 'claims', more: false}); switchTab(window._was330[0]); renderAll()")
             js("window._was330 = [state.tab, state.preset, state.from, state.to]")
             # #339: and in the other two date formats (keepDates keeps only the date together, "as of" with it), with no
@@ -6402,7 +6402,7 @@ def main():
                 js("f => useDates(DATES.zone, f)", fmt)
                 for width in (1400, 320):
                     page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
-                    for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-paid", "all")):
+                    for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-summary", None), ("costs-paid", "all")):
                         js(TILE_TAB_JS, [tab, preset])
                         settle(300)
                         got = js(TILE_LINES_JS)
@@ -7624,7 +7624,7 @@ def main():
             check("Costs: the claims chart's Hospital stay swatch has an edge 3:1 against the card, in light and dark (#450)",
                   all(len(v) == 1 and v[0][0] >= 3 and v[0][1] >= 1 for v in edges450.values()), edges450)
             ct = []
-            for view, key in (("Claims", "#costBars"), ("What you paid", "#paidCum")):
+            for view, key in (("Claims", "#costBars"), ("Payments and bills", "#paidCum")):
                 page.click(f"#costView button:text-is('{view}')")
                 settle(200)
                 page.click(f"#view-costs .view-seg[data-key='{key}'] button:text-is('Table')")
@@ -7723,28 +7723,92 @@ def main():
             status278 = js("""(() => { const rows = [...document.querySelectorAll('#costTable tbody tr')], shown = rows.map(r => r.cells[7].textContent);
                 return [rows.length, shown.filter(s => /^(processed|paid)$/i.test(s)).length, shown.filter(Boolean)]; })()""")
             want_denied = js("costRows().filter(r => !/^(processed|paid)?$/i.test(r.status || '')).length")
-            check("Costs (#278): Claims | What you paid, a pick-one pair on Claims, focus on it; three figures, your share, paid by insurance and billed, the rest under More figures, shut",
-                  claims278 == [["group", [["Claims", "true"], ["What you paid", "false"]]], ["Your share", "Paid by insurance", "Billed by providers"], [False, 3, "More figures"], "Claims"],
+            check("Costs (#278, #1163): Summary | Claims | Payments and bills, pick one, on Claims, focus on it; three figures, your share, paid by insurance and billed, the rest under More figures, shut",
+                  claims278 == [["group", [["Summary", "false"], ["Claims", "true"], ["Payments and bills", "false"]]], ["Your share", "Paid by insurance", "Billed by providers"], [False, 3, "More figures"], "Claims"],
                   claims278)
             check("…at 1400 px the claims' chart is on the first screen", chart278 and chart278[0] > 0 and chart278[1] <= chart278[2], chart278)
             check("…money right-aligned in tabular figures, billed, insurance paid and your share",
                   money278[0] == ["Billed", "Ins. paid", "Your share"] and money278[1] == 3 * (status278[0] + 1) and money278[2], money278)
             check("…a status only when it isn't processed: no row says processed, the denied ones say so",
                   status278[0] > 0 and status278[1] == 0 and len(status278[2]) == want_denied and all("denied" in s for s in status278[2]), [status278, want_denied])
-            page.click("#costView button:text-is('What you paid')")
+            page.click("#costView button:text-is('Payments and bills')")
             settle(300)
             paid278 = [js(figs), js(more), js("document.activeElement.textContent"), js("[!!document.getElementById('paidCard'), !!document.getElementById('costTable')]")]
             page.click("#view-costs > .cost-figs > details.cost-more summary")
             page.click("#costView button:text-is('Claims')")
             settle(200)
-            page.click("#costView button:text-is('What you paid')")
+            page.click("#costView button:text-is('Payments and bills')")
             settle(200)
             kept278 = [js(more), js("document.getElementById('oopTax').checkVisibility()")]
             check("…What you paid: its own three figures, total out of pocket (premiums apart, #1163), paid for care and claim shares with no payment, the rest under More figures; focus on it",
                   paid278[0] == ["Total out of pocket", "Paid for care", "Claim shares with no payment"] and paid278[1][:1] == [False] and paid278[1][1] >= 3
-                  and paid278[2] == "What you paid" and paid278[3] == [True, False], paid278)
+                  and paid278[2] == "Payments and bills" and paid278[3] == [True, False], paid278)
             check("…More figures opened stays open, the HSA and FSA by year in it", kept278[0][0] is True and kept278[1] is True, kept278)
             js("costState.more = false; costState.view = 'claims'; renderCosts()")
+            # ---- #1163: Costs' three views. The Summary, one plan or calendar year of its own (not the records bar's
+            # period): its four figures the server's sums for that year (premiums apart, on a line of their own, never in
+            # what you paid for care), four in a row at 1400 px, two by two at 412, one under another at 320 and at 200%
+            # text; another year picked, its figures, focus kept on the picker; the figures and the plan card's heading on
+            # a phone's first screen; and no Costs text, in any view, its ⓘs, a payment's editor and More figures open,
+            # says "account", "bank" or "export", but the empty page's line that nothing connects to a bank
+            SUM1163 = """() => { const ts = [...document.querySelectorAll('#sumCard .stats.four .tile')], top = t => Math.round(t.getBoundingClientRect().top),
+                low = innerHeight - parseFloat(getComputedStyle(document.documentElement).scrollPaddingBottom || 0);   // (over a phone's bottom bar, #1163)
+                return [ts.map(t => [t.querySelector('.lbl').textContent, t.querySelector('.val').textContent]), new Set(ts.map(top)).size,
+                  [...document.querySelectorAll('#sumLines .ov-row')].map(r => [r.querySelector('.n').textContent, r.querySelector('.v').textContent]),
+                  document.querySelector('label[for=sumYear] span')?.textContent, document.getElementById('sumYear')?.selectedOptions[0]?.value,
+                  (r => r && Math.round(r.bottom) <= low)(document.querySelector('#sumCard .stats.four')?.getBoundingClientRect()),
+                  (r => r && Math.round(r.bottom) <= low)(document.querySelector('#planCard h3.sub')?.nextElementSibling?.getBoundingClientRect()), document.documentElement.scrollWidth]; }"""
+            js("applyPreset('30d'); summaryState.year = null; costState.view = 'summary'; renderCosts(); scrollTo(0, 0)")   # (a short period: the Summary's year isn't it)
+            sum1163 = {}
+            for w, h in ((1400, 900), (412, 915), (320, 800)):
+                page.set_viewport_size({"width": w, "height": h})
+                settle(300)
+                sum1163[w] = js(SUM1163)
+            y1163 = js("summaryYears()[1]")
+            want1163 = js("y => [['Your share of claims', usd(y.share)], ['You paid for care', usd(y.paid)], ['Not yet paid', usd(y.notPaid)], ['Insurance paid', usd(y.insurancePaid)]]", y1163)
+            lines1163 = js("y => [['Premiums paid', usd(y.premiums)], ['Paid with an HSA', usd(y.hsa)], ['Paid with an FSA', usd(y.fsa)]]", y1163)
+            set_big = "on => { document.documentElement.style.fontSize = on ? '200%' : ''; }"
+            big1163 = {}
+            for w in (412, 1400):   # one under another on a phone, two by two at 1400 px
+                page.set_viewport_size({"width": w, "height": 900})
+                js(set_big, True)
+                settle(300)
+                big1163[w] = js(SUM1163)
+                js(set_big, False)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("Costs opens on its Summary (#1163): the year's share of claims, what you paid for care, what's not yet paid and what insurance paid, "
+                  "as the server sums them, premiums, HSA and FSA on lines of their own; four a row at 1400 px, two by two at 412, one under another at 320 px and on a phone at 200%",
+                  all(v[0] == want1163 and v[2] == lines1163 and v[3] == "Year" and v[4] == y1163["start"] and v[7] <= w for w, v in sum1163.items())
+                  and y1163["premiums"] > 0 and abs(y1163["outOfPocket"] - y1163["unpaidShares"] - y1163["paid"]) < 0.01
+                  and [sum1163[1400][1], sum1163[412][1], sum1163[320][1], big1163[412][1]] == [1, 2, 4, 4] and big1163[1400][1] in (1, 2)
+                  and all(v[7] <= w for w, v in big1163.items()), [sum1163, big1163, y1163])
+            check("…on a phone (412×915) its figures and the year's first meter (or its line) on the first screen, clear of the bottom bar", sum1163[412][5] and sum1163[412][6], sum1163[412])
+            other1163 = js("() => { const ys = DATA.oop.years, y = ys.find(x => x.start !== summaryYears()[1].start && x.claimCount); return y && y.start; }")
+            page.focus("#sumYear")
+            page.select_option("#sumYear", other1163)
+            settle(300)
+            picked1163 = [js("summaryYears()[1].start"), js("document.activeElement.id"), js(SUM1163)[0], js("s => (y => [['Your share of claims', usd(y.share)], ['You paid for care', usd(y.paid)], "
+                          "['Not yet paid', usd(y.notPaid)], ['Insurance paid', usd(y.insurancePaid)]])(DATA.oop.years.find(y => y.start === s))", other1163)]
+            check("…another year picked, its own figures, focus kept on the picker", picked1163[0] == other1163 and picked1163[1] == "sumYear" and picked1163[2] == picked1163[3], picked1163)
+            js("summaryState.year = null; applyPreset('all')")
+            WORDS1163 = """() => { const v = document.getElementById('view-costs'), bits = [v.textContent];
+                for (const e of v.querySelectorAll('[aria-label], [data-tip], [title], .pop-text')) bits.push(e.getAttribute('aria-label') || '', e.getAttribute('data-tip') || '', e.getAttribute('title') || '', e.textContent);
+                const said = bits.join(' ').replace(/Sanguity doesn't connect to banks, cards or HSA accounts/g, '');
+                return [...new Set(said.match(/[^.]{0,40}\\b(accounts?|banks?|bank|export\\w*)\\b[^.]{0,20}/gi) || [])]; }"""
+            words1163 = {}
+            for v in ("summary", "claims", "paid"):
+                js("v => { costState.view = v; costState.more = true; paidState.open = null; renderCosts(); }", v)
+                if v == "paid":   # a payment's editor open too: where its number came from, what it was paid with
+                    js("paidState.open = oopKey(paidRows().find(r => r.type === 'pay' && r.hsa)); renderCosts()")
+                settle(300)
+                words1163[v] = js(WORDS1163)
+            words1163["empty"] = js("""(() => { const had = [DATA.costs, DATA.outOfPocket, DATA.oop]; DATA.costs = []; DATA.outOfPocket = {payments: []}; DATA.oop = {...DATA.oop, bills: [], payments: [], claims: [], years: []};
+                renderCosts(); const said = document.getElementById('view-costs').textContent, out = [said.includes("Sanguity doesn't connect to banks, cards or HSA accounts"), (%s)()];
+                [DATA.costs, DATA.outOfPocket, DATA.oop] = had; renderCosts(); return out; })()""" % WORDS1163)
+            js("paidState.open = null; Object.assign(costState, {view: 'claims', more: false}); renderCosts()")
+            check("…no Costs text says “account”, “bank” or “export”, in any view (its ⓘs, More figures and a payment's editor open), but the empty page's "
+                  "“Sanguity doesn't connect to banks, cards or HSA accounts” (#1163)",
+                  all(not words1163[v] for v in ("summary", "claims", "paid")) and words1163["empty"] == [True, []], words1163)
             # #442: the Overview's insurance costs and Costs' figures in one order and one look: figures to read (not
             # buttons), tinted in a card, where the tiles that open something are bordered
             fig_look = """sel => [...document.querySelectorAll(sel)].map(t => { const c = getComputedStyle(t);
@@ -7787,7 +7851,7 @@ def main():
                 js("t => { document.documentElement.dataset.theme = t; }", theme)
                 for w443 in (375, 601, 640, 680):
                     page.set_viewport_size({"width": w443, "height": 800})
-                    for view in ("claims", "paid"):
+                    for view in ("summary", "claims", "paid"):   # (#1163: the plan years in the Summary)
                         js("v => { costState.view = v; renderCosts(); }", view)
                         settle(250)
                         got = js(wide443)
@@ -7800,7 +7864,7 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             js("state.tables.clear(); Object.assign(costState, {view: 'claims', more: false}); renderCosts()")
             page.set_viewport_size({"width": 1400, "height": 900})
-            check("…no Costs table scrolls sideways at 375, 601, 640 or 680 px, both views, its charts as tables and More figures open, in light and dark: "
+            check("…no Costs table scrolls sideways at 375, 601, 640 or 680 px, all three views, its charts as tables and More figures open, in light and dark: "
                   "the claims stacked where they don't fit their box (#465), the others under 560, each cell named by its column; the page fits, axe finds nothing (#443)",
                   not sides443 and not axe443 and n443 == {"costTable:Date", "view-costs:Drug", "view-costs:Month", "paidTable:Date", "oopTax:Year", "paidRun:Month", "planCard:Date"} and stacked443 == 3,   # (the plan years' calendar, #1127)
                   [sides443[:6], axe443[:4], sorted(n443), stacked443])
@@ -7983,7 +8047,7 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             HEADS448 = "[...document.querySelectorAll('main h1, #view-costs :is(h2, h3, h4)')].filter(h => h.checkVisibility() || h.closest('details')).map(h => h.tagName + ' ' + h.textContent.trim().slice(0, 30))"
             heads448 = {}
-            for view in ("claims", "paid"):
+            for view in ("summary", "claims", "paid"):   # (#1163: the Summary too)
                 js("v => { costState.view = v; renderCosts(); }", view)
                 settle(200)
                 heads448[view] = js(HEADS448)
@@ -12615,7 +12679,7 @@ def main():
                     np452.close()
                     js("save()")   # (this page's view saved again, over the new tab's)
                 check("…a Ctrl-click on Its claims on Costs isn't prevented: its address (#costs?drug=…) opens a new tab on the drug's claims (#452)",
-                      ctrl452 is None or ctrl452 == [[[False, True], js("k => '#costs?drug=' + encodeURIComponent(k)", key275), "medications", False], ["#costs", "costs", "claims", key275, "Pharmacy", True]], ctrl452)
+                      ctrl452 is None or ctrl452 == [[[False, True], js("k => '#costs?drug=' + encodeURIComponent(k)", key275), "medications", False], ["#costs-claims", "costs", "claims", key275, "Pharmacy", True]], ctrl452)
                 check("…and that new tab shows them as the click does: the claims in sight, the line saying they're filtered with them, focus in their search (#456)",
                       ctrl452 is None or arrive456 == [True, True, True], arrive456)
                 # (#475) the period it widens, to show claims outside it, is for this visit: with 30 days saved (or a
@@ -15835,7 +15899,7 @@ def main():
             c_want = js("(r => `Showing ${r.filter(x => x.cat === 'Pharmacy').length.toLocaleString()} of ${r.length.toLocaleString()} claims · type of care: Pharmacy · Reset filters`)(costRows())")
             check("…a type of care picked: “Showing 13 of 96 claims · type of care: Pharmacy · Reset filters”, the totals for the claims shown",
                   fsum("#costTable .fsum") == c_want and js(claims_hint).startswith("For the claims shown: billed $"), [fsum("#costTable .fsum"), c_want, js(claims_hint)])
-            page.click("#costView button:text-is('What you paid')")
+            page.click("#costView button:text-is('Payments and bills')")
             settle(300)
             check("…What you paid, unfiltered: no line by its amounts", fsum("#paidTable .fsum") is None, fsum("#paidTable .fsum"))
             page.click("#paidTable .toggle")   # HSA only
@@ -15847,7 +15911,7 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             for theme in ("light", "dark"):
                 set_theme(theme)
-                for view, sel in (("What you paid", "#paidTable .fsum"), ("Claims", "#costTable .fsum")):
+                for view, sel in (("Payments and bills", "#paidTable .fsum"), ("Claims", "#costTable .fsum")):
                     page.click(f"#costView button:text-is('{view}')")
                     settle(200)
                     bad, look = phone_fits(page, f"Costs filtered, {view}, {theme}"), line_look(sel)
@@ -15861,7 +15925,7 @@ def main():
                   fsum("#costTable .fsum") is None and js("[costState.q, costState.cat, costState.deniedOnly]") == ["", "", False]
                   and js("paidState.q") == "HSA" and js("document.activeElement.matches('#costTable input.search')"),
                   [js("[costState.q, costState.cat, costState.deniedOnly, paidState.q]"), js("document.activeElement.outerHTML.slice(0, 90)")])
-            page.click("#costView button:text-is('What you paid')")
+            page.click("#costView button:text-is('Payments and bills')")
             settle(300)
             check("…What you paid still filtered", fsum("#paidTable .fsum") == p_want, [fsum("#paidTable .fsum"), p_want])
             page.click("#paidTable .fsum-reset")
@@ -15872,7 +15936,7 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             for theme in ("light", "dark"):
                 set_theme(theme)
-                for view in ("What you paid", "Claims"):
+                for view in ("Payments and bills", "Claims", "Summary"):
                     page.click(f"#costView button:text-is('{view}')")
                     settle(200)
                     bad = phone_fits(page, f"Costs unfiltered, {view}, {theme}")
@@ -16702,7 +16766,7 @@ def main():
               const free = e => { for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) if (getComputedStyle(a).overflowX !== 'visible') return false; return true; };
               const wide = doc <= vw ? [] : [...document.querySelectorAll('body *')].filter(e => r(e).right > vw + 0.5 && !e.closest('svg *') && free(e));
               return doc <= vw ? null : [doc, wide.filter(e => !wide.some(p => p !== e && p.contains(e))).slice(0, 4).map(e => `${e.tagName.toLowerCase()}.${e.className} “${e.textContent.trim().slice(0, 24)}” to ${Math.round(r(e).right)}`)]; }"""
-            PAGES1012 = [("?profile=1", ["overview", "health", "medications", "timeline", "timeline-journal", "labs", "labs-heatmap", "labs-compare", "costs", "costs-paid"]),
+            PAGES1012 = [("?profile=1", ["overview", "health", "medications", "timeline", "timeline-journal", "labs", "labs-heatmap", "labs-compare", "costs", "costs-claims", "costs-paid"]),
                          ("sources.html?profile=1", ["overview", "portals", "phone", "upload", "manual", "link", "history"]),
                          ("sharing.html?profile=1", ["people", "links", "calendar", "summary", "export", "activity"]),
                          ("settings.html?profile=1", ["dashboard", "about", "labs", "milestones", "activity", "profile", "display", "more"]),
@@ -16731,7 +16795,7 @@ def main():
                 c1012.close()
             check("At 320 px with text at 150% and 200% (#1012, #622, 1.4.10): every page no wider than the screen, every records tab and view and every "
                   "group of Sources, Sharing, Settings, Account and Admin, the guide and the other pages (the Overview's appointments and Costs' groups ran "
-                  "past it, and the tab bar's More with them)", n1012 == 92 and not bad1012, [n1012, bad1012])
+                  "past it, and the tab bar's More with them; #1163: Costs' three views)", n1012 == 94 and not bad1012, [n1012, bad1012])
             # ---- #1047: every key/value list (.kv) at 320, 412 and 1400 px with text at 200%: no label's words over its value or
             # past its own box, and no page wider than the screen; as usual (360, 412, 1400 px), each value beside its label.
             # General's Host, Backups (its Folder and key), Logs and activity's Logging, Connected sources, About (General's
@@ -19272,7 +19336,7 @@ def main():
                   "which opens a tab only when it's pressed (#1113)",
                   seen1113 == {"Pixel 7": [False, False, "Typed referral letter", True, 0, 1, True],
                                "Galaxy Tab S4": [True, False, "Typed referral letter", True, 0, 1, True]}, seen1113)
-            js("closeDrawer(); switchTab('costs')")
+            js("closeDrawer(); costState.view = 'claims'; switchTab('costs')")   # (#1163: the claims are on Claims)
             page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
             js("applyPreset('all')")
             settle(300)
@@ -19284,7 +19348,7 @@ def main():
             # on the Costs tab; HSA/FSA totals; the list fits 375 px
             share = js("oopRows().filter(r => r.type === 'claim' && r.claim.title === 'Typed office visit claim').map(r => [r.counted, srcText(r)])")
             check("the typed claim's share is counted out of pocket, saying it came from the claim",
-                  len(share) == 1 and share[0][0] == 50 and share[0][1].startswith("Claim: your share"), share)
+                  len(share) == 1 and share[0][0] == 50 and share[0][1].startswith("Your share, per ") and share[0][1].endswith("claim; no payment recorded"), share)
             page.goto(base + "/import.html?profile=2#payment")
             page.wait_for_selector(".man-item[data-kind=payment]", timeout=10000)
             settle(300)
@@ -19322,12 +19386,12 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && DATA.oop", timeout=20000)
             page.wait_for_function("!document.getElementById('view-costs').hidden && !!document.getElementById('costView')", timeout=5000)
             paid443 = js("[state.tab, costState.view, document.querySelector('#costView [aria-pressed=true]')?.textContent]")   # the address #costs-paid (#442)
-            check("…followed, “See them on Costs” opens Costs on What you paid (#443)", paid443 == ["costs", "paid", "What you paid"], paid443)
+            check("…followed, “See them on Costs” opens Costs on Payments and bills (#443, #1163)", paid443 == ["costs", "paid", "Payments and bills"], paid443)
             js("switchTab('costs')")
             page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
             js("paidState.q = ''; applyPreset('all')")
             settle(300)
-            page.click("#costView button:text-is('What you paid')")   # payments are under What you paid, the HSA's and FSA's
+            page.click("#costView button:text-is('Payments and bills')")   # payments are under What you paid, the HSA's and FSA's
             page.click("#view-costs > .cost-figs > details.cost-more summary")      # totals under its More figures (#278)
             settle(300)
             pay = js("oopRows().filter(r => r.type === 'pay' && r.who === 'Lakeside Clinic (fictional)' && r.amount === 50)"
@@ -19358,15 +19422,15 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             only = js("""(() => { const had = DATA.costs, o = DATA.oop; DATA.costs = []; DATA.oop = {payments: o.payments.map(p => ({...p, claim: null})), claims: []};
                            renderCosts(); const out = [!!document.getElementById('paidCard'), !!document.getElementById('costTable'),
-                           document.getElementById('oopTotal').textContent, !!document.getElementById('costView')]; DATA.costs = had; DATA.oop = o; return out; })()""")
-            check("with no claims at all, Costs shows the payments alone, with no Claims | What you paid (#278)",
-                  only[0] and not only[1] and "Total out of pocket" in only[2] and not only[3], only)
+                           document.getElementById('oopTotal').textContent, [...document.querySelectorAll('#costView button')].map(b => b.textContent)]; DATA.costs = had; DATA.oop = o; return out; })()""")
+            check("with no claims at all, Costs shows the payments, and no Claims view: Summary | Payments and bills (#278, #1163)",
+                  only[0] and not only[1] and "Total out of pocket" in only[2] and only[3] == ["Summary", "Payments and bills"], only)
             js("paidState.open = null; Object.assign(costState, {view: 'claims', more: false}); renderCosts()")
 
             # ---- plan years (#1127): the deductible and out-of-pocket max per plan year, typed in on Costs: by calendar
             # year with none typed; one typed in (an out-of-pocket max under the deductible refused first), its sums as
-            # text with each bar hidden from screen readers; 320 px; removed
-            js("applyPreset('all'); planState.edit = null; Object.assign(costState, {view: 'claims'}); renderCosts()")
+            # text with each bar hidden from screen readers; 320 px; removed. (#1163) In the Summary, for its year
+            js("applyPreset('all'); planState.edit = null; summaryState.year = DATA.oop.years[0].start; Object.assign(costState, {view: 'summary'}); renderCosts()")
             settle(300)
             y1127 = js("DATA.oop.years[0]")
             cal1127 = js("[...document.querySelectorAll('#planCard h3.sub')].map(h => h.textContent)")
@@ -19397,7 +19461,7 @@ def main():
             yp1127 = js("DATA.oop.years.find(y => y.plan != null)")
             # (#1163) and with claims that say what went to the deductible (one year's, as the server would count them)
             said1163 = js(f"""(() => {{ const y = DATA.oop.years.find(y => y.plan != null), had = [y.noSplit, y.towardDeductible];
-                y.noSplit = 1; y.towardDeductible = 420; renderCosts(); const out = {ROWS1127}; [y.noSplit, y.towardDeductible] = had; renderCosts(); return out; }})()""")
+                y.noSplit = 1; y.towardDeductible = 420; keepFocus(renderCosts); const out = {ROWS1127}; [y.noSplit, y.towardDeductible] = had; keepFocus(renderCosts); return out; }})()""")
             check("…a plan year typed in: its deductible, out-of-pocket max and family deductible met so far as text, each bar hidden from screen readers (#1127)",
                   [r[0] for r in rows1127] == ["Deductible", "Out-of-pocket max", "Family deductible"]
                   and rows1127[0][1:] == ["Not said", None, "Your claims don't say how much went to the deductible"] and rows1127[2][1] == "Not said"
@@ -19491,18 +19555,20 @@ def main():
             page.select_option("#taxMonth", "1")
             page.wait_for_function("CFG.costs.taxStart === 1 && /Jan 1/.test(document.getElementById('taxSays')?.textContent || '')", timeout=10000)
             js("costState.view = 'claims'; renderCosts()")
-            # ---- found from the top (#1127, #1128, #1136): a line of links near the top of Costs to Plan years, Bills and
-            # the Tax-year report, each opening its view with focus on its card's heading; the command palette finds them
-            # by "deductible", "add a bill" and "tax report"; and the empty Costs page offers Add a bill beside Type in
-            js("applyPreset('all'); costState.view = 'claims'; renderCosts(); scrollTo(0, 0)")
+            # ---- each card in the view it belongs to (#1127, #1128, #1136; #1163: the views replace "Further down"):
+            # the plan years in the Summary, Payments and bills with its bills first, the tax-year report, then every
+            # amount and the running totals last; the command palette finds them by "deductible", "add a bill" and "tax
+            # report"; and the empty Costs page offers Add a bill beside the other ways in
+            js("applyPreset('all'); billState.edit = null; costState.view = 'paid'; renderCosts(); scrollTo(0, 0)")
             settle(300)
-            links1146 = js("[...document.querySelectorAll('#view-costs nav[aria-label] a')].map(a => a.textContent)")
-            top1146 = js("document.querySelector('#view-costs nav[aria-label]').getBoundingClientRect().top < innerHeight")
-            page.click("#view-costs nav[aria-label] a:text-is('Bills')")
-            page.wait_for_function("(r => r.top >= 0 && r.bottom <= innerHeight)(document.activeElement.getBoundingClientRect())", timeout=5000)   # (a smooth scroll)
-            at1146 = js("[costState.view, document.activeElement.textContent, document.activeElement.closest('.card')?.id, (r => r.top >= 0 && r.bottom <= innerHeight)(document.activeElement.getBoundingClientRect())]")
-            check("Costs' top says what's further down, Plan years · Bills · Tax-year report, in sight; Bills opens What you paid with focus on its heading, in sight",
-                  links1146 == ["Plan years", "Bills", "Tax-year report"] and top1146 and at1146 == ["paid", "Bills", "billCard", True], [links1146, top1146, at1146])
+            cards1146 = {}
+            for v in ("summary", "claims", "paid"):
+                cards1146[v] = js("v => { costState.view = v; renderCosts(); return [...document.querySelectorAll('#view-costs > .card[id]')].map(c => c.id); }", v)
+            check("Costs' cards are each in their view, nothing saying what's further down (#1163): the plan years in the Summary, "
+                  "Payments and bills its bills, the tax-year report, every amount, then the running totals",
+                  cards1146["summary"] == ["sumCard", "planCard", "sumMore"] and "planCard" not in cards1146["claims"] and "billCard" not in cards1146["claims"]
+                  and [c for c in cards1146["paid"] if c in ("billCard", "taxCard", "paidCard", "paidRun")] == ["billCard", "taxCard", "paidCard", "paidRun"]
+                  and js("!document.querySelector('#view-costs nav[aria-label]')"), cards1146)
             pal1146 = {}
             for q, want in (("deductible", "planCard"), ("add a bill", "billCard"), ("tax report", "taxCard")):
                 js("costState.view = 'claims'; switchTab('overview')")
@@ -22474,16 +22540,21 @@ def main():
             paid442 = [tp.evaluate("[costState.view, !!document.getElementById('paidCard'), document.querySelector('#costView [aria-pressed=true]').textContent, document.getElementById('costView').getAttribute('aria-label')]")]
             tp.click("#costView button:text-is('Claims')")
             claims442 = tp.evaluate("[location.hash, costState.view, history.length]")
-            tp.click("#costView button:text-is('What you paid')")
+            tp.click("#costView button:text-is('Payments and bills')")
             tp.reload()
             tp.wait_for_function(ready + " && state.tab === 'costs'", timeout=20000)
             paid442.append(tp.evaluate("[location.hash, costState.view, !!document.getElementById('paidCard')]"))
             tp.go_back()
             tp.wait_for_function("costState.view === 'claims'", timeout=5000)
             back442 = tp.evaluate("[location.hash, state.tab, !!document.getElementById('costTable'), !document.getElementById('paidCard')]")
-            check("…#costs-paid opens Costs' What you paid, its switch named for what it shows, and a reload keeps it (#442)",
-                  paid442 == [["paid", True, "What you paid", "Show the costs as"], ["#costs-paid", "paid", True]] and claims442[:2] == ["#costs", "claims"], [paid442, claims442])
-            check("…and Back from What you paid returns to the claims, on Costs (#442)", back442 == ["#costs", "costs", True, True], back442)
+            check("…#costs-paid opens Costs' Payments and bills, its switch named for what it shows, and a reload keeps it (#442)",
+                  paid442 == [["paid", True, "Payments and bills", "Show the costs as"], ["#costs-paid", "paid", True]] and claims442[:2] == ["#costs-claims", "claims"], [paid442, claims442])
+            check("…and Back from Payments and bills returns to the claims, on Costs (#442)", back442 == ["#costs-claims", "costs", True, True], back442)
+            # (#1163) #costs alone is the Summary, the view Costs opens on; #costs-claims the claims
+            tp.goto(base + "/?profile=1#costs")
+            tp.wait_for_function(ready + " && state.tab === 'costs'", timeout=20000)
+            sum1163 = tp.evaluate("[location.hash, costState.view, !!document.getElementById('sumCard'), document.querySelector('#costView [aria-pressed=true]').textContent]")
+            check("…#costs opens Costs' Summary (#1163)", sum1163 == ["#costs", "summary", True, "Summary"], sum1163)
             tab_click(tp, "#tab-health")
             tab_click(tp, "#tab-labs")
             tp.click("#labsView button[data-view=heatmap]")
@@ -22514,10 +22585,10 @@ def main():
             tp.wait_for_function(ready, timeout=20000)
             paid452 = tp.evaluate("[location.hash, state.tab, costState.view, !!document.getElementById('paidCard')]")
             check("…and in the view last used: / after #costs-paid opens Costs' What you paid (#452)", paid452 == ["#costs-paid", "costs", "paid", True], paid452)
-            # (#456) and when the switch picked it: Claims, the switch to What you paid, then / lands on What you paid
-            tp.goto(base + "/?profile=1#costs")
+            # (#456) and when the switch picked it: Claims, the switch to Payments and bills, then / lands on it
+            tp.goto(base + "/?profile=1#costs-claims")
             tp.wait_for_function(ready + " && state.tab === 'costs' && costState.view === 'claims'", timeout=20000)
-            tp.click("#costView button:text-is('What you paid')")
+            tp.click("#costView button:text-is('Payments and bills')")
             tp.goto(base + "/")
             tp.wait_for_function(ready, timeout=20000)
             paid456 = tp.evaluate("[location.hash, state.tab, costState.view, !!document.getElementById('paidCard')]")
@@ -23870,8 +23941,8 @@ def main():
             check("…views with an address are found by name, Enter opening them: “heatmap”, “what you paid”, “out of pocket”, “journal” (before Add's "
                   "Journal entry), “compare” (#297), and “labs” Labs where it opens, whichever view it was left in (#452, #1026)",
                   views452 == {"heatmap": [["Records tabs", "Heatmap"], ", Records tab › Labs", ["#labs-heatmap", "labs"]],
-                               "what you paid": [["Records tabs", "What you paid"], ", Records tab › Costs", ["#costs-paid", "costs"]],
-                               "out of pocket": [["Records tabs", "What you paid"], ", Records tab › Costs", ["#costs-paid", "costs"]],
+                               "what you paid": [["Records tabs", "Payments and bills"], ", Records tab › Costs", ["#costs-paid", "costs"]],
+                               "out of pocket": [["Records tabs", "Payments and bills"], ", Records tab › Costs", ["#costs-paid", "costs"]],
                                "journal": [["Records tabs", "Journal"], ", Records tab › Timeline", ["#timeline-journal", "timeline"]],
                                "compare": [["Records tabs", "Compare"], ", Records tab › Labs", ["#labs-compare", "labs"]],
                                "labs": [["Records tabs", "Labs"], ", Records tab", ["#labs-" + home452, "labs"]]}, [views452, home452])
@@ -29799,11 +29870,14 @@ def main():
                         axe_at(page, f"{theme} {t} as a table")
                         page.click(f"{seg} >> nth=0")
                         settle(200)
-                    if t == "costs" and js("!!document.getElementById('costView')"):   # and Costs' What you paid (#278)
-                        page.click("#costView button:text-is('What you paid')")
+                    if t == "costs" and js("!!document.getElementById('costView')"):   # and Costs' other views (#278; #1163: its Summary first)
+                        page.click("#costView button:text-is('Payments and bills')")
                         settle(300)
-                        axe_at(page, f"{theme} costs, what you paid", outline=True)
+                        axe_at(page, f"{theme} costs, payments and bills", outline=True)
                         page.click("#costView button:text-is('Claims')")
+                        settle(300)
+                        axe_at(page, f"{theme} costs, claims", outline=True)
+                        page.click("#costView button:text-is('Summary')")
                         settle(200)
                 for k in ("lab", "claim", "med", "letter", "visit"):   # an event's drawer
                     if js("k => !!EV.find(e => e.k === k && !e.hidden)", k):

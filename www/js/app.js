@@ -15,20 +15,20 @@ function applyTabs(cfg) { ({order: TAB_ORDER, hidden: TAB_HIDDEN} = SgNav.layout
    #timeline-journal (the Timeline as the journal, #277), Labs' views each at its own, #labs-chart (its charts),
    #labs-heatmap, #labs-compare (#297) and #labs-latest (#993), and #labs alone Labs where it opens (labsHome, core.js:
    the view picked, else Latest on a phone and Chart wider, #997; another page's tab bar links there; #1026: it was the
-   charts too, so a chart reloaded came back as Latest or the view picked), #costs (Costs' claims) or #costs-paid (what
+   charts too, so a chart reloaded came back as Latest or the view picked), #costs (Costs' Summary, #1163), #costs-claims or #costs-paid (what
    you paid, #278); the old #trends and #heatmap still open Labs as charts or the heatmap. What follows a ? is for the tab: #costs?drug=metformin, the drug's claims (medications.js, #452). An
    address with no # opens the tab last used (save(), core.js). tabOfHash: the address's [tab, its
    view], or null; setView: a view, by its name, on the tab it belongs to */
 const HASH_TABS = {...TAB_ALIAS, labs: ["labs", "home"], "labs-chart": ["labs", "chart"], "labs-heatmap": ["labs", "heatmap"], "labs-compare": ["labs", "compare"], "labs-latest": ["labs", "latest"], timeline: ["timeline", "timeline"], "timeline-journal": ["timeline", "journal"],
-  costs: ["costs", "claims"], "costs-paid": ["costs", "paid"]};
+  costs: ["costs", "summary"], "costs-claims": ["costs", "claims"], "costs-paid": ["costs", "paid"]};   // (#1163: Summary first)
 const tabOfHash = () => { const h = decodeURIComponent(location.hash.slice(1)).toLowerCase().replace(/\?.*/s, ""); return HASH_TABS[h] || (TABS.includes(h) ? [h] : null); };
 const tabHash = () => "#" + state.tab + (state.tab === "labs" ? "-" + state.labsView : state.tab === "timeline" && state.tlView === "journal" ? "-journal"
-  : state.tab === "costs" && costState.view === "paid" ? "-paid" : "");
+  : state.tab === "costs" && costState.view !== "summary" ? "-" + costState.view : "");
 function setView(v) {
   if (v === "home") state.labsView = labsHome();   // (#labs alone, #1026)
   else if (LABS_VIEWS.includes(v)) state.labsView = v;
   else if (v === "timeline" || v === "journal") state.tlView = v;
-  else if (v === "claims" || v === "paid") costState.view = v;
+  else if (v === "summary" || v === "claims" || v === "paid") costState.view = v;
 }
 /* the address follows the tab shown: a new history entry when someone picks another tab or another view of one (push:
    each tab's view switch too, #442), so Back and Forward move between them; the boot, an old alias and the app's own
@@ -88,7 +88,7 @@ addEventListener("hashchange", () => {
   if (!booted) return;
   if (location.hash === "#log-dose") return logDose();
   const t = tabOfHash(), drug = t?.[0] === "costs" && medCostsArrive();   // #costs?drug=… (#452)
-  if (t) switchTab(t[0], t[1]);
+  if (t) switchTab(t[0], drug ? "claims" : t[1]);   // (a drug's claims: on Claims, #1163)
   if (drug) medCostsShow();   // as a click on the link shows them (#456)
 });
 /* Add → Log a dose (#264): today's doses (medlog.js) on the Medications tab, where the log lives (#275), or on the

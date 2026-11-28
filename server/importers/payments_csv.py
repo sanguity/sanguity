@@ -157,9 +157,16 @@ def _resolve(header, mapping):
     return cols
 
 
-def group_of(*texts):
-    """What a payment was for, from its category, memo or payee: GROUPS' first that fits, else medical bills."""
-    t = " ".join(x for x in texts if x)
+KNOWN = ("Medical bills", "Pharmacy", "Health insurance premiums", "Dental", "Vision", "Equipment & supplies", "Other medical")
+
+
+def group_of(category, *texts):
+    """What a payment was for: its category as written where it's one of Type records in's (KNOWN) or names a
+    premium ("Dental insurance premiums"); else GROUPS' first that fits the category, memo or payee; else medical
+    bills."""
+    if category and (category.lower() in {k.lower() for k in KNOWN} or re.search(r"premium", category, re.I)):
+        return next((k for k in KNOWN if k.lower() == category.lower()), category)
+    t = " ".join(x for x in (category, *texts) if x)
     return next((g for g, rx in GROUPS if re.search(rx, t, re.I)), "Medical bills")
 
 

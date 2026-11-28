@@ -66,7 +66,7 @@ function restore() {
     labsPicked = LABS_VIEWS.includes(s.labsPicked) ? s.labsPicked : !("labsPicked" in s) && ["heatmap", "compare"].includes(state.labsView) ? state.labsView : null;
     if (s.preset) state.preset = s.preset;
     if (s.tlView === "journal") state.tlView = "journal";
-    if (s.costView === "paid" && typeof costState === "object") costState.view = "paid";   // Costs' What you paid (#452), as Labs' and the Timeline's views
+    if (["claims", "paid"].includes(s.costView) && typeof costState === "object") costState.view = s.costView;   // Costs' view (#452: as Labs' and the Timeline's; #1163: Summary unless another)
     if (typeof s.tlWork === "boolean") state.tlWork = s.tlWork;
     if (typeof s.marks === "boolean") state.marks = s.marks; if (typeof s.smooth === "boolean") state.smooth = s.smooth; if (typeof s.asc === "boolean") state.asc = s.asc;
     if (s.preset === "custom" && s.from && s.to) { state.from = s.from; state.to = s.to; }

@@ -218,6 +218,8 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
    three figures, Costs' and the Overview's alike (#448): in a row where a third is wide enough, else one under another,
    never two and one */
 .stats.three.one{grid-template-columns:1fr}   /* and where a figure is wider than its third (threeFigures, costs.js, #456) */
+.stats.four{grid-template-columns:repeat(auto-fit,minmax(clamp((100% - 3 * var(--sp-3)) / 4 - 1px,(40rem - 100%) * 999,clamp((100% - var(--sp-3)) / 2 - 1px,(18rem - 100%) * 999,100%)),1fr))}   /* Costs' Summary (#1163): four in a
+   row where a quarter is wide enough, else two by two, else one under another (320 px, 200% text); never three and one */
 .card :is(.tiles,.stats):last-child{margin-bottom:calc(-1 * var(--sp-3))}   /* the last row's margin is the card's padding */
 :is(.tile,.tile-tq){border:1px solid var(--ring);border-radius:var(--r-lg);background:var(--surface)}
 .tile{display:flex;flex-direction:column;gap:2px;min-width:0;padding:var(--sp-2) var(--sp-3);color:inherit;font:inherit;text-align:left}
@@ -1843,6 +1845,7 @@ svg text.cum-end{fill:var(--ink);font-weight:var(--fw-semibold)}   /* the runnin
    keeps its theme's background: in the system's colours (#657) */
 @media (forced-colors:active){ #hm text:is(.row,.grp),#hm text.row.renamable:is(:hover,:focus),svg text:is(.medname,.cum-end,.db-name){fill:CanvasText} #hmAxis{background:Canvas} }
 .cost-figs>.set-hd{flex-wrap:nowrap}   /* What you paid's ⓘ beside its heading at 320 px, the heading wrapping */
+.sum-lines .s{flex-basis:100%}   /* the Summary's premiums, HSA and FSA: a line each, what it is under it (#1163) */
 @container (width < 560px){
   table.stack,.stack tbody{display:block}
   .stack thead{display:none}

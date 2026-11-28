@@ -1,11 +1,13 @@
-/* Sanguity · Costs tab: claims and out-of-pocket costs (typed in, exported, or a claim's share; #55).
+/* Sanguity · Costs tab: claims and out-of-pocket costs (typed in, uploaded, or a claim's share; #55, #1163).
    Plain script, loaded in order by index.html; all files share one global scope. */
 "use strict";
 /* ---------------------------------------------------------------- costs */
-/* the period is the records bar's (#171, core.js; "All" is every claim on file). by: the chart's bars, "month" or
-   "year" ("": by year once the claims shown span more than four years). view: the claims, or "paid", what was paid
-   out of pocket (#278); more: a view's More figures open */
-const costState = {q: "", cat: "", deniedOnly: false, sort: "d", dir: -1, limit: 200, by: "", seen: null, view: "claims", more: false};
+/* three views (#1163): "summary", one plan or calendar year of its own (summaryState), the first; "claims", the chart
+   and the table; "paid", payments and bills (#278). Claims and Payments and bills follow the records bar's period
+   (#171, core.js; "All" is every claim on file). by: the chart's bars, "month" or "year" ("": by year once the claims
+   shown span more than four years); more: a view's More figures open */
+const costState = {q: "", cat: "", deniedOnly: false, sort: "d", dir: -1, limit: 200, by: "", seen: null, view: "summary", more: false};
+const COST_VIEWS = [["summary", "Summary"], ["claims", "Claims"], ["paid", "Payments and bills"]];
 
 /* a summary tile (#260): the one tile component (app.css), its label, its figure and a line under it, a date in it
    kept on one line (#330); a figure to read, not a button */
@@ -100,7 +102,7 @@ function costsEmpty() {
     el("li", {}, link("#upload", "Upload a payments file"), ": a CSV of what you paid (date, payee, amount), downloaded yourself from where you keep track."),
     el("li", {}, link("#claim", "Type in a claim"), " · ", link("#payment", "Type in a payment")),
     el("li", {}, el("button", {class: "btn empty-next needs-server", type: "button", id: "billFirst", text: "Add a bill",
-      onclick: () => { billState.first = true; billState.edit = "new"; renderCosts(); $("#bill-service")?.focus(); }})),
+      onclick: () => { billState.first = true; billState.edit = "new"; costState.view = "paid"; renderCosts(); $("#bill-service")?.focus(); }})),   // (bills are in Payments and bills)
     sgConnected(ME) ? el("li", {}, link("#portals", "Connect your health plan"), " (experimental)") : null));
   es.append(el("p", {class: "hint", text: "Sanguity doesn't connect to banks, cards or HSA accounts: payments are what you type in or upload."}));
   return es;
@@ -117,15 +119,17 @@ function drawCosts() {
   if (costState.seen !== seen) { costState.seen = seen; costState.limit = 200; paidState.q = ""; paidState.open = null; paidState.limit = 200; }
   const rows = costRows();
   const periodText = periodLabel(claims ? "all claims on file" : "everything on file");
-  if (!claims) { box.append(...present(costLinks(false))); renderPaid(box, rows, periodText); return; }   // payments only: no claims to chart or list
-  // Claims | What you paid (#278): the insurance story or the money out of pocket, each with its own figures
+  // Summary | Claims | Payments and bills (#278, #1163): one year's answers, the insurance story, the money paid; with
+  // no claims, no Claims
+  const views = COST_VIEWS.filter(([k]) => claims || k !== "claims");
+  if (!views.some(([k]) => k === costState.view)) costState.view = "summary";
   box.append(el("div", {class: "toolbar"},
-    // named for what it shows, as Labs' and the Timeline's are; the view in the address (#costs-paid, app.js), Back
-    // returning to the one before (#442), and kept for the next visit (save(), core.js; #456)
-    el("div", {class: "seg", id: "costView", role: "group", "aria-label": "Show the costs as"}, ...[["claims", "Claims"], ["paid", "What you paid"]].map(([k, l]) =>
+    // named for what it shows, as Labs' and the Timeline's are; the view in the address (#costs-claims, #costs-paid,
+    // app.js), Back returning to the one before (#442), and kept for the next visit (save(), core.js; #456)
+    el("div", {class: "seg", id: "costView", role: "group", "aria-label": "Show the costs as"}, ...views.map(([k, l]) =>
       el("button", {type: "button", "aria-pressed": costState.view === k, text: l, onclick: () => { if (costState.view !== k) { costState.view = k; hideTip(); keepFocus(renderCosts); save(); tabAddress(true); } }}))),
-    costState.view === "paid" ? null : el("span", {class: "hint", style: {margin: 0}, text: claimsFrom(DATA.costs)})));   // where the claims came from (#1163)
-  box.append(...present(costLinks(true)));
+    costState.view === "claims" ? el("span", {class: "hint", style: {margin: 0}, text: claimsFrom(DATA.costs)}) : null));   // where the claims came from (#1163)
+  if (costState.view === "summary") { renderSummary(box); return; }
   if (costState.view === "paid") { renderPaid(box, rows, periodText); return; }
   const billed = sumOf(rows, "billed"), paid = sumOf(rows, "paid"), owe = sumOf(rows, "owe");
   const denied = rows.filter(isDenied).length;
@@ -153,7 +157,6 @@ function drawCosts() {
     const svg = chartSvg(by === "year" ? "Yearly insurance costs" : "Monthly insurance costs", {id: "costChart"}); mc.append(svg);   // a tab stop as it's made (#652)
     requestAnimationFrame(() => drawCostBars(svg, rows, by));
   }
-  box.append(planCard());   // the deductible and out-of-pocket max, per plan year (#1127): under the chart, which stays on the first screen
   // category + provider breakdowns
   const two = el("div", {class: "ov-cols"});
   const catCard = el("div", {class: "card"}, el("h2", {text: "By type of care"}), el("p", {class: "hint", text: "Grouped from billing codes on each claim. Click a row to list those claims below."}));
@@ -371,9 +374,10 @@ function renderPaid(box, claimRows, periodLabel) {
       el("tbody", {}, [...years.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([y, v]) => el("tr", {},
         el("td", {text: y}), ...[usd2(v.HSA), usd2(v.FSA), v.n, v.rc].map(t => el("td", {class: "num", text: t}))))))))) : null, top);
   // cumulative: share listed vs bills paid. The view's cards each titled by an h2, as the claims' are (#442, #448)
+  let cum = null;   // (#1163) at the foot of the view, after every amount
   if (claims) {   // Chart | Table (#60): the table by month
-    const bills = pays.filter(r => r.group === "Medical bills"), cum = el("div", {class: "card", id: "paidRun"});
-    box.append(cum);
+    const bills = pays.filter(r => r.group === "Medical bills");
+    cum = el("div", {class: "card", id: "paidRun"});
     cum.append(el("div", {class: "list-hd"}, el("h2", {text: "Your share and the bills you paid, running totals"}),
       el("span", {class: "spacer"}), viewSeg("#paidCum", "the running totals", renderCosts)));
     if (state.tables.has("#paidCum")) {
@@ -396,7 +400,7 @@ function renderPaid(box, claimRows, periodLabel) {
   // breakdowns, then every amount
   const two = el("div", {class: "ov-cols mt-3"});
   const g1 = el("div", {}, el("h3", {class: "sub", text: "What it was for"})), g2 = el("div", {}, el("h3", {class: "sub", text: "Who was paid"}));
-  two.append(g1, g2); card.append(el("h2", {text: "Every amount out of pocket"}), two);
+  two.append(g1, g2); card.append(el("h2", {text: "Every amount paid or owed"}), two);
   const grp = keyFn => { const m = new Map(); for (const r of counted) { const k = keyFn(r), g = m.get(k) || {key: k, n: 0, v: 0}; g.n++; g.v += r.counted; m.set(k, g); } return [...m.values()].sort((a, b) => b.v - a.v); };
   // the list scrolled to, focus on its first control, in sight (HSA only, Reset filters or a date), not left on the
   // row above the screen (#462)
@@ -438,7 +442,7 @@ function renderPaid(box, claimRows, periodLabel) {
   const open = paidState.open && rows.find(r => oopKey(r) === paidState.open), edit = open && oopEditor(open);
   // the amounts in the page's own scroll, 200 at a time (Show more), as the claims are: no box that scrolls inside it
   // (#448; none on Costs, app.css, #456)
-  tw.append(scrollBox({class: "tablewrap", "aria-label": "Every amount out of pocket"}, stacked(el("table", {class: "data oop"},
+  tw.append(scrollBox({class: "tablewrap", "aria-label": "Every amount paid or owed"}, stacked(el("table", {class: "data oop"},
     el("thead", {}, el("tr", {}, ["Date", "Paid to", "For", "Where the number came from", "HSA/FSA", "Amount"].map((h, i) => el("th", {class: i === 5 ? "num" : null, text: h})))),
     // a row opens its editor in a row of its own under it (#448: not under the whole list), from anywhere on it by
     // pointer; its date is the button that says whether it's open (#202: a table's row can't be expanded itself)
@@ -456,7 +460,9 @@ function renderPaid(box, claimRows, periodLabel) {
     onclick: () => { paidState.limit = shown + 200; renderCosts(); document.querySelectorAll("#paidTable tbody tr[data-oop] .cell-btn")[shown]?.focus(); }}));   // the first one added
   if (edit && !edit.parentElement) tw.append(edit);   // its row not listed (a row above picked since): under the list
   card.append(tw);
-  box.append(...present(card, billCard(), taxCard()));   // the bills typed in, under every amount (#1128); the tax-year report (#1136)
+  // (#1163) bills first, short and to act on (#1128), then the tax-year report (#1136), the list of every amount last,
+  // and the running totals at the foot
+  box.append(...present(billCard(), taxCard(), card, cum));
 }
 /* ---- plan years (#1127): how much of the deductible and the out-of-pocket max the claims' shares have met, per plan
    year typed in here (owners and editors), else per calendar year with no limits. The sums are the server's
@@ -478,12 +484,6 @@ async function costSend(path, method, body, msg, then) {   // a plan year's or a
     then();
     if (j.records) storeRecords(j.records); else storePut("oop", j);   // a bill's file is a document new to the page (#1128)
   } catch (e) { sayIn(msg, "Couldn't reach the server: " + e.message, true); }
-}
-function planYearsIn() {
-  const ys = (DATA.oop || {}).years || [];
-  if (state.preset === "all") return ys;
-  const a = isoDay(state.from), b = isoDay(state.to);
-  return ys.filter(y => y.start <= b && y.end >= a);
 }
 const planMeter = (label, got, of, note) => el("div", {class: "ov-row still"}, el("span", {class: "n", text: label}),
   el("span", {class: "v", text: `${usd(got)} of ${usd(of)}`}),
@@ -507,25 +507,23 @@ function planForm(p) {   // a plan year typed: new (p null) or changed
       body[k] = amountIn($("#plan-" + k).value);
       if (Number.isNaN(body[k])) { sayIn(msg, `Type the ${$(`label[for=plan-${k}] span`).textContent.replace(/ \(optional\)/, "").toLowerCase()} as an amount, such as 3000.`, true); $("#plan-" + k).focus(); return; }
     }
-    costSend(p ? `plans/${p.id}` : "plans", p ? "PUT" : "POST", body, msg, () => { planState.edit = null;
+    costSend(p ? `plans/${p.id}` : "plans", p ? "PUT" : "POST", body, msg, () => { planState.edit = null; summaryState.year = body.start;   // the Summary on it (#1163)
       requestAnimationFrame(() => { ($(p ? `#plan-${p.id} .plan-change` : "#planAdd") || $("#planCard h2")).focus(); announce("Plan year saved."); }); });
   }}), el("button", {class: "btn", type: "button", text: "Cancel", onclick: back}));
   return el("div", {class: "oop-edit", id: "planEdit"}, el("h3", {class: "sub", text: p ? "Change the plan year" : "Add a plan year"}), form, msg);
 }
-function planCard() {
-  const o = DATA.oop || {}, plans = o.plans || [], ys = planYearsIn(), byId_ = new Map(plans.map(p => [p.id, p]));
+/* the plan meters of the Summary's year y (#1127; #1163: one year, the Summary's own, not the records bar's period) */
+function planCard(y) {
+  const o = DATA.oop || {}, plans = o.plans || [], byId_ = new Map(plans.map(p => [p.id, p]));
   const claimOf = new Map((DATA.costs || []).map(c => [c.id, c]));
   const card = el("div", {class: "card", id: "planCard"}, el("div", {class: "list-hd"}, el("h2", {tabindex: -1, text: "Deductible and out-of-pocket max"}), el("span", {class: "spacer"}),
     canEdit() ? el("button", {class: "btn needs-server", type: "button", id: "planAdd", "aria-expanded": planState.edit === "new", text: "Add a plan year",
       onclick: () => { planState.edit = planState.edit === "new" ? null : "new"; keepFocus(renderCosts); $("#plan-start")?.focus(); }}) : null),
-    el("p", {class: "hint", text: plans.length ? "Your share on each claim in the plan year, and the part of it toward the deductible where the claim says."
-      : "Your share on each claim, by calendar year. Add a plan year to see it against your plan's deductible and out-of-pocket max."}));
+    el("p", {class: "hint", text: y && y.plan != null ? "Your share on each claim in the plan year, and the part of it toward the deductible where the claim says."
+      : "Your share on each claim in the calendar year. Add a plan year to see it against your plan's deductible and out-of-pocket max."}));
   if (planState.edit === "new") card.append(planForm(null));
-  if (!ys.length) card.append(el("p", {class: "hint", text: "No claim in this period lists a share for you to pay, and no plan year is typed in for it."}));
-  // the newest three, the rest under Earlier years (a long "All" stays short), open where a plan year being changed is
-  const later = ys.length > 3 ? el("details", {class: "more mt-3", open: ys.slice(3).some(y => y.plan != null && y.plan === planState.edit) || null},
-    el("summary", {text: `${ys.length - 3} earlier year${ys.length === 4 ? "" : "s"}`})) : null;
-  ys.forEach((y, n) => {
+  if (!y) card.append(el("p", {class: "hint", text: "No claim lists a share for you to pay yet, and no plan year is typed in."}));
+  if (y) {
     const p = y.plan != null ? byId_.get(y.plan) : null, part = el("div", {id: p ? "plan-" + p.id : null, class: "mt-3"});
     // (#1163) no claim of the year says what went to the deductible: no meter at $0, the claims' silence said instead
     const none = y.claims.length > 0 && y.noSplit === y.claims.length;
@@ -549,15 +547,50 @@ function planCard() {
         onclick: () => { planState.edit = planState.edit === p.id ? null : p.id; keepFocus(renderCosts); $("#plan-start")?.focus(); }}),
         el("button", {class: "btn needs-server", type: "button", text: "Remove", onclick: async () => {
           if (await ask({title: `Remove the plan year from ${fmtD(dayTs(p.start))}?`, message: "The claims stay as they are.", action: "Remove", danger: true}))
-            costSend(`plans/${p.id}`, "DELETE", null, msg, () => { if (planState.edit === p.id) planState.edit = null; requestAnimationFrame(() => $("#planCard h2").focus()); });
+            costSend(`plans/${p.id}`, "DELETE", null, msg, () => { if (planState.edit === p.id) planState.edit = null; summaryState.year = null;
+              requestAnimationFrame(() => $("#planCard h2").focus()); });
         }})), msg);
       if (planState.edit === p.id) part.append(planForm(p));
     }
-    (n < 3 ? card : later).append(part);
-  });
-  if (later) card.append(later);
+    card.append(part);
+  }
   return card;
 }
+/* ---- the Summary (#1163): one plan or calendar year, picked here (not the records bar's period), with the four
+   answers (your share of claims, what you paid for care, what's not yet paid, what insurance paid), the deductible
+   and out-of-pocket max, and premiums, HSA and FSA on lines of their own. The year's sums are the server's
+   (costplan.years: oop.py's one definition of out of pocket); arithmetic only, nothing said about them */
+const summaryState = {year: null};   // the year shown: its start ("2026-01-01"), else the one today is in
+function summaryYears() {
+  const ys = (DATA.oop || {}).years || [], today = isoDay(Date.now());
+  const y = ys.find(x => x.start === summaryState.year) || ys.find(x => x.start <= today && x.end >= today) || ys.find(x => x.start <= today) || ys[0] || null;
+  return [ys, y];
+}
+const yearName = y => y.plan != null ? `Plan year ${fmtD(dayTs(y.start))} to ${fmtD(dayTs(y.end))}` : `${y.start.slice(0, 4)}, calendar year`;
+function renderSummary(box) {
+  const [ys, y] = summaryYears(), n = (k, w) => `${k} ${w}${k === 1 ? "" : "s"}`;
+  const pick = el("select", {id: "sumYear", onchange: e => { summaryState.year = e.target.value; planState.edit = null; keepFocus(renderCosts); }},
+    ...ys.map(x => el("option", {value: x.start, selected: x === y || null, text: yearName(x)})));
+  const card = el("div", {class: "card cost-figs", id: "sumCard"}, el("div", {class: "set-hd"}, el("h2", {text: "Summary"}),
+    aboutWords({title: "the summary"}, "Your insurer's claims and the payments recorded, for one plan or calendar year, picked here.",
+      "Out of pocket is what care cost you: your share of the claims with no payment recorded, and the payments for care, each counted once. Premiums are never in it.",
+      "What went to the deductible is only known where your claims say it.")),
+    ys.length ? el("div", {class: "oop-form"}, el("label", {for: "sumYear"}, el("span", {text: "Year"}), pick)) : null);
+  box.append(card);
+  if (!y) { card.append(el("p", {class: "hint", text: "No claims or payments yet: they're summed here by plan or calendar year."})); box.append(planCard(null)); return; }
+  card.append(el("p", {class: "hint", text: `Your insurer's claims and the payments recorded, for the ${y.plan != null ? "plan" : "calendar"} year.`}),
+    fourFigures([statTile("Your share of claims", usd(y.share), `from ${n(y.claimCount, "claim")}`, "sumShare"),
+      statTile("You paid for care", usd(y.paid), "payments recorded; premiums not included", "sumPaid"),
+      statTile("Not yet paid", usd(y.notPaid), "claim shares and bills with no payment recorded", "sumOwed"),
+      statTile("Insurance paid", usd(y.insurancePaid), "per the claims", "sumIns")]));
+  // the plan meters next, on a phone's first screen; then premiums, the HSA and the FSA, each a line of its own
+  box.append(planCard(y), el("div", {class: "card", id: "sumMore"}, el("h2", {text: "Premiums, HSA and FSA"}),
+    el("div", {class: "sum-lines", id: "sumLines"}, ...[["Premiums paid", y.premiums, "insurance premiums, apart from out of pocket"],
+      ["Paid with an HSA", y.hsa, "tagged HSA"], ["Paid with an FSA", y.fsa, "tagged FSA"]].map(([l, v, s]) =>
+      el("div", {class: "ov-row still"}, el("span", {class: "n", text: l}), el("span", {class: "v", text: usd(v)}), el("span", {class: "s", text: s}))))));
+}
+/* four figures (#1163): in a row where a quarter is wide enough, else two by two, else one under another (.stats.four) */
+const fourFigures = tiles => el("div", {class: "stats four"}, ...tiles);
 /* ---- bills (#1128): a provider's bill typed in (owners and editors), lined up against the claim's share, worked out
    by provider, date of service and amount or chosen (server: costplan.lined_up, DATA.oop.bills), with the payments
    matched to that claim. Plain facts. Its file, when given, is saved first as a document typed in (an import of its
@@ -699,23 +732,15 @@ function taxCard() {
   requestAnimationFrame(() => taxPreview(y, m));
   return card;
 }
-/* ---- the cards further down, found from the top (#1127, #1128, #1136): a line of links near the top of Costs, each
-   opening its card's view and moving focus to its heading (the command palette's Plan years, Bills and Tax-year
-   report do the same: palette.js TAB_VIEWS). Only the cards there are: plan years with claims, bills for someone who
-   may add one or with some, the report with payments */
-const COST_CARDS = {plan: ["claims", "planCard", "Plan years"], bill: ["paid", "billCard", "Bills"], tax: ["paid", "taxCard", "Tax-year report"]};
+/* ---- a card of a view, found from the command palette (#1127, #1128, #1136: its Plan years, Bills and Tax-year
+   report, palette.js TAB_VIEWS): its view opened, focus on its heading. Each card is in the view it belongs to
+   (#1163: the plan years in the Summary, bills and the report in Payments and bills), so nothing says "further down" */
+const COST_CARDS = {plan: ["summary", "planCard"], bill: ["paid", "billCard"], tax: ["paid", "taxCard"]};
 function costJump(k) {
   const [view, id] = COST_CARDS[k];
-  if (costState.view !== view && (DATA.costs || []).length) { costState.view = view; hideTip(); renderCosts(); save(); tabAddress(true); }
+  if (costState.view !== view) { costState.view = view; hideTip(); renderCosts(); save(); tabAddress(true); }
   const h = $(`#${id} h2`);
   if (h) { h.scrollIntoView({block: "center", behavior: smoothly()}); h.focus({preventScroll: true}); }
-}
-function costLinks(claims) {
-  const ks = [claims && "plan", (canEdit() || ((DATA.oop || {}).bills || []).length) && "bill",
-    oopRows().some(r => r.type === "pay" && r.dup == null) && "tax"].filter(Boolean);
-  if (!ks.length) return null;
-  return el("nav", {"aria-label": "Further down Costs", class: "mb-2"}, el("p", {class: "hint m-0"}, "Further down: ",
-    ...ks.flatMap((k, i) => [i ? " · " : null, el("a", {href: "#" + COST_CARDS[k][1], text: COST_CARDS[k][2], onclick: e => { e.preventDefault(); costJump(k); }})]).filter(Boolean)));
 }
 /* ---- the charts (#300), on the chart kit (chartkit.js): its scales, value grid, time axis, crosshair and pinned
    readout; their gutters, rows and offsets grow with larger text (ckK, #633). Money on a value axis: "$30K", "$2.5K",
