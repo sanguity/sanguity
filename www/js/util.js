@@ -271,7 +271,7 @@ function focusNear(rows, i, sel, fallback) {
    table (tr.row-msg) or before the next row, else in box once none is left; focus as focusNear puts it, both in view.
    The list's next drawing, or its next reply (a .row-msg's), takes it away. Focus that bringing the line into view
    leaves out of sight (#532: the card's heading, far above the last ownerless profile's line on a phone) goes to the
-   line itself */
+   line itself, as it does with no fallback once none of the rows has sel left (#1119: People's heading, in sight, was taken) */
 function goneSay(rows, at, text, sel, fallback, box) {
   const m = el("p", {class: "msg bad"}), near = rows[at] || rows[at - 1];
   const line = near?.matches("tr") ? el("tr", {class: "row-msg"}, el("td", {colspan: near.cells.length}, m)) : (m.classList.add("row-msg"), m);
@@ -279,6 +279,7 @@ function goneSay(rows, at, text, sel, fallback, box) {
   sayIn(m, text, true);
   focusNear(rows, at, sel, fallback);
   line.scrollIntoView({block: "nearest"});
+  if (!fallback && !rows.some(r => r.querySelector(sel))) { m.tabIndex = -1; m.focus({preventScroll: true}); return; }   // (no place left: the line itself, #532)
   // (within a pixel: what's scrolled to the bar's foot can sit a fraction over it, the scroll rounded to a whole pixel;
   // Settings' Install, #991, where a line above made its rows' places fractional)
   const r = document.activeElement.getBoundingClientRect(), pad = getComputedStyle(document.documentElement);

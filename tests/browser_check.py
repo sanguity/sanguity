@@ -16467,7 +16467,7 @@ def main():
                     p1074.set_viewport_size({"width": w, "height": 800})
                     for big in (True, False) if w > 320 else (True,):
                         p1074.evaluate(ADOPT_CSS_JS, BIG_TEXT_CSS if big else "")
-                        for g in ("display", "general", "about", "backups"):
+                        for g in ("display", "accounts", "about", "backups"):   # (Sign-in rules' who may create profiles: General's before #1119)
                             p1074.evaluate("g => document.querySelector(`.set-nav a[data-group='${g}']`).click()", g)
                             p1074.wait_for_timeout(500)
                             got = p1074.evaluate(SEG1074_JS, "main")
@@ -16479,7 +16479,7 @@ def main():
             finally:
                 ctx1074.close()
             check("…and every switch under 700 px wraps, its options then their words (#1074, #800, #806: options cut, or scrolled with no sign): at 320, 360 "
-                  "and 412 px with text at 200%, on the records tabs and Settings' Display, General, About and Backups, every option whole inside its switch, "
+                  "and 412 px with text at 200%, on the records tabs and Settings' Display, Accounts and sign-in, About and Backups, every option whole inside its switch, "
                   "none scrolling; as usual at 360 and 412 px each one line", not bad1074s and n1074s >= 300, bad1074s or n1074s)
             # ---- #785: #622's check above 700 px, where the tabs are in the top bar, all under More where they don't fit: at
             # 701, 768, 900, 1024 and 1100 px and on a phone on its side (844×390, 915×412, a touch screen), with text as
@@ -30133,6 +30133,9 @@ def main():
             pw492["admin"] = js(pw_fields)
             page.unroute("**/api/me/2fa", tf_on)
             page.click("#reauth button:text-is('Cancel')")
+            page.goto(base + "/settings.html?profile=1#gen-notify")   # (#1130: Notifications' access token, General's)
+            page.wait_for_selector("#notifyToken", timeout=10000)
+            pw492["admin"] += js(pw_fields)
             page.goto(base + "/settings.html?profile=1#apps")
             page.wait_for_function("!document.getElementById('admin').hidden && document.getElementById('returnAddr').textContent.length > 5",
                                    timeout=10000)   # (its form filled first, which sets the sign-in kind)
@@ -30146,7 +30149,9 @@ def main():
             check("every password field has Show, named for what it holds: You's, Install's (Account's and Admin's before #991) and a Health Link's passcode (#492)",
                   pw492 == {"account": [["pwCur", "Show current password"], ["pwNew", "Show new password"], ["pwNew2", "Show repeated password"],
                                         ["Your password", "Show password"]],
-                            "admin": [["Your password, or a code from your authenticator app", "Show password or code"], ["fSecret", "Show client secret"]],
+                            "admin": [["Your password, or a code from your authenticator app", "Show password or code"],
+                                      ["signin-secret", "Show client secret"],   # (Sign-in provider's, beside Accounts since #1119)
+                                      ["notifyToken", "Show access token"], ["fSecret", "Show client secret"]],
                             "sources": [["shlPass", "Show passcode"]]}, pw492)
             # #597 (the owner's decision): a password change ends the account's calendar feeds, as signing out everywhere
             # does; Change password says so beforehand, with how many (a feed of profile 1 made here if there's none; a
@@ -31621,7 +31626,7 @@ def main():
                 gone_btn.click()
                 page.wait_for_function("[...document.querySelectorAll('#userDanger .dz-msg, #userMsg')].some(m => m.textContent === 'No such account.')", timeout=10000)
                 settle(200)
-                gone493[left] = js("""[document.activeElement.id, [...document.querySelectorAll('#userDanger .dz-msg, #userMsg')].find(m => m.textContent === 'No such account.').id,
+                gone493[left] = js("""[document.activeElement.id || document.activeElement.textContent, [...document.querySelectorAll('#userDanger .dz-msg, #userMsg')].find(m => m.textContent === 'No such account.').id,
                     [...document.querySelectorAll('#rmUser option')].some(o => o.textContent === 'gone493'), document.querySelector('#userDanger .dz-body').hidden,
                     [...document.querySelectorAll('#userList b')].some(b => b.textContent === 'gone493'), document.querySelector('#userDanger .danger-zone').hidden]""")
                 problems[before493:] = [x for x in problems[before493:] if "404" not in x]   # the refusal was the point
@@ -31631,8 +31636,9 @@ def main():
                     page.wait_for_function("!document.querySelector('#userList').textContent.includes('kept493')", timeout=10000)
             db_493z.close()
             check("…an account removed meanwhile: “No such account.”, gone from the list and the zone's picker; in the zone with focus on its "
-                  "picker while another account is left, under Accounts with focus on the page's heading once none is (#493)",
-                  gone493 == {"kept493": ["rmUser", "", False, True, False, False], None: ["groupTitle", "userMsg", False, True, False, True]}, gone493)
+                  "picker while another account is left, under People with focus on its heading once none is (#493; the page's heading while it was "
+                  "Accounts' only card, #1119)",
+                  gone493 == {"kept493": ["rmUser", "", False, True, False, False], None: ["People", "userMsg", False, True, False, True]}, gone493)
             # #528: an account removed elsewhere, then its row's Disable, at 375×667: drawn away, from the zone's picker too,
             # “No such account.” where it was, focus on a ⋯ beside it, both in sight (it said so under its row, which stayed)
             GONE528 = f"""list => {{ const m = document.querySelector(list + ' .row-msg'), a = document.activeElement;

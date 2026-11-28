@@ -307,7 +307,7 @@ button.tile{cursor:pointer}
 :is(.menu,.kind)>[aria-haspopup=menu]{anchor-name:--menu}
 .menu-list{position:fixed;position-anchor:--menu;inset:auto;top:calc(anchor(bottom) + 6px);right:anchor(right);margin:0;width:auto;height:auto;
   position-try-fallbacks:flip-inline,--menu-edge,flip-block,flip-block flip-inline,flip-block --menu-edge;
-  min-width:210px;max-width:min(280px,calc(100vw - 24px));max-height:var(--menu-room,none);background:var(--raised);color:var(--ink);border:1px solid var(--ring);
+  min-width:210px;max-width:min(320px,calc(100vw - 24px));max-height:var(--menu-room,none);background:var(--raised);color:var(--ink);border:1px solid var(--ring);
   border-radius:var(--r-md);box-shadow:var(--shadow-2);padding:var(--sp-1);overflow-y:auto}
 @position-try --menu-edge{left:auto;right:8px}
 .menu-list:popover-open{display:flex;flex-direction:column;opacity:1;transition:opacity var(--dur-1) var(--ease-out)}

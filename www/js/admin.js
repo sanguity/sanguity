@@ -343,7 +343,7 @@ function ownerlessRow(p) {
     try { await fresh(() => call(`ownerless/${p.id}/owner`, "POST", {username: who})); await loadOwnerless(); }   // (#590: the fresh check)
     catch (e) {
       // the profile deleted, or given an owner, meanwhile (#528: its row stayed): drawn away, why said where it was
-      if (e.status === 404 || e.status === 409) { await loadOwnerless(); if (!OWNERLESS.has(p.id)) return goneSay(ownRows(), at, e.message, "button", $("#users h2"), $("#ownerless")); }
+      if (e.status === 404 || e.status === 409) { await loadOwnerless(); if (!OWNERLESS.has(p.id)) return goneSay(ownRows(), at, e.message, "button", null, $("#ownerless")); }   // (none left: focus on what's said, #532)
       return ownSay(row, e.message, true);   // under its row, focus still on its Make owner (#510)
     }
     // its row gone (#502: focus fell to the page): on the next profile's Make owner, else the one before's, what it

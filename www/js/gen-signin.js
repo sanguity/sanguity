@@ -53,7 +53,7 @@ function drawSignin(d, note) {
       placeholder: k === "secret" && d.secret ? "Saved" : placeholder, "aria-describedby": id + "-h", oninput: mark});
     input.value = k === "secret" ? "" : d[k] ?? "";
     return setRow([el("label", {for: id}, label, el("span", {class: "tag set-unsaved", text: "not saved"})), el("p", {class: "hint", id: id + "-h", text: k === "secret" ? secretHint : hint})],
-      input, {class: "set", "data-key": "oidc." + k});
+      k === "secret" ? pwField(input, {name: "client secret"}).box : input, {class: "set", "data-key": "oidc." + k});   // (Show, as every password field has: #492)
   });
   const testMsg = el("span", {class: "msg", role: "status"});
   const test = el("button", {type: "button", class: "btn", text: "Test connection", onclick: async () => {
