@@ -4052,6 +4052,10 @@ Everything on `main` so far; it becomes the first tagged release.
   Sign-in provider (OIDC, General's before). General keeps Host, Backups and logging, Phone receiver, Needs a restart,
   Experimental, Demo profile and About. The old addresses (#gen-security, #gen-signin) open them there, and the
   palette finds them by the same words.
+- **PDF lab reports and Health Links are labelled experimental** (#1122), as connected sources are: Add's Paste a
+  Health Link (experimental), Sources' Health Link card, its line on the Overview, a link's preview and its import's
+  card, and Upload's words on Quest and Labcorp PDFs; a PDF's review says "Experimental: check each value against the
+  PDF before adding."
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

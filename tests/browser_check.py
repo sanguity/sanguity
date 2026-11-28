@@ -3117,7 +3117,7 @@ def connected_sources_switch_check(check, browser, base, cookies):
     errs, asked = [], []
     gated = re1096.compile(r"/api/(directory|provider-directory|connect/)|/connections")
     TRACE = """() => ["Connect a portal", "Portals and health plans", "Connected-source", "Provider directory", "Find your hospital",
-      "health plan once", "Connected sources", "xperimental"].filter(w => document.body.innerText.includes(w))"""
+      "health plan once", "Connected sources", "xperimental, not recommended yet"].filter(w => document.body.innerText.includes(w))"""   # (their words: a Health Link's and a PDF's "Experimental" are on either way, #1122)
 
     def context(cks):
         ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
@@ -20064,6 +20064,7 @@ def main():
             check("the pasted link's host, label and passcode flag are shown", f"localhost:{SHL.port}" in facts and "Fictional clinic" in facts
                   and "needed" in facts and js("!document.getElementById('shlPassRow').hidden"), facts)
             check("…and nothing was fetched from it", SHL.seen == [], SHL.seen)
+            seen1122 = {"who": page.inner_text("#shlWho")}   # (#1122, below)
             page.set_viewport_size({"width": 375, "height": 800})
             settle(200)
             check("the Paste a link tab fits 375 px", js("document.documentElement.scrollWidth") <= 375, js("document.documentElement.scrollWidth"))
@@ -20074,6 +20075,7 @@ def main():
             card = js(f"{last_card}.textContent")
             check("Fetch and preview fetches it once and shows the preview", card.startswith("Ready to import") and "FHIR" in card
                   and len(SHL.seen) == 1, (card[:200], len(SHL.seen)))
+            seen1122["hd"] = js(f"{last_card}.closest('.job').querySelector('.job-hd').textContent")
             js(f"{last_card}.querySelector('.imp-actions .primary').click()")
             page.wait_for_function(f"/^(Imported|Not imported)/.test({last_card}.textContent)", timeout=30000)
             check("…and saves it", js(f"{last_card}.textContent").startswith("Imported."), js(f"{last_card}.textContent")[:200])
@@ -20106,6 +20108,32 @@ def main():
             js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
             page.wait_for_function(f"{last_card}.textContent.startsWith('Cancelled.')", timeout=10000)
             problems[had919:] = [x for x in problems[had919:] if not re.search(r"HTTP 409: .*/shl/import$|status of 409", x)]   # (the asking: the point)
+            # #1122: reading lab reports from PDFs and fetching a Health Link are labelled experimental, as connected
+            # sources are (#1096): Add's Paste a Health Link, Sources' Health Link card and its way on the Overview, the
+            # link's preview and its fetched import's card; Upload's words on what it reads, and a PDF's review, which
+            # says to check each value against the PDF (cancelled after)
+            page.click("#addMenuBtn")
+            seen1122["add"] = js("[...document.querySelectorAll('#addMenuList [role^=menuitem]')].filter(x => x.checkVisibility()).map(x => x.textContent.trim()).find(t => t.startsWith('Paste'))")
+            page.keyboard.press("Escape")
+            seen1122["card"] = page.inner_text("#healthLink > #panel-link > .hint")
+            page.goto(base + "/sources.html?profile=2#overview")
+            page.wait_for_selector("#srcList [data-way=link] .src-way-last", timeout=10000)
+            seen1122["way"] = page.inner_text("#srcList [data-way=link] .src-way-last")
+            page.goto(base + "/sources.html?profile=2#upload")
+            page.wait_for_selector("#importer", state="visible", timeout=10000)
+            seen1122["upload"] = js("[...document.querySelectorAll('.about-words')].map(w => w.textContent).join(' ').replace(/\\s+/g, ' ')")   # (behind its ⓘ: util.js aboutWire)
+            with open(os.path.join(ROOT, "tests", "fixtures", "importers", "pdf-labs", "quest", "quest-report.pdf"), "rb") as f1122:
+                page.set_input_files("#pickFiles", files=[{"name": "quest-report.pdf", "mimeType": "application/pdf", "buffer": f1122.read()}])
+            page.wait_for_function(f"document.querySelectorAll('.import-job').length && /^(Ready to import|All duplicates|Not imported)/.test({last_card}.textContent)", timeout=30000)
+            seen1122["pdf"] = js(f"[{last_card}.querySelector('.imp-title')?.textContent, {last_card}.querySelector('.howto')?.textContent]")
+            js(f"[...{last_card}.querySelectorAll('.imp-actions button')].find(b => b.textContent === 'Cancel').click()")
+            page.wait_for_function(f"{last_card}.textContent.startsWith('Cancelled.')", timeout=10000)
+            check("PDF lab reports and Health Links say experimental (#1122): Add's Paste a Health Link, Sources' Health Link card, its "
+                  "way on the Overview, a link's preview and its import's card, Upload's words on PDFs; a PDF's review says to check each value against the PDF",
+                  seen1122["add"] == "Paste a Health Link (experimental)" and seen1122["card"].startswith("Experimental: ")
+                  and seen1122["way"].startswith("Experimental: ") and seen1122["who"].startswith("Experimental: ") and "Experimental" in seen1122["hd"]
+                  and "Labcorp's lab report PDFs too, experimental: check each value against the PDF" in seen1122["upload"]
+                  and (seen1122["pdf"][0] or "").startswith("Lab report PDF (Quest, Labcorp)") and seen1122["pdf"][1] == "Experimental: check each value against the PDF before adding.", seen1122)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person'", timeout=20000)
             pick_profile(page, label="My records (owner)")
@@ -24407,7 +24435,7 @@ def main():
             # Getting started, followed from here, opens Second person
             followed = {}
             for menu, item in [("#addMenuBtn", f"#addMenuList a:text-is(\"{t}\")") for t in ("Log a dose", "Add a medication", "Journal entry", "Home reading", "Upload files",
-                                "Connect a source (experimental)", "Type records in", "Paste a Health Link")] + [("#userMenuBtn", "#settingsLink"), ("#userMenuBtn", "#guideLink")]:
+                                "Connect a source (experimental)", "Type records in", "Paste a Health Link (experimental)")] + [("#userMenuBtn", "#settingsLink"), ("#userMenuBtn", "#guideLink")]:
                 page.goto(base + "/settings.html?profile=2")
                 page.wait_for_function(filled + " && document.getElementById('profile').value === '2'", timeout=20000)
                 js("localStorage.setItem('ht-profile', '1')")   # as another tab picking My records leaves this browser
@@ -25012,7 +25040,7 @@ def main():
                 .filter(x => !x.hidden && !x.closest('[hidden]')).map(x => x.textContent.trim())"""
             pal_actions = """() => [...document.querySelectorAll('#palList [role=group]')].filter(g => g.querySelector('.pal-sec').textContent === 'Actions')
                 .flatMap(g => [...g.querySelectorAll('.pal-t')].map(t => t.textContent))"""
-            ADDS = {"Log a dose", "Add a medication", "Journal entry", "Home reading", "Upload files", "Connect a source (experimental)", "Type records in", "Paste a Health Link", "New share link"}
+            ADDS = {"Log a dose", "Add a medication", "Journal entry", "Home reading", "Upload files", "Connect a source (experimental)", "Type records in", "Paste a Health Link (experimental)", "New share link"}
             offered = {}
             for path in ("?profile=1", "sources.html?profile=1", "sharing.html?profile=1", "settings.html?profile=1", "settings.html?profile=1#security",
                          "settings.html?profile=1#accounts", "guide.html?profile=1"):   # (Account's and Admin's, #991)
@@ -25359,7 +25387,7 @@ def main():
             zb.wait_for_selector("#addMenuBtn", timeout=10000)
             own_empty = zb.evaluate(add_offers)
             check("Add follows the profile shown (#401): nothing for one they can only view; on the empty one they edit, all but Log a dose",
-                  viewing == [] and own_empty == ["Add a medication", "Journal entry", "Home reading", "Upload files", "Connect a source (experimental)", "Type records in", "Paste a Health Link"],
+                  viewing == [] and own_empty == ["Add a medication", "Journal entry", "Home reading", "Upload files", "Connect a source (experimental)", "Type records in", "Paste a Health Link (experimental)"],
                   [viewing, own_empty])
             zb.goto(base + f"/settings.html?profile={pid3}")
             zb.wait_for_selector("#addMenuBtn", timeout=10000)
