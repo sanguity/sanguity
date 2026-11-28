@@ -10150,7 +10150,7 @@ def main():
             page.uncheck("input[name=exportPart][value=claims]")
             page.check("#exportCycle")
             check("…unticking one names the others in the link, and the cycle tick goes with it",
-                  href() == "api/profiles/1/export?format=fhir&include=labs,visits,problems,meds,immunizations,procedures,documents,messages,"
+                  href() == "api/profiles/1/export?format=fhir&include=labs,visits,problems,family,meds,immunizations,procedures,documents,messages,"
                             "home,ecg,person&cycle=1", href())
             got = page.request.get(base + "/" + href())
             fz = _zip.ZipFile(_io.BytesIO(got.body())) if got.ok else None
@@ -10527,7 +10527,9 @@ def main():
                       "no serious axe finding, light or dark",
                       closed1129[:2] == [False, "Text found by text recognition"] and "scanned letter about zinnwaldite" in text1129
                       and not fits1129 and not axe1129, [closed1129, text1129, fits1129, axe1129])
-                gp = page.context.new_page()
+                # (a context of its own, signed in as page is: page's was made by browser.new_page, which takes no second page)
+                gctx = browser.new_context(viewport={"width": 1400, "height": 900}, storage_state=page.context.storage_state())
+                gp = gctx.new_page()
                 try:
                     gp.goto(base + "/settings.html?profile=1#gen-ocr")
                     gp.wait_for_selector("#ocrPass", timeout=15000)
@@ -10541,7 +10543,7 @@ def main():
                         gfits += phone_fits(gp, f"General, Text recognition at {w} px")
                     gaxe = axe_check(gp, "General, Text recognition")[0]
                 finally:
-                    gp.close()
+                    gctx.close()
                 check("…General → Text recognition says this server has no Tesseract here, English built in and always used, "
                       "Import a language file, downloads off; it fits 320 and 1400 px, no serious axe finding",
                       gen1129[0] == "Text recognition" and "no Tesseract" in gen1129[1] and gen1129[2] == [["eng", "English, built in: always used"]]   # (#1119: text, never a disabled checkbox) and gen1129[3]
