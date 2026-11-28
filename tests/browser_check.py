@@ -18236,6 +18236,38 @@ def main():
             page.select_option("#taxMonth", "1")
             page.wait_for_function("CFG.costs.taxStart === 1 && /Jan 1/.test(document.getElementById('taxSays')?.textContent || '')", timeout=10000)
             js("costState.view = 'claims'; renderCosts()")
+            # ---- found from the top (#1127, #1128, #1136): a line of links near the top of Costs to Plan years, Bills and
+            # the Tax-year report, each opening its view with focus on its card's heading; the command palette finds them
+            # by "deductible", "add a bill" and "tax report"; and the empty Costs page offers Add a bill beside Type in
+            js("applyPreset('all'); costState.view = 'claims'; renderCosts(); scrollTo(0, 0)")
+            settle(300)
+            links1146 = js("[...document.querySelectorAll('#view-costs nav[aria-label] a')].map(a => a.textContent)")
+            top1146 = js("document.querySelector('#view-costs nav[aria-label]').getBoundingClientRect().top < innerHeight")
+            page.click("#view-costs nav[aria-label] a:text-is('Bills')")
+            page.wait_for_function("(r => r.top >= 0 && r.bottom <= innerHeight)(document.activeElement.getBoundingClientRect())", timeout=5000)   # (a smooth scroll)
+            at1146 = js("[costState.view, document.activeElement.textContent, document.activeElement.closest('.card')?.id, (r => r.top >= 0 && r.bottom <= innerHeight)(document.activeElement.getBoundingClientRect())]")
+            check("Costs' top says what's further down, Plan years · Bills · Tax-year report, in sight; Bills opens What you paid with focus on its heading, in sight",
+                  links1146 == ["Plan years", "Bills", "Tax-year report"] and top1146 and at1146 == ["paid", "Bills", "billCard", True], [links1146, top1146, at1146])
+            pal1146 = {}
+            for q, want in (("deductible", "planCard"), ("add a bill", "billCard"), ("tax report", "taxCard")):
+                js("costState.view = 'claims'; switchTab('overview')")
+                page.click("#barSearch")
+                page.wait_for_selector("dialog.palette[open]", timeout=5000)
+                page.keyboard.type(q)
+                settle(400)
+                page.keyboard.press("Enter")
+                settle(600)
+                pal1146[q] = [js("state.tab"), js("document.activeElement.closest('.card')?.id"), js("document.activeElement.tagName")] == ["costs", want, "H2"]
+            check("…the command palette finds them: “deductible” Plan years, “add a bill” Bills, “tax report” the Tax-year report, each focused on Costs",
+                  all(pal1146.values()), pal1146)
+            empty1146 = js("""(() => { const had = [DATA.costs, DATA.outOfPocket, DATA.oop]; DATA.costs = []; DATA.outOfPocket = {payments: []}; DATA.oop = {...DATA.oop, bills: [], payments: [], claims: []};
+                               costState.view = 'claims'; renderCosts(); const b = document.getElementById('billFirst'), out = [!!b && b.previousElementSibling?.textContent, b?.textContent];
+                               b.click(); out.push(document.activeElement.id, !!document.getElementById('billEdit'));
+                               document.querySelector('#billEdit button.btn:not(.primary)').click(); out.push(document.activeElement.id);
+                               [DATA.costs, DATA.outOfPocket, DATA.oop] = had; billState.first = false; renderCosts(); return out; })()""")
+            check("…the empty Costs page offers Add a bill beside Type in a claim or payment; it opens the bill's form, and Cancel comes back to it",
+                  empty1146 == ["Type in a claim or payment", "Add a bill", "bill-service", True, "billFirst"], empty1146)
+            js("costState.view = 'claims'; renderCosts()")
 
             # ---- readings typed in at home (#224): blood pressure, glucose, temperature and blood oxygen typed on Sources
             # for the demo person, whose phone sends the same measures; checked as typed (plausible values, the unit),

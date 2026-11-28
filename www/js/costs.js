@@ -82,10 +82,14 @@ function renderCosts() {
 function drawCosts() {
   const box = $("#view-costs"); box.replaceChildren();
   const claims = !!(DATA.costs || []).length;
-  if (!claims && !((DATA.outOfPocket || {}).payments || []).length && !((DATA.oop || {}).bills || []).length) {
-    // #199: what would be here, and one way to start (claims also come from a health plan's export or connection)
-    box.append(emptyState("Insurance claims and what you paid out of pocket appear here, from a health plan or typed in.",
-      canEdit() ? {href: `sources.html?profile=${PROFILE.id}#payment`, text: "Type in a claim or payment"} : null));
+  if (!claims && !((DATA.outOfPocket || {}).payments || []).length && !((DATA.oop || {}).bills || []).length && !billState.first) {
+    // #199: what would be here, and one way to start (claims also come from a health plan's export or connection);
+    // a provider's bill typed in beside it (#1128), its form on What you paid
+    const es = emptyState("Insurance claims and what you paid out of pocket appear here, from a health plan or typed in.",
+      canEdit() ? {href: `sources.html?profile=${PROFILE.id}#payment`, text: "Type in a claim or payment"} : null);
+    if (canEdit()) es.append(" ", el("button", {class: "btn empty-next large needs-server", type: "button", id: "billFirst", text: "Add a bill",
+      onclick: () => { billState.first = true; billState.edit = "new"; renderCosts(); $("#bill-service")?.focus(); }}));
+    box.append(es);
     return;
   }
   // a new period starts at the top of the lists, with no payment open
@@ -93,7 +97,7 @@ function drawCosts() {
   if (costState.seen !== seen) { costState.seen = seen; costState.limit = 200; paidState.q = ""; paidState.open = null; paidState.limit = 200; }
   const rows = costRows();
   const periodText = periodLabel(claims ? "all claims on file" : "everything on file");
-  if (!claims) { renderPaid(box, rows, periodText); return; }   // payments only: no claims to chart or list
+  if (!claims) { box.append(...present(costLinks(false))); renderPaid(box, rows, periodText); return; }   // payments only: no claims to chart or list
   // Claims | What you paid (#278): the insurance story or the money out of pocket, each with its own figures
   box.append(el("div", {class: "toolbar"},
     // named for what it shows, as Labs' and the Timeline's are; the view in the address (#costs-paid, app.js), Back
@@ -101,6 +105,7 @@ function drawCosts() {
     el("div", {class: "seg", id: "costView", role: "group", "aria-label": "Show the costs as"}, ...[["claims", "Claims"], ["paid", "What you paid"]].map(([k, l]) =>
       el("button", {type: "button", "aria-pressed": costState.view === k, text: l, onclick: () => { if (costState.view !== k) { costState.view = k; hideTip(); keepFocus(renderCosts); save(); tabAddress(true); } }}))),
     costState.view === "paid" ? null : el("span", {class: "hint", style: {margin: 0}, text: insurerHint(DATA.costs)})));   // where the claims came from
+  box.append(...present(costLinks(true)));
   if (costState.view === "paid") { renderPaid(box, rows, periodText); return; }
   const billed = sumOf(rows, "billed"), paid = sumOf(rows, "paid"), owe = sumOf(rows, "owe");
   const denied = rows.filter(isDenied).length;
@@ -523,7 +528,7 @@ function planCard() {
    by provider, date of service and amount or chosen (server: costplan.lined_up, DATA.oop.bills), with the payments
    matched to that claim. Plain facts. Its file, when given, is saved first as a document typed in (an import of its
    own, as Sources' hand entry saves one) and opens in the drawer; never read for numbers */
-const billState = {edit: null};   // the bill being typed: "new", its id, or null
+const billState = {edit: null, first: false};   // the bill being typed: "new", its id, or null; first: Add a bill from the empty page
 const billFacts = b => b.claim == null ? (b.none ? "No claim for this bill yet, as chosen." : "No claim found for this bill yet.")
   : Math.abs(b.amount - b.owe) < 0.005 ? "Billed matches what your plan says you owe."
   : `Billed ${usd2(b.amount)}; your plan says you owe ${usd2(b.owe)}, a difference of ${usd2(Math.abs(b.amount - b.owe))}.`;
@@ -558,7 +563,8 @@ function billForm(b) {   // a bill typed: new (b null) or changed
     f("file", b?.file != null ? "Replace its file (optional)" : "The bill's file (optional)", null, "file", {accept: ".pdf,.png,.jpg,.jpeg,.gif"}));
   const drop = b?.file != null ? el("label", {class: "toggle"}, el("input", {type: "checkbox", id: id("drop")}), "Remove its file") : null;
   if (drop) form.append(drop);
-  const back = () => { billState.edit = null; keepFocus(renderCosts); $(b ? `#bill-${b.id} .bill-change` : "#billAdd")?.focus(); };
+  const back = () => { billState.edit = null; billState.first = false; keepFocus(renderCosts);   // from the empty page: back to it
+    ($(b ? `#bill-${b.id} .bill-change` : "#billAdd") || $("#billFirst"))?.focus(); };
   form.append(el("button", {class: "btn primary", type: "button", text: "Save", onclick: async () => {
     const body = {service: $("#bill-service").value, provider: $("#bill-provider").value.trim(), amount: amountIn($("#bill-amount").value),
       due: $("#bill-due").value || null, claim: +claim.value, drop_file: !!$("#bill-drop")?.checked};
@@ -646,7 +652,7 @@ function taxCard() {
       CFG.costs = {...CFG.costs, taxStart: v}; taxState.year = null; keepFocus(renderCosts); $("#taxMonth")?.focus(); announce("Tax year start saved.");
     } catch (x) { sayIn(msg, "Couldn't save it: " + x.message, true); }
   }}, ...MONTH_NAMES.map((n, i) => el("option", {value: String(i + 1), selected: i + 1 === m || null, text: n}))) : null;
-  const card = el("div", {class: "card", id: "taxCard"}, el("h2", {text: "Tax-year report"}),
+  const card = el("div", {class: "card", id: "taxCard"}, el("h2", {tabindex: -1, text: "Tax-year report"}),
     el("p", {class: "hint", text: "One zip of a tax year's payments: a printable summary, a spreadsheet (CSV) of every payment and the receipts on file, each named by its row. It says what was paid, when and to whom; what counts for taxes, check with a tax adviser."}),
     el("div", {class: "oop-form"}, el("label", {for: "taxYear"}, el("span", {text: "Tax year"}), year),
       month ? el("label", {for: "taxMonth"}, el("span", {text: "Tax year starts in"}), month) : el("p", {class: "hint", text: `The tax year starts in ${MONTH_NAMES[m - 1]}.`}),
@@ -654,6 +660,24 @@ function taxCard() {
     el("p", {id: "taxSays", class: "my-2", role: "status", text: "Adding up the year…"}));
   requestAnimationFrame(() => taxPreview(y, m));
   return card;
+}
+/* ---- the cards further down, found from the top (#1127, #1128, #1136): a line of links near the top of Costs, each
+   opening its card's view and moving focus to its heading (the command palette's Plan years, Bills and Tax-year
+   report do the same: palette.js TAB_VIEWS). Only the cards there are: plan years with claims, bills for someone who
+   may add one or with some, the report with payments */
+const COST_CARDS = {plan: ["claims", "planCard", "Plan years"], bill: ["paid", "billCard", "Bills"], tax: ["paid", "taxCard", "Tax-year report"]};
+function costJump(k) {
+  const [view, id] = COST_CARDS[k];
+  if (costState.view !== view && (DATA.costs || []).length) { costState.view = view; hideTip(); renderCosts(); save(); tabAddress(true); }
+  const h = $(`#${id} h2`);
+  if (h) { h.scrollIntoView({block: "center", behavior: smoothly()}); h.focus({preventScroll: true}); }
+}
+function costLinks(claims) {
+  const ks = [claims && "plan", (canEdit() || ((DATA.oop || {}).bills || []).length) && "bill",
+    oopRows().some(r => r.type === "pay" && r.dup == null) && "tax"].filter(Boolean);
+  if (!ks.length) return null;
+  return el("nav", {"aria-label": "Further down Costs", class: "mb-2"}, el("p", {class: "hint", style: {margin: 0}}, "Further down: ",
+    ...ks.flatMap((k, i) => [i ? " · " : null, el("a", {href: "#" + COST_CARDS[k][1], text: COST_CARDS[k][2], onclick: e => { e.preventDefault(); costJump(k); }})]).filter(Boolean)));
 }
 /* ---- the charts (#300), on the chart kit (chartkit.js): its scales, value grid, time axis, crosshair and pinned
    readout; their gutters, rows and offsets grow with larger text (ckK, #633). Money on a value axis: "$30K", "$2.5K",
