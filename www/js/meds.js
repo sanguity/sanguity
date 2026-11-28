@@ -279,15 +279,19 @@ function mrState(r, m) {
   if (!r.on) return {cls: "quiet", text: "Remind me off: not in the calendar feed"};
   return {cls: "remind", text: "Remind me on: in the calendar feed"};
 }
+/* (#1161) whether a day ("YYYY-MM-DD") falls between the times it was taken (after a span that stopped, before the
+   next starts: Started again), when its schedule gives nothing (server/medications.gaps) */
+const mrOff = (m, day) => m.spans.some((s, i) => i > 0 && s.from > day && (p => p.stopped && p.to && p.to < day)(m.spans[i - 1]));
 /* the doses its schedule gives on a day ("YYYY-MM-DD"), by time: [{at, amount, unit}], two at one time two (medlog.js) */
 function mrDoses(m, day) {
   const k = MR_DAYS[(new Date(day + "T12:00:00Z").getUTCDay() + 6) % 7][0];
+  if (mrOff(m, day)) return [];
   return mrOf(m).filter(r => !r.asneeded && r.days.includes(k) && r.from <= day && !(mrEnds(r, m) && mrEnds(r, m).day < day))
     .flatMap(r => r.times.map((at, i) => ({at, amount: null, unit: "", ...(r.amounts || [])[i]})))
     .sort((a, b) => (a.at > b.at) - (a.at < b.at));
 }
 /* its As needed line that day, or null */
-const mrAsNeeded = (m, day) => mrOf(m).find(r => r.asneeded && r.from <= day && !(mrEnds(r, m) && mrEnds(r, m).day < day)) || null;
+const mrAsNeeded = (m, day) => mrOff(m, day) ? null : mrOf(m).find(r => r.asneeded && r.from <= day && !(mrEnds(r, m) && mrEnds(r, m).day < day)) || null;
 function medReminderSection(m) {
   const rs = mrAll(m), write = canEdit(), cur = mrCurrent(m);
   if (!rs.length && !(write && cur)) return [];

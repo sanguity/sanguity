@@ -520,6 +520,21 @@ class Notify(unittest.TestCase):
             self.assertEqual(notify.due_doses(db, now=self.at("08:01")), 0)
         self.assertEqual(notify.due_doses(db, now=self.at("08:01")), 1)
 
+    def test_no_dose_is_due_between_the_times_it_was_taken(self):   # #1161
+        self.set_server()
+        db = self.db()
+        self.opt_in("kim", "doses", ago=3 * 86400)
+        self.line(times=("08:00",))
+        m = med_reminders.current(db, self.pid)[self.med]
+
+        def taken(again):   # stopped five days ago, started again on that day
+            first = {**m["spans"][0], "to": D(-5), "open": False, "stopped": True}
+            return {self.med: {**m, "stop": None, "spans": [first, {**first, "from": D(again), "to": None, "open": True, "stopped": False, "again": True}]}}
+        with mock.patch.object(med_reminders, "current", return_value=taken(2)):
+            self.assertEqual(notify.due_doses(db, now=self.at("08:01")), 0, "between the times it was taken: none due")
+        with mock.patch.object(med_reminders, "current", return_value=taken(0)):
+            self.assertEqual(notify.due_doses(db, now=self.at("08:01")), 1, "started again today: due")
+
     def test_times_before_the_opt_in_and_in_the_lines_zone(self):
         self.set_server()
         db = self.db()

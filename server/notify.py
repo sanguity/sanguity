@@ -409,7 +409,7 @@ def _at(day, hm, zone):
 def due_doses(db, now=None):
     """Make the notifications of the doses due now: for each person who wants them, a time that passed less than
     WINDOW ago and after they turned them on. Returns how many were made."""
-    from . import med_log, med_reminders
+    from . import med_log, med_reminders, medications
     if not configured():
         return 0
     now, made = now or time.time(), 0
@@ -433,8 +433,8 @@ def due_doses(db, now=None):
             continue
         meds = med_reminders.current(db, pid)
         for r, day, hm, at in due:   # of a medication still in the records, and not ended by the day they say it stopped
-            m = meds.get(r["med"])
-            if not m or hm not in {t for t, _ in med_log.scheduled([r], day, m.get("stop"))}:
+            m = meds.get(r["med"])   # (#1161: nor on a day between the times it was taken)
+            if not m or hm not in {t for t, _ in med_log.scheduled([r], day, m.get("stop"), medications.gaps(m))}:
                 continue
             for uid, created in people.items():
                 if at >= created and _make(db, f"doses:{pid}:{day.isoformat()}:{hm}:{uid}", uid, pid, "doses"):
