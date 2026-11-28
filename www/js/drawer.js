@@ -253,6 +253,21 @@ function docFrame(html, h = 420, title = "The record as it was sent") {   // tit
   f.onload = () => { try { f.style.height = Math.min(1600, f.contentDocument.body.scrollHeight + 30) + "px"; } catch (e) {} };
   return f;
 }
+/* whether the browser shows a PDF in a page (#636, #1113): it says it has a viewer, and it isn't on Android, where
+   Chrome says it has none and a Chromium browser that says it has one (Vivaldi on a tablet) hands a frame's PDF to a
+   tab of its own, unasked, leaving the frame blank */
+const onAndroid = () => navigator.userAgentData?.platform === "Android" || /Android/i.test(navigator.userAgent);
+const pdfInline = () => navigator.pdfViewerEnabled !== false && !onAndroid();
+const fileSize = n => n >= 2 ** 20 ? (n / 2 ** 20).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " bytes";
+/* a PDF the drawer can't show (pdfInline): its name, "PDF" and its size (asked of the server without its bytes, not
+   logged as opened), and "Open the PDF", which opens it in a tab of its own only when it's pressed */
+function pdfCard(url, title) {
+  const what = el("span", {class: "muted", text: "PDF"});
+  fetch(url.split("#")[0], {method: "HEAD"}).then(r => { const n = r.ok && +r.headers.get("content-length"); if (n) what.textContent = `PDF, ${fileSize(n)}`; }).catch(() => {});
+  return el("div", {class: "doc-card"}, icon("file-text"), el("div", {}, el("p", {}, el("b", {text: title || "Document"}), el("br"), what),
+    el("p", {class: "hint", text: "This browser can't show a PDF here: Open the PDF shows it in your PDF app, or Download keeps a copy."}),
+    el("a", {class: "btn primary", href: url, target: "_blank", rel: "noopener", text: "Open the PDF"})));
+}
 /* the result a drawer row shows, {s, p}, or null (a text result): of the series the server matched the row to (d.series,
    server/records.py _row_series: by the row's name or its canonical one, so a report's "Glucose" is Labs' "Glucose,
    Blood", #782), else the one with the row's name; in the row's import, on its day, with its value as reported (or
@@ -357,17 +372,16 @@ function openEvent(e) {
   } else if (d.type === "letter") main.push(docFrame(d.html, 600, e.title || "Letter"));
   else if (d.type === "file" && !d.url) main.push(note("Its file wasn't found in what was imported, so there's nothing to show."));   // profiles.py index_documents
   else if (d.type === "file") {
-    // a PDF where the browser can't show one in a page (Chrome on Android, #636): no frame, which would show "This
-    // content is blocked"; Open first, a tab of its own, where the phone hands it to its PDF app
-    const noPdf = d.ext === "pdf" && navigator.pdfViewerEnabled === false;
-    go.push(el("a", {class: "btn" + (noPdf ? " primary" : ""), href: d.url, target: "_blank", rel: "noopener", text: noPdf ? "Open" : "Open in new tab"}), el("a", {class: "btn", href: d.url, download: "", text: "Download"}));
+    // a PDF where the browser can't show one in a page (pdfInline): no frame, but a card with "Open the PDF", its name
+    // and size, opening it in a tab of its own (where the device hands it to its PDF app) only when it's pressed
+    const noPdf = d.ext === "pdf" && !pdfInline();
+    go.push(noPdf ? null : el("a", {class: "btn", href: d.url, target: "_blank", rel: "noopener", text: "Open in new tab"}), el("a", {class: "btn", href: d.url, download: "", text: "Download"}));
     // documents fill the panel's remaining height so the viewer's own scrollbar and toolbar stay on screen
     // HTML records: no scripts (the sandbox has no allow-scripts, and the server sends script-src 'none'), but
     // same-origin, so the record can load the pictures and stylesheet saved beside it (an opaque origin can't)
     if (d.ext === "html" || d.ext === "htm") { body.classList.add("fill"); main.push(el("iframe", {class: "doc", src: d.url, sandbox: "allow-same-origin", title: e.title})); }
     else if (["jpg","jpeg","png","gif"].includes(d.ext)) main.push(el("img", {class: "doc-img", src: d.url, alt: e.title}));
-    else if (noPdf) main.push(el("p", {class: "doc-card"}, icon("file-text"), el("span", {}, el("b", {text: e.title || "Document"}), el("br"),
-      el("span", {class: "muted", text: "A PDF. This browser can't show it here: Open shows it in your PDF app, or Download keeps a copy."}))));
+    else if (noPdf) main.push(pdfCard(d.url, e.title));
     else if (d.ext === "pdf") { body.classList.add("fill"); main.push(el("iframe", {class: "doc", src: d.url + (d.url.includes("#") ? "" : "#view=FitH"), title: e.title})); }
     else if (d.ext === "tif" || d.ext === "tiff") main.push(note("Scanned TIFF document — browsers can't preview TIFF; use Download and open it in Photos or a PDF viewer."));
   } else if (d.type === "stay") {

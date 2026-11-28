@@ -90,6 +90,7 @@ ROUTES = {
     ("GET", "/api/profiles/{pid}/details"): (USER, "viewer"),   # records' details, as the page opens them (#217)
     ("GET", "/api/profiles/{pid}/watch/ecg/{name}"): (USER, "viewer"),   # an ECG recording's samples (#182)
     ("GET", "/api/profiles/{pid}/documents/{doc}"): (USER, "viewer"),
+    ("HEAD", "/api/profiles/{pid}/documents/{doc}"): (USER, "viewer"),   # its size (#1113)
     ("GET", "/api/profiles/{pid}/documents/{doc}/{part:path}"): (USER, "viewer"),
     ("GET", "/api/profiles/{pid}/members"): (USER, "viewer"), ("GET", "/api/profiles/{pid}/imports"): (USER, "viewer"),
     ("GET", "/api/profiles/{pid}/settings"): (USER, "viewer"), ("GET", "/api/profiles/{pid}/settings/sections"): (USER, "viewer"),
