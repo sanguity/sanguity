@@ -19214,6 +19214,8 @@ def main():
             page.click("#planEdit button:text-is('Save')")
             page.wait_for_function("document.getElementById('planMsg')?.textContent.includes('at least')", timeout=10000)
             said1127 = js("document.getElementById('planMsg').textContent")
+            problems[:] = [x for x in problems if not ("HTTP 400: " in x and x.endswith("/costs/plans"))
+                           and "status of 400" not in x]   # refused on purpose: that was the point
             page.fill("#plan-oop", "7500")
             page.fill("#plan-familyDeductible", "6000")
             page.click("#planEdit button:text-is('Save')")
