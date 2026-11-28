@@ -25315,7 +25315,7 @@ def main():
                     sdb.execute("DELETE FROM users WHERE id=?", (uid991,))
                 sdb.execute("DELETE FROM activity WHERE actor IN ('own991', 'edit991', 'once991')")   # (their sign-ins)
             person991 = ["Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Workouts"]   # (insurance cards, #1137)
-            want991 = {r: {"profile": ["Sources", "Sharing", "Emergency card", "New profile"],   # (#1126) "you": ["Settings", "Getting started", menus991.get(r, {}).get("you", [""] * 3)[2], "Log out"],
+            want991 = {r: {"profile": ["Sources", "Sharing", "Emergency card", "New profile"], "you": ["Settings", "Getting started", menus991.get(r, {}).get("you", [""] * 3)[2], "Log out"],   # (#1126: Emergency card)
                            "gone": [], "focus": ["Sign-in and security"] * 2,
                            "parts": {"This person": person991 + (["Rename or delete"] if r in ("admin", "owner") else []),
                                      "You": ["Sign-in and security", "This device", "Display"],
