@@ -1095,8 +1095,8 @@ def family_check(browser, base, cookies, check):
     relative opens the form in the drawer (focus in Relative, every field labelled, Add another condition focusing the
     new one), saved as your own entry; Edit changes it; Remove deletes it with an Undo; one of the records' has Hide and
     no Edit, hidden with an Undo, Hidden listing it with Show again, focus back on its row. The card and the form at
-    320-1400 px and 200% text, light and dark, forced colours: fits, axe-core. Leaves profile 1 as it found it. Returns
-    the page's script errors."""
+    320-1400 px and 200% text, light and dark, forced colours: fits, axe-core. The command palette finds Family history
+    and Add a relative. Leaves profile 1 as it found it. Returns the page's script errors."""
     ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)   # (its waits are evaluated)
     ctx.add_cookies(cookies)
     pg, errs = ctx.new_page(), []
@@ -1209,6 +1209,32 @@ def family_check(browser, base, cookies, check):
               js("[document.activeElement.dataset.fam, document.getElementById('sgStatus').textContent.includes('Mother is shown again.')]") == ["mother|", True])
         js("async () => { const x = DATA.familyHistory.find(x => x.own); if (x) await famSend('DELETE', `own/${x.own.id}`); }")
         settle(300)
+        # the command palette finds both: from another page Add a relative opens the form on the records page, and here
+        # Family history brings the card into sight on the Overview, its first row focused
+        pg.goto(base + "/sources.html")
+        pg.wait_for_load_state("networkidle")
+
+        def pal(q):
+            pg.keyboard.press("Control+k")
+            pg.wait_for_selector("dialog.palette[open]", timeout=5000)
+            pg.fill("#palQ", q)
+            settle(400)
+            return js("document.querySelector('dialog.palette [role=option][aria-selected=true]')?.textContent || ''")
+        first = pal("add a relative")
+        pg.keyboard.press("Enter")
+        pg.wait_for_function("typeof booted !== 'undefined' && booted && document.getElementById('dtitle')?.textContent === 'Add a relative'", timeout=20000)
+        settle()
+        arrived = js("[document.activeElement.id.startsWith('fam-relation'), location.hash]")
+        pg.keyboard.press("Escape")
+        js("switchTab('labs')")
+        settle()
+        second = pal("family history")
+        pg.keyboard.press("Enter")
+        settle(600)
+        card = js("[state.tab, document.activeElement.closest('#ovFamily') !== null, location.hash]")
+        check("…the command palette finds Add a relative (its form, from another page) and Family history (the card, focused)",
+              "Add a relative" in first and "Family history" in second and arrived == [True, "#overview"] and card == ["overview", True, "#overview"],
+              [first, arrived, second, card])
     finally:
         ctx.close()
     return errs

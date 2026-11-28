@@ -32,6 +32,7 @@ const SG_ICON = {
   more: "ellipsis",
   search: "search", add: "plus", you: "circle-user", guide: "compass", theme: "sun-moon", logout: "log-out",
   dose: "pill", medadd: "clipboard", journal: "notebook", reading: "gauge",   // Add's Today (#1092: Add a medication its own)
+  family: "users",   // the palette's Family history and Add a relative (#1134)
   "settings/sec-tabs": "pencil",   // Edit tabs… (the profile menu, More) and the palette's Tabs
   "sharing/newProfile": "user-plus",   // New profile
 };

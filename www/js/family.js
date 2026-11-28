@@ -23,6 +23,20 @@ function famGroups() {
 }
 const famSend = (method, path, body, msg) => mmSend(method, path, body, msg, "family");
 
+/* the command palette's Family history and Add a relative (palette.js), on this page or arriving from another
+   (#family-history, #add-relative): the Overview, the card in sight and its first row focused, or the form for owners
+   and editors; the address the tab's again (a reload doesn't open it twice) */
+function famResume() {
+  const h = location.hash;
+  if (h !== "#family-history" && h !== "#add-relative") return;
+  if (DATA && state.tab !== "overview") switchTab("overview");
+  history.replaceState(history.state, "", location.pathname + location.search + (DATA ? tabHash() : ""));
+  if (h === "#add-relative" && canEdit()) { famEditForm(null); return; }
+  const card = document.getElementById("ovFamily");
+  card?.scrollIntoView({block: "start"});
+  card?.querySelector(".ov-row, button")?.focus({preventScroll: true});
+}
+
 /* the Health record's card: a row per relative, its conditions under it; Add a relative and the hidden for editors */
 function ovFamily() {
   const groups = famGroups(), hid = Array.isArray(DATA.hiddenFamily) ? DATA.hiddenFamily : [];
