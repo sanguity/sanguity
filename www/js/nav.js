@@ -439,7 +439,8 @@ const SgNav = (() => {
       link(rec + "#log-dose", "dose", "Log a dose", {id: "doseLink", "data-needs": "import"}),
       link(rec + "#add-medication", "medadd", "Add a medication", {id: "medAddLink", "data-needs": "import"}),   // your own (#1092)
       onRecords ? action("journalBtn", "journal", "Journal entry", {hidden: ""}) : link("./#new-journal-entry", "journal", "Journal entry", {id: "journalBtn"}),
-      link(src + "#home-reading", "reading", "Home reading", {"data-needs": "import"})),
+      link(src + "#home-reading", "reading", "Home reading", {"data-needs": "import"}),
+      link(rec + "#add-followup", "fuadd", "Follow-up", {id: "fuAddLink", "data-needs": "import"})),   // (#1138, followups.js)
     group("Records",
       link(src + "#waiting", "sources/waiting", "Waiting for you", {id: "waitingLink", "data-needs": "import", "data-none": ""}),   // #283, below
       link(src + "#upload", "sources/upload", "Upload files", {id: "importLink", "data-needs": "import"}),

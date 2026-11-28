@@ -95,10 +95,10 @@ function ovToday() {
   if (doses && go) doses.querySelector(".dose-week").after(go);
   const card = doses || (go && el("div", {class: "card", id: "ovMeds"}, el("h3", {text: "Medications"}),
     el("p", {class: "hint", text: "None listed as current: the records give each an end."}), go));   // only past ones
-  const up = ovUpcoming(), sync = WATCH && WATCH.last_payload ? `watch last synced ${fmtDT(WATCH.last_payload)}` : "";
+  const up = ovUpcoming(), fu = fuCard(), sync = WATCH && WATCH.last_payload ? `watch last synced ${fmtDT(WATCH.last_payload)}` : "";
   const day = zdate(Date.now()).toLocaleDateString(undefined, {weekday: "long", month: "long", day: "numeric"});
   return [ovHead("Today", el("p", {class: "hint", text: [day, sync].filter(Boolean).join(" · ")})),
-    card || up ? el("div", {class: "ov-today"}, card, up) : ovNone("Today's medication doses and upcoming appointments appear here, from the records or typed in.")];
+    card || up || fu ? el("div", {class: "ov-today"}, card, up, fu) : ovNone("Today's medication doses and upcoming appointments appear here, from the records or typed in.")];
 }
 /* the appointments from today on, the next first, each saying when ("in 9 days") and opening its details; and the
    visit summary to prepare for the next */

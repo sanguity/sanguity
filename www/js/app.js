@@ -83,6 +83,7 @@ addEventListener("hashchange", () => {
   // Add → Add a medication (medmine.js, #1092): on a profile with nothing imported too, its first medication of its own
   if (location.hash === "#add-medication" && (booted || PROFILE && !DATA)) return medAddResume();
   if (/^#(family-history|add-relative)$/.test(location.hash) && (booted || PROFILE && !DATA)) return famResume();   // (#1134)
+  if (location.hash === "#add-followup" && (booted || PROFILE && !DATA)) return fuAddResume();   // (followups.js, #1138)
   if (!booted) return;
   if (location.hash === "#log-dose") return logDose();
   const t = tabOfHash(), drug = t?.[0] === "costs" && medCostsArrive();   // #costs?drug=… (#452)
@@ -274,7 +275,7 @@ async function settingsLoad() {
     if (r.status === 204) {   // no records yet (#199): the getting-started guide, opened by itself the first time
       if (PROFILE.role === "owner" && !PROFILE.demo && ME.profiles.filter(p => !p.demo).length === 1) {   // your own profile, and your only one (the demo beside it doesn't count, #1101)
         const u = await api("settings/user").then(x => x.ok ? x.json() : {}).catch(() => ({}));
-        if (u.guide === "" && !/^#(new-journal-entry|log-dose|add-medication|add-relative)$/.test(location.hash)) { location.replace(`guide.html?profile=${PROFILE.id}`); return; }   // not finished or skipped yet; not when Add sent them to do something here (#479)
+        if (u.guide === "" && !/^#(new-journal-entry|log-dose|add-medication|add-relative|add-followup)$/.test(location.hash)) { location.replace(`guide.html?profile=${PROFILE.id}`); return; }   // not finished or skipped yet; not when Add sent them to do something here (#479)
       }
       await settingsLoad();
       applyTabs(CFG.tabs);   // its tabs as it has them, as the other pages show them (#425)
@@ -282,7 +283,7 @@ async function settingsLoad() {
       emptyProfile();
       // arriving from Add on another page (#401): a journal entry can be the first record; a dose can't, and says why
       await dates;
-      if (location.hash === "#log-dose") logDose(); else if (canImport(PROFILE)) { journalResume(); medAddResume(); famResume(); }
+      if (location.hash === "#log-dose") logDose(); else if (canImport(PROFILE)) { journalResume(); medAddResume(); famResume(); fuAddResume(); }
       return;
     }
     if (!r.ok) throw new Error(r.status + " " + r.statusText);
@@ -297,6 +298,7 @@ async function settingsLoad() {
   if (location.hash === "#log-dose") logDose();   // arriving from Add on another page (nav.js)
   medAddResume();   // Add → Add a medication, from here or another page (medmine.js, #1092)
   famResume();   // the palette's Family history or Add a relative, from here or another page (family.js, #1134)
+  fuAddResume();    // Add → Follow-up (followups.js, #1138)
 })();
 /* the records drawn: as the page loads, or an empty profile's first (recordsFirst) */
 async function recordsDraw(data) {
@@ -330,6 +332,8 @@ async function recordsDraw(data) {
     if (WATCH && !(DATA.journal || []).length && shownTabs().includes("health")) state.tab = "health";
     // medications of your own and no journal (#1091): Medications, where they are
     else if (MEDS.length && !(DATA.journal || []).length && shownTabs().includes("medications")) state.tab = "medications";
+    // follow-ups or records requests alone (#1138, #1133): the Overview, whose card lists them
+    else if (!(DATA.journal || []).length && (DATA.followups || DATA.requests)) state.tab = "overview";
     else [state.tab, state.tlView] = ["timeline", "journal"];
   }
   const drug = arrived?.[0] === "costs" && medCostsArrive();   // (#costs?drug=…, #452)

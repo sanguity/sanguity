@@ -4015,6 +4015,12 @@ Everything on `main` so far; it becomes the first tagged release.
   marked **Restart needed** until **Restart now** (asked first, the fresh check), which waits for the server to answer
   again and reads the card back; one set in `.env` is plain text with its variable; a start that went back to the
   values before says so, with why.
+- **Follow-ups from a visit** (#1138): your own list of things you were told to do ("book the MRI", "repeat bloodwork
+  in 3 months"), each with an optional date (a date, or a number of days, weeks or calendar months after the visit),
+  the record it's about, and done or not; added from a record's drawer or Add → Follow-up, listed on the Overview's
+  Follow-ups card and in the visit's drawer ("You noted: … by …", "date passed", never "overdue"), and in the calendar
+  feed as "Sanguity follow-up" unless that one is set to show its words. Encrypted (schema version 56), in backups
+  and Export everything, and put back from an export.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 
