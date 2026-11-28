@@ -1062,8 +1062,11 @@ def general_about_check(browser, base, cookies, check):
               and not pg.evaluate("!!document.querySelector('#genAbout input, #genAbout select')"), got[2])
         check("…and what only the server's own setup sets, Host's and Security's before, each with what sets it (#1119)",
               got[0][11:] == ["Internal port and bind address", "Secure session cookie"]   # (the trusted proxies and password checks: Needs a restart's, #1121)
-              and all(w in got[3] for w in ("Set by: PORT and HOST", "Set by: COOKIE_SECURE")) and "Changed under General, Needs a restart" in got[3]
-              and pg.evaluate("!!document.querySelector('#genAbout a[href=\"#gen-restart\"]')"), got[0][11:])
+              # (#1158: the Secure cookie a page setting, Sign-in rules' row, named there with its variable)
+              and all(w in got[3] for w in ("Set by: PORT and HOST", "Set by: Accounts and sign-in, Sign-in rules (COOKIE_SECURE)"))
+              and "Changed under General, Needs a restart" in got[3]
+              and pg.evaluate("[...document.querySelectorAll('#genSecBody .set-row-name')].some(n => n.textContent === 'Secure sign-in cookie')")
+              and pg.evaluate("!!document.querySelector('#genAbout a[href=\"#gen-restart\"]')"), [got[0][11:], got[3]])
     except Exception as e:
         check("About (#1004) ran", False, stopped(e))
     finally:
@@ -4681,7 +4684,7 @@ def main():
         check("no Sources card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
-        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 12)   # Visit summary (#186); Lab name matches (#1097)
+        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 13)   # Visit summary (#186); Lab name matches (#1097); Costs' (#1165)
         check("no Settings card shows a stray “null” (#175)", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         check("…and Settings has no Watch and scale any more (#166)", not strict.evaluate("!!document.getElementById('watch')")
               and "Watch and scale" not in strict.evaluate("document.getElementById('setNav').textContent"))
@@ -5127,8 +5130,8 @@ def main():
               c = r.querySelector(':scope > .set-row-ctl').getBoundingClientRect();
               return [Math.round(l.width / b.width * 100), l.right <= c.left, c.top >= l.bottom - 1, r.matches('.wide')]; }); }
           return out; }"""
-        rows286, want286 = {}, {"settings": ["dashboard", "about", "labs", "milestones", "activity", "profile", "security", "device", "display", "accounts", "backups", "logs", "connected"],
-                                "sharing": ["people", "calendar", "summary", "export"]}   # (Account's and Admin's in Settings, #991)
+        rows286, want286 = {}, {"settings": ["dashboard", "about", "labs", "milestones", "profile", "security", "device", "display", "accounts", "backups", "logs", "connected"],
+                                "sharing": ["people", "calendar", "summary", "export"]}   # (Account's and Admin's in Settings, #991; Workouts' rows Dashboard's, #1165)
         for w in (1400, 375):
             strict.set_viewport_size({"width": w, "height": 900})
             for name in want286:
