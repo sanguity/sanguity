@@ -73,10 +73,12 @@ def add(t, k, title, sub="", detail=None, end=None, **extra):
 # ------------------------------------------------------------------ claims
 claim_no = 7_000_000
 oop_used = {}
+ded_used = {}   # (#1163) the part of each year's shares that went to a $1,500 deductible, as an EOB file says it
 
 
 def claim(d, prov, title, billed, cat, kind="medical", drug=None, denied=False):
-    """Insurer pays ~45% of billed (network discount); you owe 20% coinsurance up to a $4,000 yearly max."""
+    """Insurer pays ~45% of billed (network discount); you owe 20% coinsurance up to a $4,000 yearly max. A medical
+    claim says how much of your share went to a $1,500 yearly deductible (#1163); a pharmacy fill doesn't say."""
     global claim_no
     claim_no += R.randint(3, 40)
     allowed = round(billed * R.uniform(0.42, 0.58), 2)
@@ -91,13 +93,16 @@ def claim(d, prov, title, billed, cat, kind="medical", drug=None, denied=False):
             share = 15.0
         oop_used[yr] = oop_used.get(yr, 0) + share
         paid, owe, status = round(allowed - share, 2), round(share, 2), "PROCESSED"
+    ded = None if kind == "pharmacy" else round(min(owe, max(0.0, 1500 - ded_used.get(yr, 0))), 2)   # (no random draw: the rest stays as it was)
+    if ded is not None:
+        ded_used[yr] = round(ded_used.get(yr, 0) + ded, 2)
     i = add(at(d, 12), "claim", title, f"{INSURER} · {prov}",
             {"type": "claim", "insurer": INSURER, "kind": kind, "provider": prov, "drug": drug, "claimId": f"EX{claim_no}",
-             "status": status, "network": "IN_NETWORK", "billed": billed, "paid": paid, "owe": owe,
+             "status": status, "network": "IN_NETWORK", "billed": billed, "paid": paid, "owe": owe, **({"deductible": ded} if ded is not None else {}),
              "lines": [{"date": d.isoformat(), "desc": title, "code": "", "billed": billed,
                         **({"denied": ["Missing referral on file"]} if denied else {})}]})
     costs.append({"id": i, "d": d.isoformat(), "ins": INSURER, "billed": billed, "paid": paid, "owe": owe,
-                  "status": status, "kind": kind, "cat": cat, "prov": prov, "title": title})
+                  "status": status, "kind": kind, "cat": cat, "prov": prov, "title": title, **({"ded": ded} if ded is not None else {})})
     return owe
 
 
