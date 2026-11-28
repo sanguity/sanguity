@@ -17,6 +17,8 @@ What a feed holds:
                  event, "expected, not scheduled". Never a time of day: the records don't know one.
   follow-ups (#1138, followups.py)  the person's own, not done, on the day they noted, all day: "Sanguity follow-up"
                  and nothing more unless they chose to show that one's words, whatever the feed's detail setting
+  records requests (#1133, rec_requests.py)  waiting or extended, on the response date of the rule picked, all day:
+                 "Sanguity records request" unless the person chose to show that one's words
   medication reminders (#162, med_reminders.py)  each time of day of each schedule line with Remind me on (#1094),
                  with its amounts in the full wording, as a recurring event (RRULE) in the line's own time zone (TZID, with a VTIMEZONE), ending on its until day or the day
                  the records say the medication stopped; listed while the feed's "meds" is on (the default)
@@ -414,10 +416,14 @@ def build(db, feed, base_url, now=None):
                 desc = f"A reminder set in Sanguity. Details are in Sanguity: {link}"
             event(e["ident"], e["summary"], desc, None, None, False, when=e["lines"])
 
-    # (#1138) follow-ups not done, on their day: "Sanguity follow-up" unless the person chose to show that one's words
-    from . import followups
+    # (#1138) follow-ups not done, on their day: "Sanguity follow-up" unless the person chose to show that one's words;
+    # (#1133) records requests waiting, on the day the rule picked gives for a response, worded the same way
+    from . import followups, rec_requests
     for e in followups.feed_events(db, pid):
         desc = ("You noted this follow-up in Sanguity." if e["words"] else "A follow-up you noted. Details are in Sanguity.") + f"\nOpen Sanguity: {link}"
+        event(e["ident"], e["summary"], desc, e["day"], e["day"] + timedelta(days=1), True)
+    for e in rec_requests.feed_events(db, pid):
+        desc = "The response date of the rule you picked for a records request. Details are in Sanguity." + f"\nOpen Sanguity: {link}"
         event(e["ident"], e["summary"], desc, e["day"], e["day"] + timedelta(days=1), True)
 
     lines.append("END:VCALENDAR")

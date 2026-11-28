@@ -4021,6 +4021,15 @@ Everything on `main` so far; it becomes the first tagged release.
   Follow-ups card and in the visit's drawer ("You noted: … by …", "date passed", never "overdue"), and in the calendar
   feed as "Sanguity follow-up" unless that one is set to show its words. Encrypted (schema version 56), in backups
   and Export everything, and put back from an export.
+- **Records requests** (#1133): a log of each request for your own records, who it went to, when and how (portal,
+  email, fax, post, in person), counted down to the response date of the rule you pick (US HIPAA 30 days plus a 30-day
+  extension, UK/EU GDPR one calendar month plus two, or your own days), in your time zone: "Sent Mar 3 · response due
+  by Apr 2 (US HIPAA, 30 days)", "Extended to May 2", "Past the date you set". Its letter is drafted on the page (your
+  name, date of birth, the records and format wanted; the law named only for a named rule) to copy, download or print;
+  once the records come, it's linked to their import (from the import's result, or picked), "Received …, imported N
+  records". Open ones are a line each on the Overview's Follow-ups card, the response date is in the calendar feed as
+  "Sanguity records request" unless you choose to show who it went to, and requests are encrypted (schema version 57),
+  in backups and Export everything, and put back from an export. Add → Records request starts one.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 
