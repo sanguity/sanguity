@@ -72,6 +72,9 @@ Account events (no profile), readable by admins:
   settings.user / settings.install   like a profile's settings entry: someone's own setting, or the install's (admin,
                 or actor COMMAND_LINE: server.manage config reset); an install setting's has its "from" and "to" values,
                 and a section reset's "changes", [{"setting", "label", "from", "to"}] (#1006; none is a secret)
+  server.restart {"changes": [{"setting", "label", "from", "to"}], ("fell_back": why)}: an admin's Restart now on General,
+                with what the next start tries; or, by actor START_UP, a start that fell back to the settings before
+                (server_settings.py, #1121). Saving one for the next start is a settings.install entry
   backup.create {"name", "size", "removed"} / backup.check {"name", "ok"} / backup.fail {"error"} / backup.schedule
                 {"schedule", "keep", "from"}: a backup made (Back up now, or actor SCHEDULED_BACKUP), checked by
                 restoring a copy, failing, or the schedule changed (backup_jobs.py, #200)
@@ -100,7 +103,7 @@ ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "ac
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",
                    "labmap.remove", "settings.user", "settings.install", "connect.source", "outside",
                    "backup.create", "backup.check", "backup.fail", "backup.schedule", "backup.replaced", "directory.update",
-                   "records.rekey", "records.copies")
+                   "records.rekey", "records.copies", "server.restart")
 COMMAND_LINE, SETUP_BUILD = "command line", "setup build"
 SCHEDULED_SYNC = "scheduled sync"   # a connected source's pull on its schedule (sync.py)
 SHARE_LINK = "share link"           # whoever holds a share link, opening it (share_links.py)

@@ -30,12 +30,16 @@
   oidc-only off                          turn off Settings → Install → General → Sign-in provider's "Sign in with OIDC
                                          only", so passwords and passkeys sign in again (a provider that keeps everyone out)
   config show                            the server's settings: each one's value, and whether the environment sets
-                                         it, an admin saved it in the app or it's the default (#1006)
+                                         it, an admin saved it in the app (or on Needs a restart, applied at start:
+                                         data/server-settings.json, #1121) or it's the default (#1006)
   config reset SETTING|--all             take away the value saved in the app for a setting (its name, like
                                          SESSION_DAYS or sync.staleDays), or for all of them: each goes back to the
                                          environment's or its default, in the running app within seconds. With
                                          SANGUITY_SAVED_SETTINGS=off in the app's environment, they're left out at
-                                         start instead, until it's taken away (README, The server's settings)
+                                         start instead, until it's taken away (README, The server's settings).
+                                         A setting that needs a restart (like UPLOAD_MAX_FILE_MB, FORWARDED_ALLOW_IPS
+                                         or TZ; --all includes them) goes back to its default at the app's next start
+                                         (#1121): the way back when one it can't start or work with was saved
   restore ARCHIVE [--yes]                replace the records (the database, profiles and setup build) with a backup's,
                                          keeping today's accounts, access, cycle tracking and server settings, everyone
                                          signed out (#917, #964, #1005); the app must be stopped:
@@ -45,7 +49,7 @@
 """
 import os, shutil, sys, tempfile, zipfile
 
-from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, main, oidc, profiles as prof, settings, watch_store
+from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, main, oidc, profiles as prof, server_settings, settings, watch_store
 
 
 APPLE_HEALTH_MAX_BYTES = 16 * 2**30   # export.xml, unzipped: far above a decade of a watch's records
@@ -141,7 +145,8 @@ def _say_access(a, created, aside):
         print(f"Profile {pid} ({name}) was made after the backup and isn't in it: its records are in {aside}.")
 
 
-WHERE = {"environment": "set by the environment", "install": "saved in the app", "default": "the default"}
+WHERE = {"environment": "set by the environment", "install": "saved in the app", "file": "changed on the page, applied at start",
+         "default": "the default"}
 
 
 def _shown(v):
@@ -157,12 +162,22 @@ def _config(db, args):
     have = settings.stored(db, "install")
     defs = [d for d in settings.SETTINGS.values() if d.scope == "install"]
     if args[:1] == ["show"]:
-        rows = []
+        rows, nxt = [], server_settings.next_values()   # (#1121) the file's: as the last start that worked had them
+
+        def after(name, src):
+            d = server_settings.DEFS.get(name)
+            if d is None or src in ("environment", "install") or nxt.get(name, d.default) == server_settings.lookup(name)[1]:
+                return ""
+            return f"  (after a restart: {_shown(nxt.get(name, d.default))})"
         for name in config.VARS:
             src, value = config.lookup(name)
             d = settings.SETTINGS.get(config.VARS[name].setting or "")
             note = f"  (saved in the app: {_shown(have[d.key])}, not in force)" if d and d.key in have and src != "install" else ""
-            rows.append((name + (f" ({d.key})" if d else ""), _shown(value), WHERE[src] + note))
+            rows.append((name + (f" ({d.key})" if d else ""), _shown(value), WHERE[src] + note + after(name, src)))
+        for name in server_settings.DEFS:
+            if name not in config.VARS:
+                src, value = server_settings.lookup(name)
+                rows.append((name, _shown(value), WHERE[src] + after(name, src)))
         for d in defs:
             if not d.env:
                 rows.append((d.key, _shown(have.get(d.key, d.default)) if not d.private else "(private)",
@@ -172,11 +187,25 @@ def _config(db, args):
             print(f"{name:<{wide}}  {value[:60]:<20}  {src}")
         if config.saved_ignored():
             print("SANGUITY_SAVED_SETTINGS=off: the values saved in the app are left out while it's set.")
+        st = server_settings.state()
+        if st["unreadable"]:
+            print(st["unreadable"])
+        if st["fell_back"]:
+            print(f"The last start fell back to the settings before: {st['fell_back']['why']}")
         return
     if args[:1] != ["reset"] or len(args) != 2:
         sys.exit(__doc__)
+    restart = []
     if args[1] == "--all":
         chosen = defs
+        restart = server_settings.reset()
+    elif args[1].strip() in server_settings.DEFS and not getattr(config.VARS.get(args[1].strip()), "setting", None):
+        # (#1121) one that needs a restart: the file's value, good and pending
+        name = args[1].strip()
+        restart = server_settings.reset([name])
+        if not restart:
+            print(f"{name} has no value changed on the page (it's {WHERE[server_settings.lookup(name)[0]]}): nothing to reset.")
+        chosen = []
     else:
         name = args[1].strip()
         d = settings.SETTINGS.get((config.VARS[name].setting if name in config.VARS else name) or "")
@@ -194,7 +223,17 @@ def _config(db, args):
                 activity.log(db, "settings.install", detail={"setting": d.key, "label": d.label, "reset": True,
                              **({} if d.private else {"from": have[d.key], "to": d.default})}, actor=activity.COMMAND_LINE)
                 gone.append(d)
-    if not gone:
+        for name in restart:
+            d = server_settings.DEFS[name]
+            activity.log(db, "settings.install", detail={"setting": name, "label": f"{d.label} ({d.group}), at the next restart",
+                         "reset": True, "from": restart[name], "to": d.default}, actor=activity.COMMAND_LINE)
+    for name in restart:
+        src, value = server_settings.lookup(name)
+        print(f"{name}: back to {_shown(server_settings.DEFS[name].default)}"
+              + (f" once the app starts again (docker compose restart app, or restart it where it's deployed); "
+                 f"{WHERE['environment']} as {_shown(value)}, which wins" if src == "environment" else
+                 " once the app starts again (docker compose restart app, or restart it where it's deployed)") + ".")
+    if not gone and chosen and not restart:
         print("Nothing to reset: " + ("no setting has a value saved in the app." if args[1] == "--all"
                                       else f"{chosen[0].key} has no value saved in the app."))
     for d in gone:

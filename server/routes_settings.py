@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from . import accounts, activity, config, db as dbm, general, main, presets, settings
+from . import accounts, activity, config, db as dbm, general, main, presets, server_settings, settings
 from .main import _client_ip, admin, fresh, get_db, need, user
 
 router = APIRouter()
@@ -421,6 +421,82 @@ def install_backups_logging(s=Depends(admin)):
 def install_about(s=Depends(admin)):
     """(#1004) General → About: the version, the deployment, the folders, the limits (general.py). Contacts nobody."""
     return general.about()
+
+
+# ---------------------------------------------------------------- General → Needs a restart (#1121, server_settings.py)
+
+class RestartValues(BaseModel):
+    values: dict[str, Any]
+
+
+def _restart_state():
+    st = server_settings.state()
+    if not settings.connected_sources():   # (#1096) none of theirs while they're off, as About's limits
+        st["settings"] = [r for r in st["settings"] if r["group"] != "Connected sources"]
+    return {**st, "settings_at": general.KINDS[general.deployment()]["settings"], "deployment": general.deployment()}
+
+
+def _restart_label(name):
+    d = server_settings.DEFS[name]
+    return f"{d.label} ({d.group})"
+
+
+@router.get("/api/settings/install/restart")
+def restart_state(s=Depends(admin)):
+    """The settings that need a restart: each one's value in force and where it's from, the value the next start takes
+    where it differs, and whether a restart is waited for, or the last start fell back to the values before."""
+    return _restart_state()
+
+
+@router.put("/api/settings/install/restart/values")
+def restart_values(body: RestartValues, request: Request, s=Depends(admin), db=Depends(get_db)):
+    """Save values ({name: value, or null for the default}) for the next start: each checked against its bounds
+    (400), one the environment sets refused (409); the fresh check (403 reauth_required), then logged with its old and
+    new value. Nothing changes in the running server: General says Restart needed."""
+    for name, v in body.values.items():   # every value checked before the fresh check, as an install setting's
+        d = server_settings.DEFS.get(name)
+        if d is None:
+            raise HTTPException(404, f"There's no setting called {name} here.")
+        if server_settings.lookup(name)[0] == "environment":
+            raise HTTPException(409, f"“{d.label}” is set by the server's environment ({name}), so it can't be changed here. "
+                                     f"To change it here, take {name} out of where the server is set up and start it again.")
+        try:
+            None if v is None or v == "" else d.check(v)
+        except server_settings.Refused as e:
+            raise HTTPException(400, str(e))
+    fresh(request, s, "change a server setting")
+    try:
+        changed = server_settings.change(body.values, by=s["username"])
+    except server_settings.Refused as e:
+        raise HTTPException(400, str(e))
+    except (LookupError, PermissionError) as e:
+        raise HTTPException(409, str(e))
+    except OSError as e:
+        raise HTTPException(500, f"Not saved: {server_settings.path()} couldn't be written ({type(e).__name__}).")
+    with dbm.transaction(db):
+        for name, old, new in changed:
+            _log(db, s, None, "install", {"setting": name, "label": _restart_label(name) + ", at the next restart",
+                                          "from": old, "to": new}, request)
+    return _restart_state()
+
+
+@router.post("/api/settings/install/restart")
+def restart_now(request: Request, s=Depends(admin), db=Depends(get_db)):
+    """Restart now: after the fresh check, logged with what it puts in force, the receiver's settings are copied for it
+    (it restarts itself on seeing them change), and the app stops once this has been answered; Docker's restart policy
+    starts it again, and the next start tries what's pending (server_settings.start)."""
+    if server_settings.state()["trying"]:   # a stop now would be taken for theirs failing: the next start would drop them
+        raise HTTPException(409, f"The settings this server started with are still being checked (it takes about "
+                                 f"{server_settings.PROMOTE_SECONDS} seconds after a start): restart once they're kept.")
+    fresh(request, s, "restart the server")
+    now, nxt = server_settings.in_force(), server_settings.next_values()
+    changes = [{"setting": n, "label": _restart_label(n), "from": now.get(n, d.default), "to": nxt.get(n, d.default)}
+               for n, d in server_settings.DEFS.items() if now.get(n, d.default) != nxt.get(n, d.default)]
+    with dbm.transaction(db):
+        activity.log(db, "server.restart", s, None, {"changes": changes}, _client_ip(request))
+    server_settings.write_receiver(nxt)
+    server_settings.stop_soon()
+    return {"restarting": True, "changes": changes}
 
 
 class Rename(BaseModel):

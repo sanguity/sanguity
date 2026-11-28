@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, backup_jobs, calendar, config, crypto, db as dbm, demo, edits, export, fhir_export, hrzones, jobs, milestones, oidc, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, units, uploads, watch_keys, watch_store
+from . import accounts, activity, alerts, atrest, backup, backup_jobs, calendar, config, crypto, db as dbm, demo, edits, export, fhir_export, hrzones, jobs, milestones, oidc, passkeys, profiles as prof, records, security as sec, server_settings as restart_settings, settings, sync, twofactor, units, uploads, watch_keys, watch_store
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -164,6 +164,7 @@ async def lifespan(app):
             with dbm.transaction(db):   # share links and feeds an older version left to come back with their person (#590)
                 accounts.end_lost_access(db)
             _setup_code(db)
+            restart_settings.log_start(db)   # (#1121) a start that fell back to the settings before, in the install log
         finally:
             db.close()
         jobs.start()

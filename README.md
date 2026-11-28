@@ -235,6 +235,24 @@ Or start the app with `SANGUITY_SAVED_SETTINGS=off` in `.env` (TrueNAS: Addition
 the variable): every value saved in the app is left out, each setting the environment's or its default, until it's
 taken out again. Sign in, put the setting right in the app, then take the line out and `docker compose up -d`.
 
+**Settings that need a restart.** Some are read only as the server starts: the upload limits (`UPLOAD_MAX_FILE_MB`,
+`UPLOAD_MAX_TOTAL_MB`, `UPLOAD_MAX_FILES`, `JOURNAL_PHOTO_MAX_MB`), connected sources' (`SYNC_HOURS`,
+`SYNC_MAX_RESOURCES`, `SYNC_MAX_ATTACHMENT_MB`, `CONNECT_TIMEOUT`) and Health Links' (`SHL_MAX_MB`, `SHL_MAX_FILES`,
+`SHL_TIMEOUT`) limits, the password checks at once (`HASH_PARALLEL`), the trusted proxies (`FORWARDED_ALLOW_IPS`:
+addresses or networks, or `*`), the phone receiver's time zone (`TZ`) and unclaimed data's days (`SLOT_GRACE_DAYS`),
+and how long what a restore replaced is kept (`RESTORE_KEEP_DAYS`). Ports and the bind address stay Docker's. An admin
+changes them on Settings → Install → General → Needs a restart: each is checked against its bounds, saved to
+`server-settings.json` in the data folder (readable only by the app's user), and shown as **Restart needed** until
+**Restart now** (the same confirmation as any server setting; logged) stops the app, which Docker's restart policy
+(`unless-stopped`, in every template) starts again. The receiver restarts itself when its own change. The environment
+still wins where it sets one.
+
+A new value never leaves the server unable to start: it's tried at the next start and kept once the server has
+answered its health check for 30 seconds. If the server stops before that, or isn't healthy within 3 minutes (then it
+stops itself), the next start goes back to the last values that worked, drops the new ones, and General says why.
+`docker compose exec app python -m server.manage config show` lists them too (with the value after a restart), and
+`config reset NAME` (or `--all`) puts the default back for the next start: then `docker compose restart app`.
+
 ### Updating
 
 **Database migrations run at start-up.** Each time the app starts, it upgrades its database to the version it

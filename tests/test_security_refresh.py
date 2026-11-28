@@ -178,6 +178,8 @@ ROUTES = {
     ("GET", "/api/settings/install/about"): (ADMIN, None),   # General → About (#1004)
     ("GET", "/api/settings/install/demo"): (ADMIN, None), ("POST", "/api/settings/install/demo"): (ADMIN, None),   # General → Demo profile (#1101)
     ("DELETE", "/api/settings/install/demo"): (ADMIN, None),
+    ("GET", "/api/settings/install/restart"): (ADMIN, None), ("PUT", "/api/settings/install/restart/values"): (ADMIN, None),   # General → Needs a restart (#1121)
+    ("POST", "/api/settings/install/restart"): (ADMIN, None),
     ("GET", "/api/labmaps"): (ADMIN, None), ("PATCH", "/api/labmaps/{mid}"): (ADMIN, None), ("DELETE", "/api/labmaps/{mid}"): (ADMIN, None),
     ("GET", "/api/connect/sources"): (ADMIN, None), ("POST", "/api/connect/sources"): (ADMIN, None),
     ("PATCH", "/api/connect/sources/{cid}"): (ADMIN, None), ("DELETE", "/api/connect/sources/{cid}"): (ADMIN, None),

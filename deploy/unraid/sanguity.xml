@@ -15,7 +15,7 @@
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/sanguity/sanguity/main/deploy/unraid/sanguity.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/sanguity/sanguity/main/docs/logo/sanguity-avatar.png</Icon>
-  <ExtraParams>--read-only --tmpfs /tmp</ExtraParams>
+  <ExtraParams>--read-only --tmpfs /tmp --restart unless-stopped</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <DonateText/>

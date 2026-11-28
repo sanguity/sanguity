@@ -83,19 +83,59 @@ from server import security   # noqa: E402  (the app's own throttle, for bad sig
 DATA = os.environ.get("DATA", "/data")
 SECRET_FILE = os.environ.get("SECRET_FILE", "/run/secret/watch_secret")
 KEYS_FILE = os.environ.get("KEYS_FILE") or os.path.join(DATA, "keys", "receiver-secrets.json")
-DEFAULT_TZ = os.environ.get("TZ_DEFAULT", "UTC")
+# (#1121) the receiver's settings changed on the app's Settings → General (Needs a restart): the app copies them here, beside
+# the secrets, at Restart now (server/server_settings.py). Read once, as the receiver starts; settings_watch restarts it
+# when the file changes. The environment's (TZ_DEFAULT, SLOT_GRACE_DAYS, RESTORE_KEEP_DAYS) still wins where set.
+SETTINGS_FILE = os.path.join(os.path.dirname(KEYS_FILE), "receiver-settings.json")
+
+
+def _settings_sig():
+    try:
+        st = os.stat(SETTINGS_FILE)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _read_settings():
+    try:
+        with open(SETTINGS_FILE, encoding="utf-8") as f:
+            doc = json.load(f)
+        return doc if isinstance(doc, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+SETTINGS_SIG = _settings_sig()   # (before the read: a change while reading is a change seen)
+GIVEN = _read_settings()
+
+
+def _zone_given():
+    """The time zone the app copied here, where this machine's time zone database knows it; else None."""
+    name = GIVEN.get("TZ")
+    if not isinstance(name, str) or not name:
+        return None
+    try:
+        ZoneInfo(name)
+        return name
+    except (ZoneInfoNotFoundError, ValueError):
+        return "UTC" if name == "UTC" else None
+
+
+DEFAULT_TZ = os.environ.get("TZ_DEFAULT", "").strip() or _zone_given() or "UTC"
 PORT = int(os.environ.get("PORT", "8080"))
 MAX_BODY = 32 * 1024 * 1024
 BAD_FREE = 10   # bad signatures or secrets an address may send in 15 minutes before it waits (#222)
 
 
 def _days(name, default):
-    """A number of days from the environment, in seconds; the default when unset, unreadable or below zero."""
+    """A number of days from the environment, else the app's copy (#1121), in seconds; the default when neither is set,
+    or it's unreadable or below zero."""
     try:
-        v = float(os.environ.get(name) or default)
-    except ValueError:
+        v = float(os.environ.get(name) or GIVEN.get(name) or default)
+    except (TypeError, ValueError):
         v = default
-    return (v if v >= 0 else default) * 86400   # (NaN isn't >= 0)
+    return (v if 0 <= v < 1e6 else default) * 86400   # (NaN isn't >= 0)
 
 
 SLOT_GRACE = _days("SLOT_GRACE_DAYS", 7)   # a slot nothing names is deleted this long after it's first found (#593)
@@ -1565,6 +1605,24 @@ def apply_restore():
     return aside
 
 
+def settings_changed():
+    """Whether receiver-settings.json is another than the one read at start (made, changed or removed)."""
+    return _settings_sig() != SETTINGS_SIG
+
+
+def settings_watch(srv, every=5, wait=60):
+    """(#1121) Restart on a change to the settings the app copied here: once the uploads waiting are folded in (at most
+    wait seconds; any left are archived already, and folded in at the next start), the server stops and the receiver
+    exits."""
+    while not settings_changed():
+        time.sleep(every)
+    log("its settings changed (Settings → General on the app): restarting to read them")
+    until = time.monotonic() + wait
+    while not work.empty() and time.monotonic() < until:
+        time.sleep(0.5)
+    srv.shutdown()
+
+
 def load_key():
     try:
         crypto.keyring.load()
@@ -1597,4 +1655,7 @@ if __name__ == "__main__":
     log(f"taking uploads signed with {len(keys())} secret(s)")
     threading.Thread(target=worker, args=(stores,), daemon=True).start()
     log(f"listening on :{PORT}")
-    Server(("0.0.0.0", PORT), H).serve_forever()
+    srv = Server(("0.0.0.0", PORT), H)
+    threading.Thread(target=settings_watch, args=(srv,), daemon=True).start()
+    srv.serve_forever()
+    sys.exit(0)   # its settings changed: Docker's restart policy starts it again, reading them
