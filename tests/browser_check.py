@@ -30310,7 +30310,8 @@ def main():
             # why, with Try again, which draws them, focus on the first (it was its heading alone: no hint, no list, no
             # Add, nothing said); and in a browser without passkeys, the list still, and why there's no Add
             at1117, fail1117 = "https://sanguity.test", []
-            c1117 = browser.new_context(**p.devices["Galaxy Tab S4"], bypass_csp=True, service_workers="block")
+            c1117 = browser.new_context(viewport={"width": 712, "height": 1138}, device_scale_factor=2.25, is_mobile=True, has_touch=True, bypass_csp=True,   # (a Galaxy Tab S4)
+                                         service_workers="block", user_agent="Mozilla/5.0 (Linux; Android 8.1.0; SM-T837A) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
             c1117.add_cookies([{**{k: c[k] for k in ("name", "value", "path", "httpOnly", "sameSite")}, "domain": "sanguity.test", "secure": True}
                                for c in ctx.cookies() if c["name"] == "sg_session"])
 
@@ -30338,7 +30339,7 @@ def main():
                     if p1117.get_by_role("button", name="Try again").count():   # (none before: the check fails below, not here)
                         p1117.get_by_role("button", name="Try again").click()
                 elif case == "listed":
-                    p1117.goto(at1117 + "/settings.html?profile=1#security")
+                    p1117.goto(at1117 + "/settings.html#security")
                 else:
                     p1117.reload()
                 try:
