@@ -62,7 +62,7 @@ function syncNotice(rows) {
 function adminGate() {
   $("#adminTf").hidden = false; $("#adminTools").hidden = $("#userDanger").hidden = true; $("#users").hidden = false;
   $("#secNotice").hidden = $("#codeNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
-  for (const id of ["#gen-host", "#gen-security", "#gen-backups", "#gen-phone", "#gen-experimental", "#gen-demo", "#gen-about", "#backups", "#admin", "#sec-sync", "#directory", "#labmaps", "#installLog"]) gateCard($(id));
+  for (const id of ["#gen-host", "#gen-security", "#gen-signin", "#gen-backups", "#gen-phone", "#gen-experimental", "#gen-demo", "#gen-about", "#backups", "#admin", "#sec-sync", "#directory", "#labmaps", "#installLog"]) gateCard($(id));
 }
 function gateCard(card) {
   if (card.querySelector(".adm-gate")) return;
@@ -178,6 +178,7 @@ async function loadUsers(mine = document.activeElement?.closest?.("#userList tr[
         el("td", {class: "who"}, el("b", {text: u.username}), self ? el("span", {class: "muted", text: " (you)"}) : null,
           u.is_admin ? el("span", {class: "tag", text: "admin"}) : null,
           u.two_factor ? el("span", {class: "tag", text: "two-factor"}) : null,
+          ME.sign_in_provider && u.oidc.some(i => i.current) ? el("span", {class: "tag", text: ME.sign_in_provider.label}) : null,   // (#1109)
           u.codes_stopped ? el("span", {class: "tag off", text: "codes stopped"}) : null,   // (#928)
           u.disabled ? el("span", {class: "tag off", text: "disabled"}) : null,
           !u.disabled && u.must_change_pw ? el("span", {class: "muted new-pw", text: "Hasn't chosen a password yet"}) : null),
@@ -220,8 +221,26 @@ function userMenu(u) {
       : {text: "Disable…", run: () => changeUser(u, {disabled: true}, {title: `Disable ${n}?`, message: [
           "They're signed out everywhere and can't sign in until an admin enables the account again.",
           "Their profiles and records stay as they are."], action: "Disable", danger: true}, `Disabled ${n}: they're signed out everywhere.`)},
+    ...oidcItems(u),
     null,
     {text: "Remove account…", danger: true, run: () => { $("#rmUser").value = u.id; USERZONE.show(n); }}].filter(e => e !== false), "user", "user-more");
+}
+/* (#1109) an account's identities at the install's sign-in provider: one linked by its subject (the provider's ID for
+   the person, its ID tokens' sub), each unlinked, which signs the account out everywhere; after the fresh check */
+function oidcItems(u) {
+  const p = ME.sign_in_provider, n = u.username;
+  if (!p) return [];
+  const mine = u.oidc.filter(i => i.current);
+  return [...(mine.length ? [] : [{text: `Link a ${p.label} identity…`, run: async () => {
+      const field = el("input", {autocomplete: "off", autocapitalize: "none", spellcheck: "false", required: true});
+      if (!await ask({title: `Link a ${p.label} identity to ${n}?`, action: "Link", field, message: [
+          `${n} can then sign in with ${p.label}. Its subject is the provider's ID for the person (the sub of its ID tokens), shown on their page there.`,
+          el("label", {}, "Subject", field)]})) return;
+      changeUser(u, () => call(`users/${u.id}/oidc`, "POST", {subject: field.value}), null, `Linked ${field.value.trim()} to ${n}.`);
+    }}]),
+    ...mine.map(i => ({text: `Unlink ${i.name || i.subject}…`, run: () => changeUser(u, () => call(`users/${u.id}/oidc/${i.id}`, "DELETE"),
+      {title: `Unlink “${i.name || i.subject}” from ${n}?`, message: [`${n} no longer signs in with it, and is signed out everywhere.`],
+       action: "Unlink", danger: true}, `Unlinked it from ${n}: they're signed out everywhere.`)}))];
 }
 /* what turning off someone's two-factor sign-in removes (#536: a passkey-only account was told of a phone and recovery
    codes it never had, and not that its passkeys go): the server takes the authenticator app, its codes and every passkey */
@@ -256,7 +275,7 @@ async function changeUser(u, body, sure, done) {
   if (sure && !await ask(sure)) return;
   try {
     let r;
-    try { r = await fresh(() => call("users/" + u.id, "PATCH", body)); }
+    try { r = await fresh(typeof body === "function" ? body : () => call("users/" + u.id, "PATCH", body)); }   // (a function: its own call, #1109)
     catch (e) {   // disabling the only owner of a profile: the server says which, and it's asked once more
       if (!(e.detail && e.detail.sole_owner_of)) throw e;
       if (!await ask({title: `Disable ${u.username} anyway?`, message: e.message, action: "Disable anyway", danger: true})) throw new Error("Not disabled.");
@@ -493,7 +512,7 @@ async function adminStart(first) {
   if (ME.user.admin_needs_two_factor) { adminGate(); SET_NAV.again(); return; }
   loadInstallLog();
   await Promise.all([loadUsers(), loadNotice(), loadLabmaps(), loadGenSecurity(), loadRequireTf(), cs && loadSetup(), cs && loadSync(), loadBackups(),
-                     loadHost(), loadGenBackups(), loadPhone(), loadGenExperimental(), loadGenDemo(), loadGenAbout(),
+                     loadHost(), loadSignin(), loadGenBackups(), loadPhone(), loadGenExperimental(), loadGenDemo(), loadGenAbout(),
                      cs && loadDirectory()]);   // General's parts (#998); #992: the directory's lists, an admin's alone
   SET_NAV.again();
 }

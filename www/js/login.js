@@ -82,10 +82,82 @@ function codeStep(on, methods = {code: true}) {
     false, {say: pkOnly && !stuck});   // (read as it, or the code's field, takes focus)
   if (on) (code ? document.getElementById("c") : stuck ? says : pkBtn).focus();
 }
+/* ---------------------------------------------------------------- the install's sign-in provider (#1109)
+   Its button, where one is set up (GET /api/login/oidc); with Sign in with OIDC only, the only way in, the password
+   and a passkey on its own put away. Pressed: the provider's address from the server (which sets a cookie only this
+   browser sends back), then the provider. Back here with ?code=&state= (this page is the redirect URI): taken from the
+   address and history at once, and posted same-origin, where the server checks them. Signed in as with a password, or
+   its second step (the account's code or passkey), or, for a link started under Settings (OIDC_LINK), back there with
+   what happened (OIDC_SAID, account.js) */
+const oidcBtn = document.getElementById("oidc"), oidcBox = document.getElementById("oidcBox");
+const OIDC_SAID = "sgOidcSaid", OIDC_LINK = "sgOidcLink";
+let oidcOnly = false, oidcP = null;
+function oidcShow(p) {
+  if (!p || !p.label) return;
+  oidcP = p;
+  oidcBtn.textContent = `Sign in with ${p.label}`;
+  oidcBox.hidden = !!ticket;   // (not beside a second step)
+  oidcOnly = !!p.only;
+  if (oidcOnly && !ticket) {   // nothing else signs in: the button alone
+    for (const id of ["u", "step1"]) document.getElementById(id).hidden = true;
+    document.querySelector('label[for="u"]').hidden = btn.hidden = pkBox.hidden = document.getElementById("oidcOr").hidden = true;
+    oidcBtn.classList.add("primary");
+    if (!document.activeElement || document.activeElement === document.body || document.activeElement.id === "u") oidcBtn.focus();
+  }
+}
+oidcBtn.addEventListener("click", async () => {
+  oidcBtn.disabled = true; fieldSaid(err, "", null, oidcBox);
+  try {
+    if (!await settled()) throw new Error("Couldn't reach the server.");
+    const r = await api("login/oidc/start", {method: "POST"}), j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || "Sign-in failed (" + r.status + ").");
+    sessionStorage.removeItem(OIDC_LINK);
+    location.assign(j.url);
+    return;
+  } catch (e) { fieldSaid(err, e.message === "Failed to fetch" ? "Couldn't reach the server." : e.message, null, oidcBox); }
+  oidcBtn.disabled = false;
+  oidcBtn.focus({preventScroll: true});
+});
+async function oidcBack(p) {
+  try { history.replaceState(null, "", location.pathname); } catch (e) {}
+  const linking = sessionStorage.getItem(OIDC_LINK) === "1";
+  sessionStorage.removeItem(OIDC_LINK);
+  const busy = el("p", {class: "note", id: "oidcBusy", role: "status", text: "Finishing the sign-in…"});
+  f.querySelector(".logo").after(busy);
+  let r, j = {};
+  try {
+    if (!await settled()) throw new Error("not reached");   // (a Log out still to finish ends the sign-in before this one)
+    r = await api("login/oidc/return", {method: "POST", body: JSON.stringify({code: p.get("code"), state: p.get("state"), error: p.get("error")})});
+    j = await r.json().catch(() => ({}));
+  } catch (e) { j = {detail: "Couldn't reach the server to finish the sign-in. Start it again."}; }
+  busy.remove();
+  const said = j.detail || (r && !r.ok ? "The sign-in couldn't be finished (" + r.status + ")." : "");
+  if (linking) {   // back to Sign-in and security, where it was started, with what happened
+    sessionStorage.setItem(OIDC_SAID, JSON.stringify(r && r.ok ? {text: `Linked${j.name ? ` “${j.name}”` : ""}: you can sign in with it now.`} : {text: said, bad: true}));
+    location.replace("settings.html#oidc");
+    return;
+  }
+  if (r && r.ok && j.two_factor) {
+    document.getElementById("u").value = j.username || "";
+    oidcBox.hidden = true;
+    codeStep(j.ticket, j.methods);
+    return;
+  }
+  if (r && r.ok) { signedIn(j); return; }
+  fieldSaid(err, said, null, oidcBox);
+  oidcBtn.focus({preventScroll: true});
+}
+{
+  const p = new URLSearchParams(location.search), back = p.has("state") || p.has("code") || p.has("error");
+  api("login/oidc").then(r => r.ok ? r.json() : null).then(oidcShow).catch(() => {});
+  if (back) oidcBack(p);
+}
 /* Use another account (#518): back to the first step, its username and password empty, from the second step */
 document.getElementById("other").addEventListener("click", ev => {
   ev.preventDefault();
   codeStep(null);
+  if (oidcOnly) { location.replace("login.html"); return; }   // (#1109: the provider's button again, alone)
+  if (oidcP) oidcBox.hidden = false;
   for (const id of ["u", "p", "c"]) document.getElementById(id).value = "";
   fieldSaid(err, "", null, pkBox);
   document.getElementById("u").focus();

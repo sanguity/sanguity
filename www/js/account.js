@@ -289,6 +289,56 @@ async function pkGone(at, text) {
   goneSay([...$("#pkList").querySelectorAll("tbody tr")], at, text, "td.acts button:last-child", $("#passkeys h2"), $("#pkList"));
 }
 
+/* ---------------------------------------------------------------- sign-in provider (#1109) */
+/* this account's identity at the install's provider (routes_oidc.py): linked by signing in there (after the fresh
+   check, in the card: admin.js fresh), which goes to the provider and back through the sign-in page (login.js, which
+   leaves what happened in OIDC_SAID for this card to say); unlinked after the fresh check, which signs out every other
+   device. Hidden while the install has no provider. */
+const OIDC_SAID = "sgOidcSaid", OIDC_LINK = "sgOidcLink";
+async function loadOidc() {
+  const card = $("#oidc"), p = ME.sign_in_provider;
+  if (!p) { card.hidden = true; return; }
+  let st;
+  try { st = await call("me/oidc"); } catch (e) { say("#oidcMsg", e.message, true); return; }
+  card.hidden = false;
+  const label = (st.provider || p).label, mine = st.identities.filter(i => i.current);
+  $("#oidcHint").textContent = `Sign in with ${label} too, once your identity there is linked to this account.` +
+    ((st.provider || p).only ? ` This server signs in with ${label} only.` : "");
+  const link = el("button", {class: "btn small", type: "button", id: "oidcLinkBtn", text: `Link your ${label} identity`, onclick: async () => {
+    say("#oidcMsg", "");
+    try {
+      const r = await fresh(() => call("me/oidc/start", "POST"), $("#oidcReauth"));
+      sessionStorage.setItem(OIDC_LINK, "1");
+      location.assign(r.url);
+    } catch (e) { say("#oidcMsg", e.message, true); }
+  }});
+  $("#oidcList").replaceChildren(...present(mine.length ? el("table", {class: "tbl pk"},
+    el("thead", {}, el("tr", {}, ...["Identity", "Linked", "Last used", ""].map(thOf))),
+    el("tbody", {}, ...mine.map(i => el("tr", {"data-oidc": i.id},
+      el("td", {}, i.name || i.subject, i.name ? el("div", {class: "muted", text: `ID ${i.subject}`}) : null),
+      el("td", {text: when(i.created)}), el("td", {text: i.last_used ? when(i.last_used) : "never"}),
+      el("td", {class: "acts"}, el("button", {class: "btn small", type: "button", text: "Unlink", onclick: () => oidcUnlink(i, label)})))))) :
+    emptyState(`Not linked: link it to sign in with ${label}.`, null, {cls: ""}), mine.length ? null : el("div", {class: "row"}, link)));
+  const said = sessionStorage.getItem(OIDC_SAID);   // from the sign-in page, back from the provider
+  if (said) {
+    sessionStorage.removeItem(OIDC_SAID);
+    const {text, bad} = JSON.parse(said);
+    say("#oidcMsg", text, bad);
+    $("#oidcHd").focus();
+  }
+}
+async function oidcUnlink(i, label) {
+  say("#oidcMsg", "");
+  if (!await ask({title: `Unlink “${i.name || i.subject}”?`, danger: true, action: "Unlink",
+      message: [`It no longer signs in to this account with ${label}.`, "Every other device signed in to your account is signed out."]})) return;
+  try {
+    const r = await fresh(() => call("me/oidc/" + i.id, "DELETE"), $("#oidcReauth"));
+    await Promise.all([loadOidc(), loadSessions()]);
+    say("#oidcMsg", "Unlinked." + (r.signed_out_elsewhere ? ` Signed out ${r.signed_out_elsewhere} other device${r.signed_out_elsewhere === 1 ? "" : "s"}.` : ""));
+    $("#oidcLinkBtn")?.focus();
+  } catch (e) { say("#oidcMsg", e.message, true); }
+}
+
 /* ---------------------------------------------------------------- start (settings-nav.js) */
 /* a one-time password to replace, or the second factor the server requires to set up: Sign-in and security alone,
    the top bar's menus put away (nav.js lock) and nothing else asked of the server, which refuses it until then.
@@ -315,6 +365,7 @@ async function acctStart(first) {
   const loads = Promise.all([loadSessions(), loadTwoFactor(), loadPasskeys()]);
   await first;
   for (const g of SG_PAGES.settings.groups) if (g.part === "You" && g.id !== "display") for (const id of g.has) $("#" + id).hidden = false;
-  await loads;
+  $("#oidc").hidden = true;   // (#1109: shown by loadOidc, where the install has a provider)
+  await Promise.all([loads, loadOidc()]);
   SET_NAV.again();   // the cards have their content now, so a section link lands where it should
 }
