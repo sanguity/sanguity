@@ -419,13 +419,16 @@ def _hash(v):
 
 
 def address_group(ip):
-    """Where sign-ins are counted from: an IPv4 address, or an IPv6 address's /64 (one household's, or one attacker's)."""
+    """Where sign-ins are counted from: an IPv4 address, or an IPv6 address's /64 (one household's, or one attacker's);
+    one that carries an IPv4 address (mapped, 6to4's 2002::/16, Teredo's 2001::/32: #1111) by that address, as every
+    /64 of it is the same host's."""
     try:
         a = ipaddress.ip_address(str(ip or "").split("%")[0])
     except ValueError:
         return str(ip or "?")[:64]
     if a.version == 6:
-        return str(a.ipv4_mapped) if a.ipv4_mapped else str(ipaddress.ip_network(f"{a}/64", strict=False))
+        v4 = a.ipv4_mapped or a.sixtofour or (a.teredo[1] if a.teredo else None)
+        return str(v4) if v4 else str(ipaddress.ip_network(f"{a}/64", strict=False))
     return str(a)
 
 
@@ -438,17 +441,28 @@ class _Pending:
     oldest of all, so a flood drops only its own. A link or a fresh check at the provider (signed in) is the account's:
     at most STARTS_MOST in STATE_TTL seconds (else 429, which keeps out only that account) and PER_ACCOUNT waiting."""
     MAX, PER_ACCOUNT = 10000, 20
+    SWEEP = 60   # (#1111) seconds between sweeps of the accounts' start times: never rebuilt on every start
 
     def __init__(self):
-        self._p, self._lock, self._starts = {}, threading.Lock(), {}
+        self._p, self._lock, self._starts, self._swept = {}, threading.Lock(), {}, 0.0
+
+    def _sweep(self, now):
+        """The accounts' start times older than STATE_TTL gone, at most every SWEEP seconds; and never more than MAX
+        accounts kept, the longest idle going first (#1111)."""
+        if now - self._swept < self.SWEEP and len(self._starts) <= self.MAX:
+            return
+        self._swept = now
+        live = {g: t for g, t in self._starts.items() if t and t[-1] > now - STATE_TTL}
+        if len(live) > self.MAX:
+            live = dict(sorted(live.items(), key=lambda gt: gt[1][-1])[-self.MAX:])
+        self._starts = live
 
     def add(self, state, entry):
         now = time.time()
         group = f"account {entry['uid']}" if entry.get("uid") else address_group(entry.get("ip"))
         with self._lock:
             if entry.get("uid"):
-                self._starts = {g: t for g, t in self._starts.items() if t and t[-1] > now - STATE_TTL} \
-                    if len(self._starts) > self.MAX else self._starts
+                self._sweep(now)
                 times = [t for t in self._starts.get(group, []) if t > now - STATE_TTL]
                 if len(times) >= STARTS_MOST:
                     raise OidcError("Too many were started from your account. Try again in a few minutes.", 429)

@@ -31,6 +31,7 @@ Everything on `main` so far; it becomes the first tagged release.
 - Sign in with OIDC (Authentik, Keycloak, Authelia, Google…): one provider per install, each person's identity linked
   by them or an admin, the provider's two factors counted where its ID token says so, and an optional "Sign in with
   OIDC only" that `server.manage oidc-only off` turns back (#1109).
+- Sign in with OIDC's sign-in counting groups an address that carries an IPv4 one (6to4, Teredo) by it, and sweeps the accounts' start times at most once a minute (#1111).
 - A security review against OWASP ASVS (`docs/security-review.md`) with its accepted deviations (#79, #81).
 - `docker/dev-stack.sh`: a test copy of any branch beside a real install, also as a TrueNAS custom app (#14).
   `--compose FILE` keeps the app definition out of the branch's hands; it fetches only a branch or tag of that
