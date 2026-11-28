@@ -474,7 +474,7 @@ only when asked, which kinds of file, the largest, and a total per connection), 
 the ones left out are listed with **Fetch anyway**. When a connection stops syncing (several failures in a row,
 access ended, or no successful sync for `Warn when a connection hasn't synced` days, 3 by default), the profile's
 main page says so with a link, the profile's activity log notes it once, and admins see it in Settings' Install.
-Nothing is sent anywhere: no email or push.
+Nothing is sent unless you set up notifications to your own server ([Notifications](#notifications)).
 
 ### Typing records in
 
@@ -536,7 +536,8 @@ looks anything up.
 **Sharing → Calendar feed** gives you a private address for your own calendar app (iPhone or Mac Calendar, Google
 Calendar, Outlook) to subscribe to. It lists the profile's upcoming appointments, imported or typed in, and, where
 a lab panel has been drawn at a steady rhythm, the next expected draw as a tentative all-day event marked
-"expected, not scheduled". Sanguity sends no notifications: your calendar app fetches the feed every few hours.
+"expected, not scheduled". Nothing is sent unless you set up notifications to your own server
+([Notifications](#notifications)): your calendar app fetches the feed every few hours.
 Events say only "Appointment" or "Labs expected" unless you choose full details (title, place, panels, source),
 since calendars often sync to a phone maker's or email provider's cloud; results and diagnoses are never included.
 **Medication reminders** (#162) are set on a current medication's details on the Timeline (owners and editors): times
@@ -548,6 +549,20 @@ shown once; get a new one or turn the feed off there any time. A feed is deleted
 when they sign out all other devices, sign in with a recovery code or have their password reset by an admin.
 Google Calendar and Outlook on the web fetch from their own servers, so they need Sanguity reachable over HTTPS
 from the internet; a phone on your home network or tailnet works without that.
+
+### Notifications
+
+Off by default: nothing is sent unless you set up notifications to your own server. An admin sets the server under
+**Settings → Install → General → Notifications**: a topic of a self-hosted [ntfy](https://ntfy.sh) server, like
+`https://ntfy.example.com/sanguity` (https only, unless the server is on your local network), its access token if
+the topic needs one (saved encrypted and never shown again, or `NOTIFY_TOKEN` in the server's environment), and
+**Send a test**. Then each person turns them on under **Settings → Notifications**, for each profile they can see:
+**New results** (a connected portal's sync brought new records) and **Dose reminders** (at the times of the
+medication schedules with Remind me on, in the time zone they were set in; paused ones don't remind). A notification
+says only which profile and what kind, "Sanguity: new results for Ben" or "Sanguity: a dose is due for Ben", never a
+result, a medication or anything else of the records; tapping it opens Sanguity, where you sign in to see what it is.
+The topic is the install's, so whoever reads it sees them. Each is sent once, in the background, tried again a few
+times if the server doesn't answer; one that never goes through is in Install activity, without its words.
 
 ### Share links
 
@@ -593,7 +608,8 @@ too. With none set, every name works, as before.
   directory's two lists, from open.epic.com and raw.githubusercontent.com, only when an admin presses Add the lists
   or Update now, or weekly once an admin turns that on ([Finding your provider](#finding-your-provider)); and, once an
   admin sets up a sign-in provider ([Sign in with OIDC](#sign-in-with-oidc)), that provider, as someone signs in with it
-  or an admin tests it. **Settings → Install →
+  or an admin tests it; and, once an admin sets a notification server ([Notifications](#notifications)), that server,
+  for the notifications people turn on. **Settings → Install →
   [Outside connections](www/settings.html)** (`settings.html#outside` on your install, for admins) lists every host the install
   may contact, grouped by purpose, with the scopes asked for and granted and when each was last contacted, for
   the whole install. Every outbound request goes through one gateway

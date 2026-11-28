@@ -316,7 +316,7 @@ function medReminderSection(m) {
     onclick: () => medReminderForm(m, null)})));
   else if (write && !cur && m.stop) out.push(el("p", {class: "hint", text: "The records say this medication stopped, so no new schedule can be set for it."}));
   out.push(el("p", {class: "hint"}, "Today lists each dose it gives. With Remind me on, its times reach your calendar app through ",
-    el("a", {href: `sharing.html?profile=${PROFILE.id}#calendar`, text: "Sharing → Calendar feed"}), ": Sanguity sends nothing itself."), msg);
+    el("a", {href: `sharing.html?profile=${PROFILE.id}#calendar`, text: "Sharing → Calendar feed"}), "; nothing is sent unless you set up notifications to your own server."), msg);
   return out;
 }
 /* a typed amount: a number above 0 (a comma as the point too), null for none, or NaN */

@@ -77,6 +77,11 @@ ROUTES = {
     ("GET", "/api/settings/install/oidc"): (ADMIN, None), ("PUT", "/api/settings/install/oidc"): (ADMIN, None),
     ("POST", "/api/settings/install/oidc/test"): (ADMIN, None),
     ("POST", "/api/users/{uid}/oidc"): (ADMIN, None), ("DELETE", "/api/users/{uid}/oidc/{iid}"): (ADMIN, None),
+    # notifications (#1130): the install's server, its token and Test, an admin's; each person's own choices, for the
+    # profiles they can see (the body's profile: need(..., "viewer"))
+    ("GET", "/api/settings/install/notify"): (ADMIN, None), ("PUT", "/api/settings/install/notify/token"): (ADMIN, None),
+    ("POST", "/api/settings/install/notify/test"): (ADMIN, None),
+    ("GET", "/api/me/notify"): (USER, None), ("PUT", "/api/me/notify"): (USER, "viewer"),
     # anyone signed in: nothing of anyone's records
     ("POST", "/api/profiles"): (USER, None), ("GET", "/api/uploads/limits"): (USER, None), ("GET", "/api/lab-names"): (USER, None),
     ("GET", "/api/lab-test-pages"): (USER, None),                     # "What is this test?" pages: the app's own table (#163)
@@ -418,6 +423,7 @@ PLAIN = {
     "labmaps": {"lookup", "importer", "created_name", "changed_name"},
     "memberships": {"role"}, "meta": {"k", "v"}, "outside_contacts": {"purpose"},
     "passkeys": {"credential_id", "public_key", "rp_id", "name", "transports"},
+    "notify_optins": {"kind"}, "notify_sent": {"key", "kind", "state"},   # (#1130) ids, a kind and a state: never a message
     "oidc_identities": {"issuer", "subject"},   # (#1109) the provider's address and its id for the person: looked up by, as a credential id
     "profiles": {"name", "build_mtime", "watch_file"}, "recovery_codes": {"code_hash"}, "same_results": {"pair"},
     "series": {"key_hash"}, "sessions": {"token_hash", "ip", "agent"}, "settings": {"key", "value"},
@@ -432,6 +438,7 @@ PLAIN_SETTINGS = {"sync.attachAuto", "sync.attachMaxMB", "sync.attachTypes", "sy
                   "theme", "inRange", "guide", "dates.timeZone", "dates.format", "units",
                   "host.publicOrigins",   # General → Host (#1000): addresses the app gives out anyway, never health information
                   "phone.uploadUrl",   # General → Phone receiver (#1003): the same
+                  "notify.url",   # General → Notifications (#1130): the install's own server's address (its token is apart, sealed)
                   # General → Security (#1001): how people sign in, numbers and a choice, none about anyone
                   "security.sessionDays", "security.sessionHours", "security.idleMinutes", "security.profiles", "security.passwordMin",
                   "security.passwordMin2fa", "security.tempPasswordDays", "security.reauthMinutes", "security.triesHere",

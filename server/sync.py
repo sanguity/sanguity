@@ -78,7 +78,7 @@ it when its preview is saved.
 import collections, contextlib, hashlib, io, json, logging, os, re, shutil, tempfile, threading, urllib.parse
 
 from . import activity, config, connections as conns, crossmatch, crypto, db as dbm, importers as registry, jobs, labmap, medications
-from . import outside, preview, profiles as prof, records, smart, uploads
+from . import notify, outside, preview, profiles as prof, records, smart, uploads
 from .importers import common
 
 log = logging.getLogger("sanguity.sync")
@@ -1157,6 +1157,8 @@ def _save(db, c, up, delta, full, got, store, names, report, who, ip):
                           iid, dbm.now(), dbm.now(), dbm.now())).lastrowid
         report["import"], report["changed"], report["counts"] = iid, changed, summary["counts"]
         _done(db, c, got, report)
+        if summary["counts"].get("events") or summary["counts"].get("results"):   # (#1130) new records: a heads-up, if wanted
+            notify.new_results(db, pid, iid)
         activity.log(db, "import", who or conns.SYNC_ACTOR, pid,
                      {"importer": "fhir", "counts": summary["counts"], "job": jid, "changed": changed, "source": c["source"]}, ip=ip)
         records._bump(db, pid)

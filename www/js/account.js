@@ -382,7 +382,8 @@ async function acctStart(first) {
   await first;
   for (const g of SG_PAGES.settings.groups) if (g.part === "You" && g.id !== "display") for (const id of g.has) $("#" + id).hidden = false;
   $("#oidc").hidden = true;   // (#1109: shown by loadOidc, where the install has a provider)
-  await Promise.all([loads, loadOidc()]);
+  $("#notify").hidden = true;   // (#1130: shown by loadNotify, once the install has a notification server)
+  await Promise.all([loads, loadOidc(), loadNotify()]);
   const said = sessionStorage.getItem(OIDC_SAID);   // (#1109) back from the provider's fresh check (login.js): said once
   if (said) { sessionStorage.removeItem(OIDC_SAID); toast(JSON.parse(said).text); }
   SET_NAV.again();   // the cards have their content now, so a section link lands where it should
