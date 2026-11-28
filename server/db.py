@@ -1275,6 +1275,22 @@ SCHEMA = [
         changed INTEGER);
     CREATE INDEX cost_plans_profile ON cost_plans(profile_id);
     """,
+    # version 52 (#1128): a provider's bills, typed in on Costs (costplan.py): each one's date of service, provider,
+    # amount billed, due date, the claim it was lined up with by hand (that claim's key, or "" for none yet) and its
+    # file (the document's key), in body, encrypted; who typed or changed it and when are plain, as cost_plans'.
+    """
+    CREATE TABLE cost_bills(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,                        -- JSON, encrypted: {service, provider, amount, due?, claim?, file?}
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_name TEXT,
+        changed INTEGER);
+    CREATE INDEX cost_bills_profile ON cost_bills(profile_id);
+    """,
 ]
 
 

@@ -82,7 +82,7 @@ function renderCosts() {
 function drawCosts() {
   const box = $("#view-costs"); box.replaceChildren();
   const claims = !!(DATA.costs || []).length;
-  if (!claims && !((DATA.outOfPocket || {}).payments || []).length) {
+  if (!claims && !((DATA.outOfPocket || {}).payments || []).length && !((DATA.oop || {}).bills || []).length) {
     // #199: what would be here, and one way to start (claims also come from a health plan's export or connection)
     box.append(emptyState("Insurance claims and what you paid out of pocket appear here, from a health plan or typed in.",
       canEdit() ? {href: `sources.html?profile=${PROFILE.id}#payment`, text: "Type in a claim or payment"} : null));
@@ -294,7 +294,7 @@ function renderPaid(box, claimRows, periodLabel) {
   if (!all.length) {
     card.append(h2, el("p", {class: "hint"}, "No out-of-pocket payments yet, and no claim lists a share for you to pay. ",
       canEdit() ? el("a", {href: `sources.html?profile=${PROFILE.id}#payment`, text: "Type in a payment"}) : null));
-    box.append(card); return;
+    box.append(...present(card, billCard())); return;
   }
   const rows = paidRows(), counted = rows.filter(r => r.counted);
   const sum = xs => xs.reduce((a, r) => a + r.counted, 0);
@@ -428,7 +428,7 @@ function renderPaid(box, claimRows, periodLabel) {
     onclick: () => { paidState.limit = shown + 200; renderCosts(); document.querySelectorAll("#paidTable tbody tr[data-oop] .cell-btn")[shown]?.focus(); }}));   // the first one added
   if (edit && !edit.parentElement) tw.append(edit);   // its row not listed (a row above picked since): under the list
   card.append(tw);
-  box.append(card);
+  box.append(...present(card, billCard()));   // the bills typed in, under every amount (#1128)
 }
 /* ---- plan years (#1127): how much of the deductible and the out-of-pocket max the claims' shares have met, per plan
    year typed in here (owners and editors), else per calendar year with no limits. The sums are the server's
@@ -442,7 +442,8 @@ async function costSend(path, method, body, msg, then) {   // a plan year's or a
     const r = await api(`profiles/${PROFILE.id}/costs/${path}`, {method, body: body ? JSON.stringify(body) : undefined});
     const j = await r.json().catch(() => ({}));
     if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save (${r.status}).`, true); return; }
-    then(); storePut("oop", j);
+    then();
+    if (j.records) storeRecords(j.records); else storePut("oop", j);   // a bill's file is a document new to the page (#1128)
   } catch (e) { sayIn(msg, "Couldn't reach the server: " + e.message, true); }
 }
 function planYearsIn() {
@@ -516,6 +517,95 @@ function planCard() {
     (n < 3 ? card : later).append(part);
   });
   if (later) card.append(later);
+  return card;
+}
+/* ---- bills (#1128): a provider's bill typed in (owners and editors), lined up against the claim's share, worked out
+   by provider, date of service and amount or chosen (server: costplan.lined_up, DATA.oop.bills), with the payments
+   matched to that claim. Plain facts. Its file, when given, is saved first as a document typed in (an import of its
+   own, as Sources' hand entry saves one) and opens in the drawer; never read for numbers */
+const billState = {edit: null};   // the bill being typed: "new", its id, or null
+const billFacts = b => b.claim == null ? (b.none ? "No claim for this bill yet, as chosen." : "No claim found for this bill yet.")
+  : Math.abs(b.amount - b.owe) < 0.005 ? "Billed matches what your plan says you owe."
+  : `Billed ${usd2(b.amount)}; your plan says you owe ${usd2(b.owe)}, a difference of ${usd2(Math.abs(b.amount - b.owe))}.`;
+async function billFile(file, service, provider) {   // the bill's file, saved as a document typed in: its import's id
+  const pid = PROFILE.id, call = async (path, opts) => {
+    const r = await api(`profiles/${pid}/${path}`, opts), j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(typeof j.detail === "string" ? j.detail : `${r.status} ${r.statusText}`);
+    return j;
+  };
+  const up = (await call("uploads", {method: "POST"})).id;
+  try {
+    await call(`uploads/${up}/files?path=${encodeURIComponent(file.name)}`, {method: "PUT", body: file, headers: {"Content-Type": "application/octet-stream"}});
+    await call(`uploads/${up}/finish`, {method: "POST"});
+    return (await call("manual", {method: "POST", body: JSON.stringify({save: true, keep_duplicates: true,
+      items: [{kind: "document", date: service, title: `Bill: ${provider}`, upload: String(up), file: file.name}]})})).import_id;
+  } catch (e) { api(`profiles/${pid}/uploads/${up}`, {method: "DELETE"}).catch(() => {}); throw e; }
+}
+function billForm(b) {   // a bill typed: new (b null) or changed
+  const msg = el("p", {class: "hint", id: "billMsg"}), id = f => "bill-" + f;
+  const f = (k, label, v, type = "text", more = {}) => el("label", {for: id(k)}, el("span", {text: label}),
+    el("input", {id: id(k), type, autocomplete: "off", value: v == null ? "" : String(v), ...more}));
+  const near = (DATA.costs || []).filter(c => c.id != null && byId.get(c.id)).sort((x, y) => Math.abs(dayTs(x.d) - dayTs(b?.service || isoDay(Date.now())))
+    - Math.abs(dayTs(y.d) - dayTs(b?.service || isoDay(Date.now())))).slice(0, 40);
+  const chosen = b && b.match === "marked" ? String(b.claim) : b && b.none ? "0" : "-1";
+  const claim = el("select", {id: id("claim")}, el("option", {value: "-1", text: b && b.match === "auto" ? "Work it out (matched now)" : "Work it out"}),
+    el("option", {value: "0", text: "No claim yet", selected: chosen === "0" || null}),
+    ...near.map(c => el("option", {value: String(c.id), selected: chosen === String(c.id) || null,
+      text: `${fmtD(dayTs(c.d))} · ${c.prov || c.title} · billed ${usd2(c.billed)} · your share ${usd2(c.owe)}`})));
+  const form = el("div", {class: "oop-form needs-server"}, f("service", "Date of service", b?.service, "date"), f("provider", "Provider", b?.provider, "text", {size: 24}),
+    f("amount", "Amount billed", b?.amount, "text", {inputmode: "decimal", size: 9}), f("due", "Due (optional)", b?.due, "date"),
+    el("label", {for: id("claim")}, el("span", {text: "Its claim"}), claim),
+    f("file", b?.file != null ? "Replace its file (optional)" : "The bill's file (optional)", null, "file", {accept: ".pdf,.png,.jpg,.jpeg,.gif"}));
+  const drop = b?.file != null ? el("label", {class: "toggle"}, el("input", {type: "checkbox", id: id("drop")}), "Remove its file") : null;
+  if (drop) form.append(drop);
+  const back = () => { billState.edit = null; keepFocus(renderCosts); $(b ? `#bill-${b.id} .bill-change` : "#billAdd")?.focus(); };
+  form.append(el("button", {class: "btn primary", type: "button", text: "Save", onclick: async () => {
+    const body = {service: $("#bill-service").value, provider: $("#bill-provider").value.trim(), amount: amountIn($("#bill-amount").value),
+      due: $("#bill-due").value || null, claim: +claim.value, drop_file: !!$("#bill-drop")?.checked};
+    if (Number.isNaN(body.amount)) { sayIn(msg, "Type the amount billed as an amount, such as 1240.", true); $("#bill-amount").focus(); return; }
+    const file = $("#bill-file").files[0];
+    if (file) {
+      if (!body.service || !body.provider) { sayIn(msg, "Type the date of service and the provider first.", true); return; }
+      sayIn(msg, "Saving the bill's file…");
+      try { body.file_import = await billFile(file, body.service, body.provider); }
+      catch (e) { sayIn(msg, "The bill's file wasn't saved: " + e.message, true); return; }
+    }
+    costSend(b ? `bills/${b.id}` : "bills", b ? "PUT" : "POST", body, msg, () => { billState.edit = null;
+      requestAnimationFrame(() => { ($(b ? `#bill-${b.id} .bill-change` : "#billAdd") || $("#billCard h2")).focus(); announce("Bill saved."); }); });
+  }}), el("button", {class: "btn", type: "button", text: "Cancel", onclick: back}));
+  return el("div", {class: "oop-edit", id: "billEdit"}, el("h3", {class: "sub", text: b ? "Change the bill" : "Add a bill"}), form, msg);
+}
+function billCard() {
+  const all = (DATA.oop || {}).bills || [], list = state.preset === "all" ? all : all.filter(b => b.service >= isoDay(state.from) && b.service <= isoDay(state.to));
+  if (!all.length && !canEdit()) return null;
+  const card = el("div", {class: "card", id: "billCard"}, el("div", {class: "list-hd"}, el("h2", {tabindex: -1, text: "Bills"}), el("span", {class: "spacer"}),
+    canEdit() ? el("button", {class: "btn needs-server", type: "button", id: "billAdd", "aria-expanded": billState.edit === "new", text: "Add a bill",
+      onclick: () => { billState.edit = billState.edit === "new" ? null : "new"; keepFocus(renderCosts); $("#bill-service")?.focus(); }}) : null),
+    el("p", {class: "hint", text: "A provider's bill beside what your plan says you owe for it, from the claim with the same provider and date of service."}));
+  if (billState.edit === "new") card.append(billForm(null));
+  if (!list.length) card.append(el("p", {class: "hint", text: all.length ? "No bill in this period." : "No bills typed in yet."}));
+  for (const b of list) {
+    const c = b.claim != null ? byId.get(b.claim) : null, msg = el("p", {class: "hint"});
+    const lines = [billFacts(b)];
+    if (b.claim != null) lines.push(`Billed ${usd2(b.amount)} · owed per plan ${usd2(b.owe)} · paid so far ${usd2(b.paid)}${b.payments.length ? ` (${b.payments.length} payment${b.payments.length === 1 ? "" : "s"})` : ""}`,
+      `Claim of ${c ? fmtD(dayTs(c.t)) : "—"}${c ? `: ${c.title}` : ""}, ${b.match === "auto" ? "matched by provider, date and amount" : "chosen by hand"}.`);
+    if (b.due) lines.push(`Due ${fmtD(dayTs(b.due))}.`);
+    const part = el("div", {id: "bill-" + b.id, class: "mt-3"}, el("h3", {class: "sub", text: `${b.provider}, ${fmtD(dayTs(b.service))} · ${usd2(b.amount)}`}),
+      ...lines.map((l, i) => el("p", {class: i ? "hint" : null, style: {margin: "2px 0"}, text: l})));
+    const btns = el("div", {class: "btns my-2"});
+    if (b.file != null && byId.get(b.file)) btns.append(el("button", {class: "btn", type: "button", text: "Open the bill", onclick: () => openEvent(byId.get(b.file))}));
+    if (c) btns.append(el("button", {class: "btn", type: "button", text: "Open claim", onclick: () => openEvent(c)}));
+    if (canEdit()) btns.append(el("button", {class: "btn bill-change needs-server", type: "button", "aria-expanded": billState.edit === b.id, text: "Change",
+      onclick: () => { billState.edit = billState.edit === b.id ? null : b.id; keepFocus(renderCosts); $("#bill-service")?.focus(); }}),
+      el("button", {class: "btn needs-server", type: "button", text: "Remove", onclick: async () => {
+        if (await ask({title: `Remove the bill from ${b.provider}?`, message: "Its file, if it has one, stays among the records' documents.", action: "Remove", danger: true}))
+          costSend(`bills/${b.id}`, "DELETE", null, msg, () => { if (billState.edit === b.id) billState.edit = null; requestAnimationFrame(() => $("#billCard h2").focus()); });
+      }}));
+    if (btns.childNodes.length) part.append(btns);
+    part.append(msg);
+    if (billState.edit === b.id) part.append(billForm(b));
+    card.append(part);
+  }
   return card;
 }
 /* ---- the charts (#300), on the chart kit (chartkit.js): its scales, value grid, time axis, crosshair and pinned

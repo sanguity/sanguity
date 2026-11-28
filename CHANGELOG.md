@@ -109,6 +109,7 @@ Everything on `main` so far; it becomes the first tagged release.
   (typed in, a finance export, or a claim's patient responsibility), matches payments to claims by amount, date and
   provider (or by hand), counts each amount once, and totals HSA and FSA spending by year.
 - Costs' deductible and out-of-pocket max per plan year (#1127): plan years typed in on Costs (start, deductible, out-of-pocket max, optional family amounts), each claim's share summed against them, with the claims counted; by calendar year with none typed. FHIR claims keep their deductible part for it.
+- Costs' bills (#1128): a provider's bill typed in (date of service, provider, amount billed, due date, its file), lined up against the claim with the same provider and date of service: what the plan says you owe, the difference, and the payments matched to that claim; the claim chosen by hand, or "no claim yet".
 - A journal of dated notes, symptoms and side effects, with a 0–10 severity and an optional link to one of the
   profile's medications (#49). Entries have their own timeline lane, show as markers on Trends (bigger means more
   severe), can be added from any event's panel, and are listed with filters under Journal. Owners and editors

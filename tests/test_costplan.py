@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Plan years on the Costs tab (server/costplan.py, routes_costs.py, #1127): the deductible and out-of-pocket sums per
-plan year typed in, at its boundaries, with family amounts, and per calendar year outside them; plan years that
-overlap or don't add up refused; roles, the activity log, encryption at rest, and the export's "costPlans". Fictional
-data only.
+"""Plan years and bills on the Costs tab (server/costplan.py, routes_costs.py): the deductible and out-of-pocket sums
+per plan year typed in, at its boundaries, with family amounts, and per calendar year outside them; plan years that
+overlap or don't add up refused (#1127). A provider's bill lined up against the matching claim's share, worked out
+(provider, date of service, amount) or chosen, with the payments matched to that claim and its file; a claim imported
+later offered (#1128). Roles, the activity log, encryption at rest, and the export's "costPlans" and "costBills".
+Fictional data only.
 
   python3 tests/test_costplan.py
 """
@@ -46,7 +48,9 @@ CLAIMS = [claim(10, "2025-06-30", 90.0, 90.0),     # the day before the plan yea
           claim(14, "2026-06-30", 300.0, 250.0),   # its last day
           claim(15, "2026-07-01", 40.0, 0.0)]      # the next one's first day
 BUILT = {"built": "2026-11-01T00:00:00+00:00", "source": "fictional", "events": [e for e, _ in CLAIMS], "details": {},
-         "labs": [], "costs": [c for _, c in CLAIMS], "upcoming": [], "problems": [], "milestones": []}
+         "labs": [], "costs": [c for _, c in CLAIMS], "upcoming": [], "problems": [], "milestones": [],
+         "outOfPocket": {"payments": [   # paid the claim of 2025-07-01 (oop.py matches it)
+             {"d": "2025-07-20", "payee": "Lakeside Clinic", "group": "Medical bills", "amount": 120.0, "account": "Visa", "memo": "", "est": False}]}}
 
 
 def client():
@@ -162,6 +166,82 @@ class PlanYears(unittest.TestCase):
             # loaded back: the same plan year is here already, so it's left
             with dbm.transaction(db):
                 self.assertEqual(costplan._restore(db, "cost_plans", self.pid, got["costPlans"], export._who), (0, 1))
+        finally:
+            db.close()
+
+    # ---------------------------------------------------------------- bills (#1128)
+
+    def bills(self, out=None):
+        o = (out.get("records") or out)["oop"] if out else whole(self.robin, self.pid)["oop"]   # with a file: the records
+        return {b["id"]: b for b in o["bills"]}
+
+    def newest(self, out):
+        return max(self.bills(out).values(), key=lambda b: b["id"])
+
+    def test_5_bills_lined_up(self):
+        o, ys, ids = self.years()
+        # billed 400 two days after the claim of 2025-06-30 and one after 2025-07-01, both billed 400: the nearer
+        out = self.send("POST", "bills", {"service": "2025-07-02", "provider": "Lakeside Clinic", "amount": 400, "due": "2025-08-01"}, 201)
+        b1 = self.newest(out)
+        pay = next(p["i"] for p in out["oop"]["payments"])
+        self.assertEqual((b1["claim"], b1["match"], b1["owe"], b1["paid"], b1["payments"], b1["due"]),
+                         (ids["fict:CL-11"], "auto", 120.0, 120.0, [pay], "2025-08-01"))
+        # its share's amount first: 300 on the claim of 2026-06-30
+        b2 = self.newest(self.send("POST", "bills", {"service": "2026-06-29", "provider": "LAKESIDE CLINIC", "amount": 300}, 201))
+        self.assertEqual((b2["claim"], b2["owe"], b2["paid"]), (ids["fict:CL-14"], 300.0, 0.0))
+        # another provider: no claim yet
+        b3 = self.newest(self.send("POST", "bills", {"service": "2026-06-30", "provider": "Harbor Imaging", "amount": 80}, 201))
+        self.assertEqual((b3["claim"], b3["match"], b3["none"]), (None, None, False))
+        # chosen by hand, and "no claim yet"
+        bs = self.bills(self.send("PUT", f"bills/{b3['id']}", {"service": "2026-06-30", "provider": "Harbor Imaging", "amount": 80, "claim": ids["fict:CL-12"]}))
+        self.assertEqual((bs[b3["id"]]["claim"], bs[b3["id"]]["match"], bs[b3["id"]]["owe"]), (ids["fict:CL-12"], "marked", 55.0))
+        bs = self.bills(self.send("PUT", f"bills/{b2['id']}", {"service": "2026-06-29", "provider": "Lakeside Clinic", "amount": 300, "claim": 0}))
+        self.assertEqual((bs[b2["id"]]["claim"], bs[b2["id"]]["none"]), (None, True))
+        bs = self.bills(self.send("PUT", f"bills/{b2['id']}", {"service": "2026-06-29", "provider": "Lakeside Clinic", "amount": 300, "claim": -1}))
+        self.assertEqual(bs[b2["id"]]["claim"], ids["fict:CL-14"], "worked out again")
+        for body, words in (({"service": "2026-01-01", "provider": " ", "amount": 5}, "who the bill is from"),
+                            ({"service": "2026-01-01", "provider": "X", "amount": -5}, "from $0"),
+                            ({"service": "2026-13-01", "provider": "X", "amount": 5}, "isn't a date"),
+                            ({"service": "2026-01-01", "provider": "X", "amount": 5, "due": "soon"}, "due date"),
+                            ({"service": "2026-01-01", "provider": "X", "amount": 5, "claim": 99999}, "claims"),
+                            ({"service": "2026-01-01", "provider": "X", "amount": 5, "file_import": 99999}, "file")):
+            with self.subTest(body):
+                self.assertIn(words, self.send("POST", "bills", body, 400)["detail"])
+        self.send("POST", "bills", {"service": "2026-01-01", "provider": "X", "amount": 5}, 403, c=self.kim)
+        self.send("DELETE", "bills/99999", status=404)
+        self.send("DELETE", f"bills/{b3['id']}")
+        self.assertNotIn(b3["id"], self.bills())
+
+    def test_6_a_file_and_a_later_claim(self):
+        up = self.robin.post(f"/api/profiles/{self.pid}/uploads", headers=H).json()["id"]
+        self.robin.put(f"/api/profiles/{self.pid}/uploads/{up}/files", params={"path": "bill.pdf"}, content=b"%PDF-1.4 fictional bill", headers=H)
+        self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/uploads/{up}/finish", headers=H).status_code, 200)
+        r = self.robin.post(f"/api/profiles/{self.pid}/manual", json={"save": True, "keep_duplicates": True, "items": [
+            {"kind": "document", "date": "2027-02-01", "title": "Bill: Harbor Imaging", "upload": str(up), "file": "bill.pdf"}]}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        b = self.newest(self.send("POST", "bills", {"service": "2027-02-01", "provider": "Harbor Imaging (fictional)", "amount": 500,
+                                                    "file_import": r.json()["import_id"]}, 201))
+        d = whole(self.robin, self.pid)
+        doc = next(e for e in d["events"] if e["id"] == b["file"])
+        self.assertEqual((doc["k"], doc["title"], b["claim"]), ("document", "Bill: Harbor Imaging", None))
+        self.assertEqual(self.robin.get("/" + d["details"][str(doc["id"])]["url"]).content, b"%PDF-1.4 fictional bill")
+        # a claim imported later is offered
+        r = self.robin.post(f"/api/profiles/{self.pid}/manual", json={"save": True, "items": [
+            {"kind": "claim", "date": "2027-02-02", "provider": "Harbor Imaging", "title": "MRI", "billed": "500", "paid": "380", "owe": "120"}]}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        x = self.bills()[b["id"]]
+        self.assertEqual((x["match"], x["owe"], x["file"]), ("auto", 120.0, b["file"]))
+        # changed: the file kept; then dropped
+        body = {"service": "2027-02-01", "provider": "Harbor Imaging", "amount": 500}
+        self.assertEqual(self.bills(self.send("PUT", f"bills/{b['id']}", body))[b["id"]]["file"], b["file"])
+        self.assertIsNone(self.bills(self.send("PUT", f"bills/{b['id']}", {**body, "drop_file": True}))[b["id"]]["file"])
+        db = dbm.connect()
+        try:
+            self.assertNotIn("Harbor", db.execute("SELECT body FROM cost_bills WHERE id=?", (b["id"],)).fetchone()[0], "encrypted at rest")
+            raw = records.assemble(db, self.pid, raw=True)
+            got = export.check_parts({"costBills": raw["costBills"]})
+            self.assertEqual(len(got["costBills"]), len(raw["costBills"]))
+            self.assertEqual(got["costBills"][0][1]["service"], "2025-07-02")
         finally:
             db.close()
 
