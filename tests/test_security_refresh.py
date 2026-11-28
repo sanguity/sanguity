@@ -333,7 +333,7 @@ class Reach(unittest.TestCase):
         with open(os.path.join(ROOT, "www", "settings.html"), encoding="utf-8") as f:
             scripts = re.findall(r'<script src="js/([\w-]+\.js)"></script>', f.read())
         install = ["admin.js", "admin-sources.js", "admin-backups.js", "outside.js", "activity.js", "admin-host.js",
-                   "gen-security.js", "gen-signin.js", "gen-backups.js", "admin-phone.js", "gen-about.js", "gen-demo.js"]   # General's sections (#998, #1101, #1109)
+                   "gen-security.js", "gen-signin.js", "gen-backups.js", "admin-phone.js", "gen-about.js", "gen-demo.js", "gen-restart.js"]   # General's sections (#998, #1101, #1109, #1121)
         self.assertEqual([s for s in install if s not in scripts], [], "Install's scripts on the Settings page")
         heads = set()
         for s in install:

@@ -3964,6 +3964,10 @@ Everything on `main` so far; it becomes the first tagged release.
   that worked and records why. `POST /api/settings/install/restart` (admins, the fresh check, logged) stops the app for
   Docker to start again, the receiver restarts itself on its own change, `server.manage config show|reset` covers them,
   and `deploy/check.py` checks every template restarts unless stopped (Unraid's now passes `--restart unless-stopped`).
+- **General → Needs a restart** (#1121): those settings changed from the page, each bounded, saved from the bar and
+  marked **Restart needed** until **Restart now** (asked first, the fresh check), which waits for the server to answer
+  again and reads the card back; one set in `.env` is plain text with its variable; a start that went back to the
+  values before says so, with why.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 
