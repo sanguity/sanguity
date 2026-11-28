@@ -20,8 +20,11 @@ function hmLevel(p) {
   return Math.sign(z) * step;
 }
 /* a level's colour: in range the neutral grey, outside it 40% to 100% of the way to blue (below) or red (above), the
-   nearest steps far enough from the grey to tell apart (#300: it's darker than it was, the card's white beside it) */
-const hmFill = lv => lv === 0 ? "var(--div-mid)" : `color-mix(in oklab, var(--div-mid), var(${lv < 0 ? "--div-lo" : "--div-hi"}) ${20 + Math.abs(lv) * 20}%)`;
+   nearest steps far enough from the grey to tell apart (#300: it's darker than it was, the card's white beside it). In
+   range is green instead where the person chose it (#1108: --in-range, set at the end of tokens.css, not in forced
+   colours): 4.6:1 and 8.2:1 on the card, light and dark, and with deuteranopia or protanopia (Machado's simulation)
+   still apart from every step of the red and the blue (ΔE 15 or more); the steps outside stay as they are */
+const hmFill = lv => lv === 0 ? "var(--in-range,var(--div-mid))" : `color-mix(in oklab, var(--div-mid), var(${lv < 0 ? "--div-lo" : "--div-hi"}) ${20 + Math.abs(lv) * 20}%)`;
 /* a result's mark, its flag's as Labs marks it: ▲ above, ▼ below (its level), ◆ for a flag its report gives that
    says neither, on a value inside its range (an "A": the range's grey, its flag said and counted); "" for none */
 const hmMark = p => { const lv = hmLevel(p); return lv > 0 ? "H" : lv < 0 ? "L" : p[4] ? "A" : ""; };

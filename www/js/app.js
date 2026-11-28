@@ -255,7 +255,7 @@ async function settingsLoad() {
     // the first-run guide and the empty states (#199): with no profile, make one (guide.html?new)
     if (!ME.profiles.length) {   // (with the account's own theme, as Settings shows it, #433)
       const u = await api("settings/user").then(x => x.ok ? x.json() : null).catch(() => null);
-      if (u) applyTheme(u.theme);
+      if (u) applyTheme(u.theme, u.inRange);
       emptyCard("No health profile yet", sgMayNew(ME)   // (#1001: an admin's alone, on this server: who to ask, nothing to create)
         ? emptyState(`No health profile is shared with you yet: create one of your own, or ask a profile's owner to share theirs with ${ME.user.username}.`, {href: "guide.html?new", text: "Create a profile"})
         : emptyState(`No health profile is shared with you yet: ask a profile's owner to share theirs with ${ME.user.username}, or an admin to create one for you.`));
@@ -277,7 +277,7 @@ async function settingsLoad() {
       }
       await settingsLoad();
       applyTabs(CFG.tabs);   // its tabs as it has them, as the other pages show them (#425)
-      applyTheme(CFG.theme);   // and the account's theme, as with records (#430)
+      applyTheme(CFG.theme, CFG.inRange);   // and the account's theme, as with records (#430)
       emptyProfile();
       // arriving from Add on another page (#401): a journal entry can be the first record; a dose can't, and says why
       await dates;
@@ -299,7 +299,7 @@ async function settingsLoad() {
 /* the records drawn: as the page loads, or an empty profile's first (recordsFirst) */
 async function recordsDraw(data) {
   applyTabs(CFG.tabs);
-  applyTheme(CFG.theme);   // this user's default theme (#45), unless this browser has its own (the light/dark toggle)
+  applyTheme(CFG.theme, CFG.inRange);   // this user's default theme (#45), unless this browser has its own (the light/dark toggle), and In-range results (#1108)
   // optional: watch data from the Health Connect receiver
   try {
     const w = await api(`profiles/${PROFILE.id}/watch`);

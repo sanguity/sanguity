@@ -408,17 +408,22 @@ function saveWhole(path, value, read, opts = {}) {
 }
 
 /* The theme (#45): this browser's own choice (the light/dark toggle) wins, then the account's default (light, dark or
-   "system"), remembered here so theme.js can apply it before the next page draws, then the system's. */
-function applyTheme(accountDefault) {
+   "system"), remembered here so theme.js can apply it before the next page draws, then the system's. With it, the
+   person's In-range results (#1108, "grey" or "green"), remembered the same way ("ht-inrange") and set as data-inrange
+   on <html> (tokens.css: the heatmap's --in-range). */
+function applyTheme(accountDefault, inRange) {
   try {
     if (accountDefault !== undefined) {
       if (accountDefault === "light" || accountDefault === "dark") localStorage.setItem("ht-theme-default", accountDefault);
       else localStorage.removeItem("ht-theme-default");
     }
+    if (inRange !== undefined) { if (inRange === "green") localStorage.setItem("ht-inrange", inRange); else localStorage.removeItem("ht-inrange"); }
   } catch (e) {}
-  let t = null;
-  try { t = localStorage.getItem("ht-theme") || localStorage.getItem("ht-theme-default"); } catch (e) {}
-  if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  let t = null, g = inRange;
+  try { t = localStorage.getItem("ht-theme") || localStorage.getItem("ht-theme-default"); g = localStorage.getItem("ht-inrange"); } catch (e) {}
+  const h = document.documentElement.dataset;
+  if (t === "light" || t === "dark") h.theme = t; else delete h.theme;
+  if (g === "green") h.inrange = g; else delete h.inrange;
 }
 
 /* A unit as people write it (#1103), the one rule for every unit shown: the codes reports carry (UCUM) said as on a

@@ -89,4 +89,5 @@
 }
 :root[data-theme="light"]{color-scheme:light}
 :root[data-theme="dark"]{color-scheme:dark}
+@media not (forced-colors:active){[data-inrange=green]{--in-range:light-dark(#2e8540,#76c28c)}}
 }

@@ -1155,6 +1155,20 @@ class Settings(unittest.TestCase):
         # not part of a profile's settings.json (it's a person's, not the profile's)
         self.assertNotIn("theme", settings.from_file({"theme": "dark"}))
 
+    def test_in_range(self):
+        """#1108: In-range results, grey (the default) or green, each person's own beside the theme, its choices listed"""
+        d = settings.SETTINGS["inRange"]
+        self.assertEqual((d.scope, d.section, d.kind, d.default, d.private), ("user", "appearance", "choice", "grey", False))
+        for bad in ("red", "", None, 1, ["green"]):
+            self.put("inRange", bad, who="kim", status=400)
+        self.put("inRange", "green", who="kim")
+        self.assertEqual((self.merged(1, "kim")["inRange"], self.merged(2, "kim")["inRange"], self.merged(1, "robin")["inRange"]),
+                         ("green", "green", "grey"))
+        secs = {s["key"]: s for sec in self.c["kim"].get("/api/profiles/1/settings/sections").json()["sections"] for s in sec["settings"]}
+        self.assertEqual((secs["inRange"]["value"], secs["inRange"]["choices"]), ("green", {"grey": "Grey", "green": "Green"}))
+        r = self.c["kim"].post("/api/profiles/1/settings/reset", json={"section": "appearance"}, headers=H)
+        self.assertEqual((r.json()["reset"], self.merged(1, "kim")["inRange"]), (["inRange"], "grey"))
+
     def test_trend_views(self):
         """#37: named sets of labs for Trends, per profile, one at most the default"""
         d = settings.SETTINGS["trends.views"]
