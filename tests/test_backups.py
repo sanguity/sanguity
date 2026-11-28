@@ -992,6 +992,9 @@ class Backups(unittest.TestCase):
         db = dbm.connect()   # a passkey of hers (signed in already: it would ask for it)
         db.execute("INSERT INTO passkeys(user_id, credential_id, public_key, rp_id, name, created) VALUES(?, 'kim-917', x'00', "
                    "'testserver', 'Kim''s phone (fictional)', 0)", (uid["kim"],))
+        # (#1109) her identity at the sign-in provider, and the provider as it was set up then
+        db.execute("INSERT INTO oidc_identities(issuer, subject, user_id, created) VALUES('https://idp.test', 'kim-sub', ?, 0)", (uid["kim"],))
+        db.execute("""INSERT INTO meta(k, v) VALUES('oidc', '{"issuer":"https://idp.test","client_id":"then"}')""")
         db.close()
         r = self.robin.post(f"/api/profiles/{pid}/links", json={"sections": ["journal"], "hours": 168}, headers=H)
         revoked = r.json()["link"]["id"]
@@ -1006,12 +1009,15 @@ class Backups(unittest.TestCase):
                                   headers=H).status_code, 200)
         db = dbm.connect()
         db.execute("DELETE FROM passkeys WHERE user_id=?", (uid["kim"],))
+        db.execute("DELETE FROM oidc_identities WHERE user_id=?", (uid["kim"],))   # (#1109) unlinked since
+        db.execute("""UPDATE meta SET v='{"issuer":"https://idp.test","client_id":"now"}' WHERE k='oidc'""")
         accounts.remove(db, uid["lee"])
         prof.delete_profile(db, gone_pid)
         # ...and made
         mx = accounts.create(db, "max", password="max's fictional passphrase, long enough")[0]
         db.execute("UPDATE users SET totp_secret=? WHERE id=?", (crypto.enc(twofactor.new_secret()), uid["kim"]))
         new_pid = prof.create_profile(db, "Made after (fictional)", owner_id=robin)
+        db.execute("INSERT INTO oidc_identities(issuer, subject, user_id, created) VALUES('https://idp.test', 'max-sub', ?, 0)", (mx,))
         today = {r["username"]: dict(r) for r in db.execute("SELECT * FROM users")}
         db.close()
         self.assertEqual(self.robin.put(f"/api/profiles/{pid}/members", json={"username": "max", "role": "viewer"}, headers=H).status_code, 200)
@@ -1029,6 +1035,9 @@ class Backups(unittest.TestCase):
         self.assertEqual(users["kim"][1], today["kim"]["totp_secret"])
         self.assertIsNotNone(users["kim"][1])
         self.assertEqual(con.execute("SELECT COUNT(*) FROM passkeys WHERE user_id=?", (uid["kim"],)).fetchone()[0], 0)
+        self.assertEqual(con.execute("SELECT subject, user_id FROM oidc_identities").fetchall(), [("max-sub", mx)],
+                         "linked identities are today's access (#1109): hers unlinked since, his linked since")
+        self.assertIn('"client_id":"now"', con.execute("SELECT v FROM meta WHERE k='oidc'").fetchone()[0])
         self.assertEqual(dict(con.execute("SELECT user_id, role FROM memberships WHERE profile_id=?", (pid,)).fetchall()),
                          {robin: "owner", mx: "viewer"})
         self.assertEqual(con.execute("SELECT user_id FROM calendar_feeds WHERE profile_id=?", (pid,)).fetchall(), [(robin,)])
@@ -1046,7 +1055,7 @@ class Backups(unittest.TestCase):
         self.assertEqual(con.execute("PRAGMA foreign_key_check").fetchall(), [])
         self.assertGreaterEqual(con.execute("SELECT seq FROM sqlite_sequence WHERE name='profiles'").fetchone()[0], new_pid,
                                 "ids never given again (#588)")
-        self.assertIn("Today's accounts, passwords, passkeys, two-factor sign-in, who may see each profile, share links, "
+        self.assertIn("Today's accounts, passwords, passkeys, two-factor sign-in, linked sign-in identities, who may see each profile, share links, "
                       "calendar feeds, phone upload secrets and connected sources' sign-ins were kept", said)
         self.assertRegex(said, r"Everyone is signed out \([1-9]\d* sign-ins? ended\)")
         self.assertIn(f"Profile {gone_pid} (Deleted after (fictional)) was deleted after the backup was made and is back, with "
@@ -1060,7 +1069,7 @@ class Backups(unittest.TestCase):
                                             ("other", True, other, "The database it replaced isn't this install's")):
             said, con = self.restore_into(os.path.join(TMP, f"restored-917-{label}"), path, today=today, change=change)
             self.assertIn(words, said)
-            self.assertIn(": the accounts, passwords, passkeys, two-factor sign-in, who may see each profile, share links, "
+            self.assertIn(": the accounts, passwords, passkeys, two-factor sign-in, linked sign-in identities, who may see each profile, share links, "
                           "calendar feeds, phone upload secrets and connected sources' sign-ins are the backup's, as they were on", said)
             self.assertIn("check Settings → Install → Accounts and each profile's Sharing", said)
             self.assertEqual(con.execute("SELECT revoked FROM share_links WHERE id=?", (revoked,)).fetchone(), (None,), label)

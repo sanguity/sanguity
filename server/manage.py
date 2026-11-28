@@ -27,6 +27,8 @@
   check ARCHIVE                          restore a backup into a temporary folder beside it, compare it with what it
                                          says it holds, then delete the copy (the Admin page's Check a backup); safe
                                          while the app runs: the live data isn't touched
+  oidc-only off                          turn off Settings → Install → General → Sign-in provider's "Sign in with OIDC
+                                         only", so passwords and passkeys sign in again (a provider that keeps everyone out)
   config show                            the server's settings: each one's value, and whether the environment sets
                                          it, an admin saved it in the app or it's the default (#1006)
   config reset SETTING|--all             take away the value saved in the app for a setting (its name, like
@@ -43,7 +45,7 @@
 """
 import os, shutil, sys, tempfile, zipfile
 
-from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, main, profiles as prof, settings, watch_store
+from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, main, oidc, profiles as prof, settings, watch_store
 
 
 APPLE_HEALTH_MAX_BYTES = 16 * 2**30   # export.xml, unzipped: far above a decade of a watch's records
@@ -95,7 +97,8 @@ def _user(db, name):
     return u or sys.exit(f"No account named {name!r}.")
 
 
-ACCESS_WORDS = ("accounts, passwords, passkeys, two-factor sign-in, who may see each profile, share links, calendar feeds, "
+ACCESS_WORDS = ("accounts, passwords, passkeys, two-factor sign-in, linked sign-in identities, who may see each profile, share links, "
+                "calendar feeds, "
                 "phone upload secrets and connected sources' sign-ins")
 
 
@@ -404,6 +407,15 @@ def _command(db, argv):
               f"({crypto.current_key_id().hex()}). Older keys can now be removed from the key file.")
     elif cmd == "config" and args:
         _config(db, args)
+    elif cmd == "oidc-only" and args == ["off"]:   # (#1109) the way back in when the sign-in provider keeps everyone out
+        cfg = oidc.load(db)
+        if not cfg["only"]:
+            print("Sign in with OIDC only is off already: passwords and passkeys sign in.")
+        else:
+            oidc.save(db, {**cfg, "only": False})
+            activity.log(db, "settings.install", detail={"setting": "oidc.only", "label": "Sign-in provider: sign in with OIDC only",
+                                                         "from": True, "to": False}, actor=activity.COMMAND_LINE)
+            print("Sign in with OIDC only is off: passwords and passkeys sign in again, in the running app at once.")
     elif cmd == "sync":
         failed = prof.sync_build(db)
         if failed:

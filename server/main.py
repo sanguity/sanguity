@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, backup_jobs, calendar, config, crypto, db as dbm, demo, edits, export, fhir_export, hrzones, jobs, milestones, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, units, uploads, watch_keys, watch_store
+from . import accounts, activity, alerts, atrest, backup, backup_jobs, calendar, config, crypto, db as dbm, demo, edits, export, fhir_export, hrzones, jobs, milestones, oidc, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, units, uploads, watch_keys, watch_store
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -328,7 +328,7 @@ def _lifetime(db, u, instead=None):
     """How long, in seconds, a session of account u lasts from sign-in: SESSION_DAYS with a second factor, and
     SESSION_HOURS_WITHOUT_2FA (if shorter) without one."""
     days, hours = _length("SESSION_DAYS", instead) * 86400, _length("SESSION_HOURS_WITHOUT_2FA", instead) * 3600
-    if hours and hours < days and not accounts.has_second_factor(db, u):
+    if hours and hours < days and not accounts.signed_in_with_two(db, u):   # (#1109: or the provider's, for its session)
         return hours
     return days
 
@@ -344,7 +344,7 @@ def sessions_ended(db, instead, sid=None):
     """(#1001) The sign-ins a shorter length or idle sign-out (instead: {name: value}) would end at their next request,
     of those the lengths in force keep: (how many, whether session sid is one)."""
     now = dbm.now()
-    ended = [r["sid"] for r in db.execute("""SELECT s.id AS sid, s.created AS s_created, s.last_seen, s.expires, u.* FROM sessions s
+    ended = [r["sid"] for r in db.execute("""SELECT s.id AS sid, s.created AS s_created, s.last_seen, s.expires, s.idp_mfa, u.* FROM sessions s
                                              JOIN users u ON u.id = s.user_id WHERE u.disabled=0""")
              if _over(db, r, now, instead) and not _over(db, r, now)]
     return len(ended), sid in ended
@@ -357,7 +357,7 @@ def _session(request, db):
     token = request.cookies.get(config.COOKIE_HOST) or request.cookies.get(config.COOKIE)
     if not token or len(token) > 200:
         return None
-    s = db.execute("""SELECT s.id AS sid, s.created AS s_created, s.last_seen, s.expires, s.verified_at, u.* FROM sessions s
+    s = db.execute("""SELECT s.id AS sid, s.created AS s_created, s.last_seen, s.expires, s.verified_at, s.idp_mfa, u.* FROM sessions s
                       JOIN users u ON u.id = s.user_id WHERE s.token_hash=? AND u.disabled=0""",
                    (sec.token_hash(token),)).fetchone()
     now = dbm.now()
@@ -392,8 +392,8 @@ def settled(s=Depends(any_user)):
 
 def user(s=Depends(settled), db=Depends(get_db)):
     """Signed in, with nothing left to set up: no pending password change, and two-factor sign-in on if the server
-    requires it."""
-    if accounts.two_factor_required(db) and not accounts.has_second_factor(db, s):
+    requires it (#1109: an OIDC sign-in whose provider said it used more than one factor counts, for its session)."""
+    if accounts.two_factor_required(db) and not accounts.signed_in_with_two(db, s):
         raise HTTPException(403, "two_factor_required")
     return s
 
@@ -453,16 +453,16 @@ def _secure(request):
     return request.url.scheme == "https"
 
 
-def _start_session(request, response, db, uid, how=None):
+def _start_session(request, response, db, uid, how=None, idp_mfa=False):
     """A new session for uid. how: the way they signed in, for the security log (None: a fresh session after a
-    change, not a sign-in)."""
+    change, not a sign-in). idp_mfa (#1109): an OIDC sign-in the provider said used more than one factor."""
     token, now = sec.new_token(), dbm.now()
-    life = _lifetime(db, db.execute("SELECT id, totp_secret FROM users WHERE id=?", (uid,)).fetchone())
+    life = _lifetime(db, {**dict(db.execute("SELECT id, totp_secret FROM users WHERE id=?", (uid,)).fetchone()), "idp_mfa": int(idp_mfa)})
     db.execute("DELETE FROM sessions WHERE expires<=?", (now,))
-    # every caller has just checked the person (password, code or passkey), so the session starts verified
-    db.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent, verified_at) VALUES(?,?,?,?,?,?,?,?)",
+    # every caller has just checked the person (password, code, passkey or the sign-in provider), so the session starts verified
+    db.execute("INSERT INTO sessions(token_hash, user_id, created, last_seen, expires, ip, agent, verified_at, idp_mfa) VALUES(?,?,?,?,?,?,?,?,?)",
                (sec.token_hash(token), uid, now, now, now + life,
-                _client_ip(request), (request.headers.get("user-agent") or "")[:300], now))
+                _client_ip(request), (request.headers.get("user-agent") or "")[:300], now, int(idp_mfa)))
     secure = _secure(request)
     response.set_cookie(config.COOKIE_HOST if secure else config.COOKIE, token, max_age=life,
                         path="/", httponly=True, samesite="strict", secure=secure)
@@ -556,8 +556,16 @@ class Login(BaseModel):
     password: str
 
 
+def _oidc_only(db, request, step):
+    """(#1109) Sign in with OIDC only: a password, or a passkey on its own, is refused before it's checked."""
+    if oidc.only(db):
+        _audit("login.fail", request, step=step, reason="sign in with OIDC only", warn=False)
+        raise HTTPException(403, f"This server signs in with {oidc.load(db)['label']} only.")
+
+
 @app.post("/api/login")
 def login(body: Login, request: Request, response: Response, db=Depends(get_db)):
+    _oidc_only(db, request, "password")
     name = body.username.strip()[:64]
     u = db.execute("SELECT * FROM users WHERE username=?", (name,)).fetchone()
     device = _known_device(request, db, u)
@@ -577,15 +585,23 @@ def login(body: Login, request: Request, response: Response, db=Depends(get_db))
     sec.throttle.clear(keys[0])   # this person on this device got in; the address and account counts age out
     if sec.needs_rehash(u["pw_hash"]):
         db.execute("UPDATE users SET pw_hash=? WHERE id=?", (sec.hash_password(pw), u["id"]))
-    keys_n = passkeys.count(db, u["id"])
-    if u["totp_secret"] or keys_n:   # the password was right; now the code or a passkey
-        return {"two_factor": True, "ticket": _tickets.issue(u["id"]),
-                "methods": {"code": bool(u["totp_secret"]), "passkey": keys_n > 0,
-                            **({"codes_stopped": True} if accounts.codes_stopped(u) else {}),   # (#928: a recovery code still works)
-                            "sites": passkeys.sites(db, u["id"])}}   # where they were made, for a page at 127.0.0.1 (#535)
+    if (step := second_step(db, u, "password")):   # the password was right; now the code or a passkey
+        return step
     _remember_device(request, response, db, u["id"])
     _start_session(request, response, db, u["id"], "password")
     return {"must_change_pw": bool(u["must_change_pw"])}
+
+
+def second_step(db, u, first):
+    """The second step's answer after a right first one (first: "password", or "oidc" for a sign-in provider's that
+    didn't say it used more than one factor, #1109), where account u has a code or a passkey; else None."""
+    keys_n = passkeys.count(db, u["id"])
+    if not (u["totp_secret"] or keys_n):
+        return None
+    return {"two_factor": True, "ticket": _tickets.issue(u["id"], first),
+            "methods": {"code": bool(u["totp_secret"]), "passkey": keys_n > 0,
+                        **({"codes_stopped": True} if accounts.codes_stopped(u) else {}),   # (#928: a recovery code still works)
+                        "sites": passkeys.sites(db, u["id"])}}   # where they were made, for a page at 127.0.0.1 (#535)
 
 
 class _Tickets:
@@ -596,13 +612,19 @@ class _Tickets:
     def __init__(self):
         self._t, self._lock = {}, threading.Lock()
 
-    def issue(self, uid):
+    def issue(self, uid, first="password"):
         token, now = sec.new_token(), dbm.now()
         with self._lock:
             if len(self._t) >= self.MAX:
                 self._t = {k: v for k, v in self._t.items() if v[1] > now}
-            self._t[sec.token_hash(token)] = [uid, now + self.TTL, 0]
+            self._t[sec.token_hash(token)] = [uid, now + self.TTL, 0, first]
         return token
+
+    def first(self, token):
+        """How the ticket's first step was passed: "password", or "oidc" (#1109), for the security log."""
+        with self._lock:
+            t = self._t.get(sec.token_hash(token or ""))
+            return t[3] if t else "password"
 
     def get(self, token):
         with self._lock:
@@ -677,10 +699,11 @@ def login_code(body: LoginCode, request: Request, response: Response, db=Depends
         out["recovery_codes_left"] = left = db.execute(
             "SELECT COUNT(*) FROM recovery_codes WHERE user_id=? AND used_at IS NULL", (uid,)).fetchone()[0]
         activity.log(db, "2fa.recovery", u, detail={"left": left}, ip=_client_ip(request))
+    first = _tickets.first(body.ticket)
     _tickets.used(body.ticket)
     sec.throttle.clear(keys[0])
     _remember_device(request, response, db, uid)
-    _start_session(request, response, db, uid, "password + " + ("code" if code else "recovery code"))
+    _start_session(request, response, db, uid, first + " + " + ("code" if code else "recovery code"))
     return out
 
 
@@ -721,6 +744,8 @@ class PasskeyFinish(BaseModel):
 
 @app.post("/api/login/passkey/options")
 def login_passkey_options(body: PasskeyStart, request: Request, db=Depends(get_db)):
+    if not body.ticket:   # (#1109) a passkey on its own is a sign-in; after a first step, it's the second
+        _oidc_only(db, request, "passkey")
     uid = None
     if body.ticket:
         uid = _tickets.get(body.ticket[:200])
@@ -732,7 +757,9 @@ def login_passkey_options(body: PasskeyStart, request: Request, db=Depends(get_d
 
 @app.post("/api/login/passkey")
 def login_passkey(body: PasskeyFinish, request: Request, response: Response, db=Depends(get_db)):
-    """Sign in with a passkey: the step after the password (with the ticket), or on its own."""
+    """Sign in with a passkey: the step after the password or the sign-in provider (with the ticket), or on its own."""
+    if not body.ticket:
+        _oidc_only(db, request, "passkey")
     keys = ("ip:passkey|" + _client_ip(request),)
     if (w := sec.throttle.wait(*keys)):
         _audit("login.throttled", request, step="passkey")
@@ -757,10 +784,11 @@ def login_passkey(body: PasskeyFinish, request: Request, response: Response, db=
         sec.throttle.fail(*keys)
         _audit("login.fail", request, step="passkey", reason="account disabled", uid=uid)
         raise HTTPException(401, "That account can't sign in.")
+    first = _tickets.first(body.ticket[:200]) if body.ticket else None
     if body.ticket:
         _tickets.used(body.ticket[:200])
     _remember_device(request, response, db, uid)
-    _start_session(request, response, db, uid, "password + passkey" if body.ticket else "passkey")
+    _start_session(request, response, db, uid, first + " + passkey" if first else "passkey")
     return {"must_change_pw": bool(u["must_change_pw"]), "username": u["username"]}
 
 
@@ -824,7 +852,7 @@ def _profiles_for(db, uid):
 def me(s=Depends(any_user), db=Depends(get_db)):
     required = accounts.two_factor_required(db)
     second = accounts.has_second_factor(db, s)
-    needs_2fa = required and not second
+    needs_2fa = required and not accounts.signed_in_with_two(db, s)   # (#1109: this sign-in's provider's counts)
     return {"user": {"id": s["id"], "username": s["username"], "is_admin": bool(s["is_admin"]),
                      "must_change_pw": bool(s["must_change_pw"]), "two_factor": second,
                      "needs_two_factor": needs_2fa, "admin_needs_two_factor": accounts.admin_needs_second_factor(db, s)},
@@ -833,6 +861,7 @@ def me(s=Depends(any_user), db=Depends(get_db)):
             "profiles": _profiles_for(db, s["id"]) if not (s["must_change_pw"] or needs_2fa) else [],
             "password_min": _password_min(db, s), "session_ends": _session_ends(db, s),
             "connected_sources": settings.connected_sources(),   # (#1096) whether any page offers them: on or off, no more
+            "sign_in_provider": oidc.brief(db),   # (#1109) the provider's button name and whether it's the only way in, or None
             "calendar_feeds": calendar.count_for(db, s["id"]),   # what changing the password or removing a passkey ends (#597)
             # the install's HTTPS address (PUBLIC_ORIGINS), for "install from this address" on a plain-HTTP page (#56)
             "https_address": next((o for o in sorted(config.setting("PUBLIC_ORIGINS")) if o.startswith("https://")), None),
@@ -1502,7 +1531,8 @@ def document_part(pid: int, doc: str, part: str, request: Request, s=Depends(use
 
 @app.get("/api/users")
 def users(s=Depends(admin), db=Depends(get_db)):
-    return [dict(r) for r in db.execute(
+    cfg = oidc.load(db)   # (#1109) each account's identities at the sign-in provider, to link and unlink
+    return [{**dict(r), "oidc": oidc.listing(db, r["id"], cfg)} for r in db.execute(
         """SELECT id, username, is_admin, disabled, must_change_pw, created,
                   totp_secret IS NOT NULL OR EXISTS(SELECT 1 FROM passkeys k WHERE k.user_id = users.id) AS two_factor,
                   totp_secret IS NOT NULL AS authenticator_app, (SELECT COUNT(*) FROM passkeys k WHERE k.user_id = users.id) AS passkeys,
@@ -1723,6 +1753,7 @@ app.include_router(__import__("server.routes_edits", fromlist=["router"]).router
 app.include_router(__import__("server.routes_same", fromlist=["router"]).router)      # same result from two sources (#96)
 app.include_router(__import__("server.routes_manual", fromlist=["router"]).router)    # results typed in (#27)
 app.include_router(__import__("server.routes_labmaps", fromlist=["router"]).router)   # lab names matched on import (#23)
+app.include_router(__import__("server.routes_oidc", fromlist=["router"]).router)      # sign in with OIDC (#1109): before settings, whose /api/settings/install/{key} would take its own
 app.include_router(__import__("server.routes_settings", fromlist=["router"]).router)  # settings (#35)
 app.include_router(__import__("server.routes_host", fromlist=["router"]).router)      # General → Host (#1000)
 app.include_router(__import__("server.routes_watch", fromlist=["router"]).router)     # a watch receiver secret per profile (#46)
