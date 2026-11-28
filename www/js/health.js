@@ -74,9 +74,8 @@ function hData() {
   const {bp, temp, spo2} = out.vit, {resp, vo2} = out.fit;
   for (const r of [ex, bp.home, bp.clinic, temp.home, temp.clinic, spo2.home, spo2.typed, spo2.clinic, resp.home, resp.clinic, vo2.home].flat()) span(r.t);
   if (G && G.first <= G.last) { span(G.first); span(G.last); }
-  const latest = last;   // the latest reading (hRange)
   if (first <= last) for (const t of [first, last]) span(hMonday(t) + 3 * DAY);   // and the first and last weeks' averages, on their Thursdays (weekly)
-  return Object.assign(out, first <= last ? {first, last, latest} : {first: Date.now(), last: Date.now(), latest: Date.now()});
+  return Object.assign(out, first <= last ? {first, last} : {first: Date.now(), last: Date.now()});
 }
 let H = null;
 /* the charts' window: the records bar's period; with "All", everything Body draws (hData), the lab glucose results
@@ -86,11 +85,7 @@ function hSpan() {
   const l = gOpt.labs && G ? G.lab : [];
   return l.length ? [Math.min(H.first, l[0][0]), Math.max(H.last, l.at(-1)[0])] : [H.first, H.last];
 }
-/* a long period's charts are of weeks, each on its Thursday (weekly): it starts at its first week's Thursday, if that's
-   before it, and one that reaches the latest reading reaches its week's Thursday too, as All does (hData), so the first
-   and newest weeks are drawn (#1155: they were past its ends, their tooltips found) */
-function hRange() { const [a, b] = periodWindow(hSpan()); if (b - a <= 150 * DAY) return [a, b];
-  return [Math.min(a, hMonday(a) + 3 * DAY), H.latest <= b ? Math.max(b, hMonday(H.latest) + 3 * DAY) : b]; }
+function hRange() { return periodWindow(hSpan()); }
 const inR = (pts, a, b) => pts.filter(p => p[0] >= a && p[0] <= b);
 const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
 function rolling(pts, days = 7) {  // trailing mean over the last `days` calendar days with data
@@ -103,10 +98,10 @@ function rolling(pts, days = 7) {  // trailing mean over the last `days` calenda
   return out;
 }
 const hMonday = t => { const d = zdate(t); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.getTime(); };   // t's week's Monday, noon
-function weekly(pts, fn = mean) {  // [[t, v...]] -> weekly buckets (Monday), averaging each column, each at its Thursday
+function weekly(pts, fn = mean) {  // [[t, v...]] -> weekly buckets (Monday), averaging each column, each at its Thursday (wk: a week's, hChart)
   const m = new Map();
   for (const p of pts) { const k = hMonday(p[0]); if (!m.has(k)) m.set(k, []); m.get(k).push(p); }
-  return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([k, ps]) => [k + 3 * DAY, ...ps[0].slice(1).map((_, i) => fn(ps.map(p => p[i + 1] || 0)))]);
+  return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([k, ps]) => Object.assign([k + 3 * DAY, ...ps[0].slice(1).map((_, i) => fn(ps.map(p => p[i + 1] || 0)))], {wk: true}));
 }
 /* a chart of weekly averages names its weeks (#721: it said "24 readings" beside its tile's 165): "20 weeks of home
    readings (161 readings) and 4 readings at visits". n: its points in the period, the keys' steps: a week's average
@@ -122,6 +117,10 @@ function hWeeks(n, of, days, unit) {
    with the readout pinned above it. The milestones (Settings) are a faint line in each chart, named once, over the
    tab's first (hNamed, #298), as Labs' are on its event track (#294) */
 let hNamed = false;
+/* a point in a chart's window [a, b]: a week's average (weekly, or a layer's of weeks: every) whose week reaches into it
+   too, drawn at the end it reaches over (#1155: the first and newest weeks, on Thursdays before or after the period,
+   weren't drawn, their tooltips found) */
+const hIn = (p, a, b, l) => p[0] >= a && p[0] <= b || (p.wk || l?.every >= 7 * DAY) && p[0] > a - 3.5 * DAY && p[0] < b + 3.5 * DAY;
 /* label, noun, nav (#60): what the chart shows ("Weight"), what each point is ("reading"), and the points the
    keyboard steps through and its name counts ([[t, …]], the ones its tip reads: its readings, never an average's,
    which leaves some out, #659); h: its height with one row of time labels; fmtY: a gridline's label, its number as
@@ -129,8 +128,8 @@ let hNamed = false;
    (a chart of weeks, hWeeks) */
 function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = false, tip, label = "Chart", noun = "day", nav, count}) {
   // its words from a to b, its name (chartKeys): a tab stop with them as it's made (#652)
-  const say = (a, b, n = nav.filter(p => p[0] >= a && p[0] <= b)) => { const ms = msSay(a, b);
-    return `${label}: ${n.length && count ? count(n, a, b) : `${n.length} ${noun}${n.length === 1 ? "" : "s"}`}${n.length ? ` from ${fmtD(n[0][0])} to ${fmtD(n.at(-1)[0])}` : " in this period"}. Left and right arrow keys step through them.${ms ? " " + ms : ""}`; };
+  const say = (a, b, n = nav.filter(p => hIn(p, a, b))) => { const ms = msSay(a, b);
+    return `${label}: ${n.length && count ? count(n, a, b) : `${n.length} ${noun}${n.length === 1 ? "" : "s"}`}${n.length ? ` from ${fmtD(Math.max(a, n[0][0]))} to ${fmtD(Math.min(b, n.at(-1)[0]))}` : " in this period"}. Left and right arrow keys step through them.${ms ? " " + ms : ""}`; };
   const svg = chartSvg(say(a, b), {class: "pz ck"}); host.append(svg);
   const named = !hNamed && (hNamed = true), SH = layers.some(l => l.type === "strip") ? 18 : 0;   // the strip's room, under the plot
   svg._draw = (a, b, live) => {   // also called live while dragging, with the new window: at the width it had, so the
@@ -138,7 +137,7 @@ function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = fa
     if (!svg.isConnected) return;   // re-rendered before this frame came round
     let lo = Infinity, hi = -Infinity;   // the values in the window, then the value axis's ends
     for (const l of layers) for (const p of l.type === "strip" ? [] : l.data || []) {
-      if (p[0] < a || p[0] > b) continue;
+      if (!hIn(p, a, b, l)) continue;
       const vs = l.type === "bars" ? [l.keys.reduce((s, _, i) => s + (p[i + 1] || 0), 0)] : l.type === "band" || l.type === "pairs" ? [p[1], p[2]] : [p[1]];
       for (const v of vs) if (v != null && isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
     }
@@ -156,7 +155,7 @@ function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = fa
     const T = ms.length ? ckFlagNames(names, ms.map(([t, n]) => ({x: x(t), text: n, title: `${n} · ${fmtD(t)}`})), L, R, 0) : 8 * ckK();
     const tk = ckTimeTicks(a, b, x, w), AX = ckAxisH(tk.rows), hh = h - 22 + AX + SH + Math.max(0, T - 22), B = hh - AX - SH;   // (a second row of names taller)
     svg.setAttribute("viewBox", `0 0 ${w} ${hh}`); svg.setAttribute("height", hh); svg.style.width = "100%"; svg._geom = {L, R, T, B, w};
-    const navIn = nav.filter(p => p[0] >= a && p[0] <= b);   // the keyboard's points (#60)
+    const navIn = nav.filter(p => hIn(p, a, b));   // the keyboard's points (#60)
     chartKeys(svg, say(a, b, navIn), () => navIn.map(p => p[0]), () => "", () => {});   // until it's drawn (below)
     if (!some) {   // nothing in the window: its plot and time axis kept, to drag back and double-click (#382)
       const g = [el("svg:rect", {x: L, y: T, width: R - L, height: B - T, fill: "transparent"}), el("svg:text", {x: (L + R) / 2, y: (T + B) / 2, "text-anchor": "middle", text: "No data in this period"}), ...names];
@@ -171,7 +170,7 @@ function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = fa
     ckAxis(g, tk, L, R, B, B + SH / ckK() + 16);
     const slot = l => (R - L) / ((b - a) / (l.every || DAY));   // a bar's room: a day's or a week's
     for (const l of layers) {
-      const pts = (l.data || []).filter(p => p[0] >= a && p[0] <= b);
+      const pts = (l.data || []).filter(p => hIn(p, a, b, l)).map(p => p[0] < a || p[0] > b ? [Math.min(b, Math.max(a, p[0])), ...p.slice(1)] : p);   // a week at an end, at that end
       if (l.type === "target") {   // a target of the person's own (#234): a band between its ends, or a line at its one end, labelled
         const top = y(l.high ?? l.low), bot = y(l.low ?? l.high);
         if (l.low != null && l.high != null) g.push(el("svg:rect", {class: "tgt-band", x: L, y: top, width: R - L, height: Math.max(0, bot - top)}));
@@ -228,7 +227,7 @@ function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = fa
     }
     // the crosshair at the tip's point nearest t, on every chart of the tab at once (ckSync); the tooltip this one's
     const cross = ckCross(T, B), hit = el("svg:rect", {x: L, y: T, width: R - L, height: B - T, fill: "transparent"});
-    svg._hover = t => { const n = t == null ? null : tip?.(t); ckCrossAt(cross, n ? x(n.t) : null); return n; };
+    svg._hover = t => { const n = t == null ? null : tip?.(t); if (n) n.t = Math.min(b, Math.max(a, n.t)); ckCrossAt(cross, n ? x(n.t) : null); return n; };   // (a week at an end, at that end)
     const show = t => { const n = ckSync(svg, t); n ? ckTip(svg, x(n.t), n.rows) : hideTip(); return n ? tipWords(n.rows) : ""; };
     hit.addEventListener("pointermove", ev => { const r = svg.getBoundingClientRect(); show(x.inv((ev.clientX - r.left) * (w / r.width))); });
     hit.addEventListener("pointerleave", () => { ckSync(svg, null); hideTip(); });
@@ -441,7 +440,7 @@ function renderHealth() {
       byDay(sBars).map(({t, v: [p]}) => [long ? weekOf(t) : fmtD(t), (p[1] + p[2] + p[3] + p[4]).toFixed(1), mins(p[1]), mins(p[2]), mins(p[3])])));
     else sl.append(legend(long ? [[C.w, "Asleep, a night", "line"], [C.deep, "Deep"], [C.rem, "REM"], [C.light, "Light"]] : [[C.deep, "Deep"], [C.rem, "REM"], [C.light, "Light"], ["var(--muted)", "Asleep, no stages"]]));
     if (!state.tables.has("#h-sleep")) hChart(sl, a, b, {h: 200, zero: true, fmtY: v => ckNum(v) + "h", label: long ? "Sleep, weekly averages" : "Sleep", noun: long ? "week" : "night", nav: sBars, layers: long ? [
-      {type: "line", data: sBars.map(p => [p[0], p[1] + p[2] + p[3] + p[4]]), color: C.w, width: 2, gap: 21},
+      {type: "line", data: sBars.map(p => [p[0], p[1] + p[2] + p[3] + p[4]]), color: C.w, width: 2, gap: 21, every: 7 * DAY},
       {type: "strip", data: sBars, colors: [C.deep, C.rem, C.light], every: 7 * DAY}]
       : [{type: "bars", data: sBars, keys: ["deep", "rem", "light", "other"], colors: [C.deep, C.rem, C.light, "var(--muted)"]}],
       tip: t => { const p = nearest(sBars, t, long ? 4 : .6); if (!p) return null; const tot = p[1] + p[2] + p[3] + p[4];
@@ -630,8 +629,8 @@ function bpCard(box, a, b, long, legend, head, home, clinic) {
   hChart(card, a, b, {h: 220, label: long ? "Blood pressure, home readings by week" : "Blood pressure", noun: "reading", nav,
     count: long && ((n, a, b) => hWeeks(n, "home readings", home.filter(r => r.t >= a && r.t <= b).length, "reading")), layers: long ? [...bL,
     {type: "band", data: wk, color: C.home},
-    {type: "line", data: wk.map(p => [p[0], p[1]]), color: C.home, width: 1.6},
-    {type: "line", data: wk.map(p => [p[0], p[2]]), color: C.home, width: 1.6},
+    {type: "line", data: wk.map(p => [p[0], p[1]]), color: C.home, width: 1.6, every: 7 * DAY},
+    {type: "line", data: wk.map(p => [p[0], p[2]]), color: C.home, width: 1.6, every: 7 * DAY},
     {type: "pairs", data: clinicPts, color: C.clinic, hollow: true, r: 3.5}] : [...bL,
     {type: "pairs", data: homePts, color: C.home, r: homePts.length > 200 ? 2 : 3},
     {type: "pairs", data: clinicPts, color: C.clinic, hollow: true, r: 3.5}],
