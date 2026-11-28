@@ -118,6 +118,18 @@ class Ctx:
         self.units = self.cfg.get("units") or {}
         self.person = person.of(self.cfg)
 
+    def wall_now(self):
+        """Now on the person's wall clock, naive: in their own time zone (Settings → Dates and times, #42), else the
+        server's, as the summary's today is (summary.today, settings.local_now). Typed doses' times and a schedule's
+        are in it; the watch summary's zone (tz) is the phone's, which may be another (#1095)."""
+        zone = (self.cfg.get("dates") or {}).get("timeZone") if isinstance(self.cfg.get("dates"), dict) else None
+        if zone:
+            try:
+                return datetime.now(ZoneInfo(str(zone))).replace(tzinfo=None)
+            except (ZoneInfoNotFoundError, ValueError):
+                pass
+        return datetime.now()
+
     def local(self, t):
         """A reading's time as the local wall time it was taken, YYYY-MM-DDTHH:MM, or None: a phone's (an instant, ISO
         with its offset) in the summary's zone; one typed in (#224) or a meter's (no offset) is a wall time already,
@@ -617,7 +629,7 @@ def _scheduled(c, key, keep):
     if not lines:
         return None
     med = next((m for m in c.data.get("medications") or [] if isinstance(m, dict) and m.get("key") == key), {})
-    now = datetime.now(c.tz).replace(tzinfo=None)
+    now = c.wall_now()   # the person's: a typed dose's time is their wall clock, not the watch summary's zone
     try:
         first = min(date.fromisoformat(r["from"]) for r in lines)
     except ValueError:

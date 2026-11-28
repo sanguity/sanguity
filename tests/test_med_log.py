@@ -340,6 +340,21 @@ class Log(unittest.TestCase):
         for word in ("due", "should", "missed", "adherence"):
             self.assertNotIn(word, json.dumps(b).lower())
 
+    def test_summary_counts_in_the_persons_today(self):
+        """#1095, seen on CI after midnight: the visit summary counted up to today in the watch summary's zone, a day
+        behind the person's, so today's doses were left out and the line fell back to the logged count. A schedule
+        from the person's today, a dose skipped at its time; the watch's zone 25 hours behind theirs"""
+        from zoneinfo import ZoneInfo
+        mine = datetime.now(ZoneInfo("Pacific/Kiritimati")).date().isoformat()
+        data = {"medications": [{"key": "fictionamide", "name": "Fictionamide 10 mg tablet"}],
+                "doses": [{"med": "fictionamide", "name": "Fictionamide 10 mg tablet", "t": mine + "T00:10",
+                           "status": "skipped", "slot": "00:05"}],
+                "reminders": [{"med": "fictionamide", "times": ["00:05"], "amounts": [{"amount": 1, "unit": "tablet"}],
+                               "days": ["mo", "tu", "we", "th", "fr", "sa", "su"], "from": mine, "until": None, "asneeded": False}]}
+        cx = measures.Ctx({"tz": "Pacific/Pago_Pago"}, data, {"dates": {"timeZone": "Pacific/Kiritimati"}})
+        b = measures.blocks(cx, ["medlog"], lambda d: d <= mine)["medlog"]
+        self.assertEqual(b["lead"], ["Fictionamide 10 mg tablet: 0 of 1 scheduled dose taken, 1 skipped"], "today in the person's zone")
+
     def test_phone_doses_read_as_logged(self):
         watch = {"med_doses": [["2026-11-16T08:05:00-06:00", "Fictionamide 10 mg tablet", "taken", 1, "count", "Apple Health"],
                                ["2026-11-16T20:00:00-06:00", "Fictionamide 10 mg tablet", "skipped", None, "", "Apple Health"],
