@@ -49,7 +49,7 @@ on any script error, console error, failed request, request to another host or N
   python3 tests/browser_check.py --part records        # what every part shares, then one part's checks (--parts lists them)
   BROWSER_CHECK_FULL=1 python3 tests/browser_check.py  # the size sweeps at every width, not their sample (#1029)
 """
-import json, os, re, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request
+import json, os, re, shutil, socket, subprocess, sys, tempfile, threading, time, traceback, urllib.parse, urllib.request
 from decimal import Decimal
 
 from playwright.sync_api import sync_playwright
@@ -704,15 +704,18 @@ def tab_click(pg, sel):
 
 def stopped(e):
     """A stopped check's error, with the lines of Playwright's call log that say why (what covered an element,
-    what it waited for), so a failure on CI's machines can be read without running it again."""
+    what it waited for, where a wait_for_url saw the page go), and the line of this file it stopped at, so a failure
+    on CI's machines can be read without running it again."""
     lines = str(e).splitlines()
     why = [l.strip() for l in lines[1:] if any(w in l for w in ("intercepts pointer", "not visible", "not stable", "outside of the viewport",
-                                                                  "waiting for", "element is", "retrying", "resolved to"))]
+                                                                  "waiting for", "element is", "retrying", "resolved to", "navigated to"))]
     seen = []
     for l in why:
         if l not in seen:
             seen.append(l)
-    return lines[0] + ("" if not seen else " | " + " | ".join(seen[:6]))
+    # where in this file it stopped: the deepest of its frames in the traceback, the call that failed (or the helper's)
+    here = [f.lineno for f in traceback.extract_tb(e.__traceback__) if os.path.abspath(f.filename) == os.path.abspath(__file__)]
+    return lines[0] + ("" if not seen else " | " + " | ".join(seen[:6])) + (f" (browser_check.py line {here[-1]})" if here else "")
 
 
 # what phone_fits measures, in the page (#61)
