@@ -966,6 +966,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct label:not(:where(.seg>label)){display:grid;gap:var(--sp-1);font-size:var(--fs-3);color:var(--ink2);font-weight:var(--fw-medium)}   /* (a pick-one's choice: its own look, components, #550) */
 .acct label.check{display:flex;align-items:center;gap:var(--sp-2);padding-bottom:var(--sp-2)}
 .acct label.ins-pick{display:inline-flex;align-items:center;color:var(--ink)}   /* an insurance card's photo picker (insurance.js), not every .pick: a primary one keeps its white text */
+.acct .ocr-langs>:first-child{margin-top:0}   /* General → Text recognition's first language level with its name (gen-ocr.js, #494) */
 .acct label.btn.small{font-size:var(--fs-2)}
 .acct .row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin:var(--sp-2) 0}   /* 8 px above and below: a row of buttons never sits on the heading or text after it (#309) */
 .acct .btn{margin:0}

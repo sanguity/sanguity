@@ -235,7 +235,11 @@
   <!-- General → Text recognition (#1129, gen-ocr.js): scanned documents read on this server, the languages it reads -->
   <section class="card conn adm" id="gen-ocr" hidden>
     <h2>Text recognition</h2>
-    <p class="hint">Scanned documents and pictures read on this server, so the Timeline's search and the palette find them by their words. Nothing leaves this server.</p>
+    <p class="hint">Scanned documents read on this server, so a search finds them by their words.</p>
+    <div class="about-words" hidden>
+      <p>Scanned documents and pictures are read here, so the Timeline's search and the palette find them by their
+        words. Nothing leaves this server.</p>
+    </div>
     <div id="genOcrReauth" class="reauth" hidden></div>
     <div id="genOcr"></div>
     <span class="msg" id="genOcrMsg" role="status"></span>
