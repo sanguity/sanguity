@@ -408,7 +408,7 @@ BACKGROUND = "x-sanguity-background"   # (#1063) a request the page makes on its
 
 
 def _session(request, db):
-    token = next((t for n in config.SESSION_COOKIES if (t := request.cookies.get(n))), None)
+    token = next((t for n in config.session_cookies() if (t := request.cookies.get(n))), None)
     if not token or len(token) > 200:
         return None
     s = db.execute("""SELECT s.id AS sid, s.created AS s_created, s.last_seen, s.expires, s.verified_at, s.idp_mfa, s.stepped_at, u.* FROM sessions s
@@ -527,8 +527,9 @@ def _start_session(request, response, db, uid, how=None, idp_mfa=False):
     secure = _secure(request)
     name, path = config.session_cookie(secure)   # (#1159) at the URL base, under one
     response.set_cookie(name, token, max_age=life, path=path, httponly=True, samesite="strict", secure=secure)
-    if secure and request.cookies.get(config.COOKIE):   # one from before the prefix, or from plain HTTP
-        response.delete_cookie(config.COOKIE, path=path, httponly=True, samesite="strict")
+    plain, plain_path = config.session_cookie(False)
+    if secure and request.cookies.get(plain):   # one from before the prefix, or from plain HTTP
+        response.delete_cookie(plain, path=plain_path, httponly=True, samesite="strict")
     if how:
         u = db.execute("SELECT id, username FROM users WHERE id=?", (uid,)).fetchone()
         _audit("login.ok", request, u, warn=False, method=how)
@@ -883,11 +884,11 @@ def _remember_device(request, response, db, uid):
 
 @app.post("/api/logout")
 def logout(request: Request, response: Response, db=Depends(get_db)):
-    for name in config.SESSION_COOKIES:
+    for name in config.session_cookies():
         if (token := request.cookies.get(name)):
             db.execute("DELETE FROM sessions WHERE token_hash=?", (sec.token_hash(token),))
-    path = config.session_cookie(False)[1]
-    response.delete_cookie(config.COOKIE, path=path, httponly=True, samesite="strict", secure=_secure(request))
+    name, path = config.session_cookie(False)
+    response.delete_cookie(name, path=path, httponly=True, samesite="strict", secure=_secure(request))
     if _secure(request):
         name, path = config.session_cookie(True)
         response.delete_cookie(name, path=path, httponly=True, samesite="strict", secure=True)

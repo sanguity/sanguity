@@ -48,10 +48,11 @@ def _page_origin(request):
 def _cookie(request):
     """(name, path) of the browser cookie: over HTTPS __Host-sanguity_oidc at /, which no other name or plain-HTTP
     page can set (#1109's review: one planted for /api/login/oidc would bind a sign-in to someone else's), as the
-    session cookie's (config.COOKIE_HOST); over plain HTTP, sanguity_oidc for /api/login/oidc only."""
+    session cookie's (config.session_cookie); over plain HTTP, sanguity_oidc for /api/login/oidc only."""
+    s = config.cookie_suffix()   # (#1159's re-review) named for the URL base, as the session's
     if _secure(request):   # (#1159's review) __Host- at /, under a URL base too, as the session's
-        return "__Host-" + oidc.BROWSER_COOKIE, "/"
-    return oidc.BROWSER_COOKIE, config.url_base() + oidc.COOKIE_PATH
+        return "__Host-" + oidc.BROWSER_COOKIE + s, "/"
+    return oidc.BROWSER_COOKIE + s, config.url_base() + oidc.COOKIE_PATH
 
 
 def _begin(db, request, response, purpose, s=None):

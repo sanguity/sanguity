@@ -21,7 +21,6 @@ COOKIE = "sg_session"
 # over HTTPS the session cookie is named with the __Host- prefix, so the browser holds it to Secure, Path=/ and
 # this exact host (no subdomain can set or overwrite it); plain HTTP can't carry that prefix, so it keeps COOKIE
 COOKIE_HOST = "__Host-" + COOKIE
-SESSION_COOKIES = (COOKIE_HOST, COOKIE)   # read in this order
 
 
 def url_base():
@@ -30,11 +29,27 @@ def url_base():
     return server_settings.value("URL_BASE")
 
 
+def cookie_suffix(base=None):
+    """(#1159's re-review) "" without a URL base; else "-" and 6 hex of the base's hash, so two installs on one host
+    under different bases never share a cookie (one at / is sent to every path). A changed base is a new name: the
+    old cookie is ignored, and its person signs in again."""
+    import hashlib
+    base = url_base() if base is None else base
+    return "-" + hashlib.sha256(base.encode()).hexdigest()[:6] if base else ""
+
+
+def session_cookies():
+    """The session cookie's names, read in this order: over HTTPS, then plain HTTP's."""
+    s = cookie_suffix()
+    return COOKIE_HOST + s, COOKIE + s
+
+
 def session_cookie(secure):
     """(name, path) of the session cookie: over HTTPS __Host- at /, under a URL base too (#1159's review: the host is
-    this server's, and the prefix keeps another name or a plain-HTTP page from setting it); over plain HTTP at the URL
-    base."""
-    return (COOKIE_HOST, "/") if secure else (COOKIE, url_base() + "/")
+    this server's, and the prefix keeps another name or a plain-HTTP page from setting it), named for the base
+    (cookie_suffix); over plain HTTP at the URL base."""
+    s = cookie_suffix()
+    return (COOKIE_HOST + s, "/") if secure else (COOKIE + s, url_base() + "/")
 DEVICE_COOKIE, DEVICE_DAYS = "sg_device", 365   # marks a browser that has signed in to an account before
 PASSWORD_MAX = 256
 HASH_WAIT = 2   # seconds a sign-in waits for its turn before the API answers 503 "busy, try again"

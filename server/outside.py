@@ -339,12 +339,27 @@ def blocked_names():
     return {_name(h) for h in blocked()}
 
 
+def _address(text):
+    """An address as ipaddress has it (an IPv4-mapped IPv6 one as its IPv4 address), or None for a name."""
+    import ipaddress
+    try:
+        a = ipaddress.ip_address(str(text).split("%")[0])
+    except ValueError:
+        return None
+    return a.ipv4_mapped or a if a.version == 6 else a
+
+
+def blocked_addresses():
+    return {a for a in map(_address, blocked_names()) if a is not None}
+
+
 def address_refusal(ip):
     """(#1167's review) Why Sanguity won't connect to the address ip a name resolved to, or None: it's blocked (by itself,
     whatever the port), or every outside connection is off."""
     if settings.install_value("outside.none"):
         return f"Sanguity won't contact {ip}: “No outside connections at all” is on, under Outside connections."
-    if _name(str(ip)) in blocked_names():
+    a = _address(ip)
+    if (a is not None and a in blocked_addresses()) or _name(str(ip)) in blocked_names():   # (#1159's re-review: as addresses)
         return f"Sanguity won't contact {ip}: it's blocked under Outside connections."
     return None
 
@@ -355,7 +370,8 @@ def refusal(purpose, host):
     host = net.norm(host)
     if settings.install_value("outside.none"):
         return f"Sanguity won't contact {host}: “No outside connections at all” is on, under Outside connections."
-    if _name(host) in blocked_names():   # whatever the port
+    a = _address(_name(host))
+    if _name(host) in blocked_names() or (a is not None and a in blocked_addresses()):   # whatever the port
         return f"Sanguity won't contact {host}: it's blocked under Outside connections."
     kind = kind_of(purpose)
     if kind and not kind_on(kind):

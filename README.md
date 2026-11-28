@@ -229,10 +229,20 @@ with a warning in the app's log naming it; take those lines out at your leisure.
 
 **Opt-in: managed by the environment.** The sign-in provider's fields (`OIDC_ISSUER`, `OIDC_CLIENT_ID`,
 `OIDC_CLIENT_SECRET`, `OIDC_SCOPES`, `OIDC_BUTTON`, `OIDC_ACR`, `OIDC_ONLY`) and the notification token
-(`NOTIFY_TOKEN`) may be kept in the environment on purpose, as an install that manages its identity provider as code
+(`NOTIFY_TOKEN`) and the outbound proxy's password (`OUTBOUND_PROXY_PASSWORD`) may be kept in the environment on purpose, as an install that manages its identity provider as code
 or rotates secrets in a secret manager would. While one is set it wins and the app shows its row locked, **Managed by
 the environment**; each may instead be `NAME_FILE`, the path of a file holding it (a Docker secret), read at each use.
 Take it out and the app's own value is used again. See `.env.example`.
+
+**A URL base, built-in HTTPS and an outbound proxy** (#1159; Needs a restart, and Outside connections for the
+proxy) are tried at the next start and kept once the server runs healthy with them. With a URL base (Sanguity at
+`https://example.com/sanguity`), the container's nginx serves under it and your reverse proxy forwards the path as it
+is (or with it taken off); still, **one app per host name is recommended**: pages of other apps on the same host share
+Sanguity's origin, so a host name of its own (`health.example.com`) keeps them apart. Its cookies are named for the
+base, so changing it signs everyone out. Built-in HTTPS is the app's own port 8443: publish it (a field in the TrueNAS
+and Unraid templates, a mapping to uncomment in `compose.release.yaml` and CasaOS's) once a certificate is set. With an
+outbound proxy, Outside connections' host blocks still apply to names, but a block of an address can't apply to a
+name the proxy looks up for itself.
 
 Every change to one in the app asks the admin to confirm it's them (the password, a code or a passkey, unless they did
 within the last few minutes), and goes in the install's activity log with who made it and its old and new value.

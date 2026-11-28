@@ -106,6 +106,12 @@ class RestartSettings(unittest.TestCase):
         ss.forget()
         restart()
 
+    def relogin(self):
+        """Signed in again (a new URL base names the cookie anew), over HTTPS: its cookie at /, whatever the base."""
+        self.c = TestClient(main.app, base_url="https://testserver")
+        r = self.c.post("/api/login", json={"username": "ada", "password": PW}, headers=H)
+        assert r.status_code == 200, r.text
+
     def put(self, values, confirm=None):
         return self.c.put("/api/settings/install/restart/values", json={"values": values, "confirm": confirm}, headers=H)
 
@@ -142,6 +148,7 @@ class RestartSettings(unittest.TestCase):
         self.assertEqual({x["name"]: x["next"] for x in st["settings"]}, GOOD)
         self.assertEqual({n: ss.lookup(n)[1] for n in ss.DEFS}, before, "nothing changes until a restart")
         restart()
+        self.relogin()   # (#1159's re-review) the URL base names the cookie: a new base, a new sign-in
         for name, v in GOOD.items():
             self.assertEqual(ss.lookup(name), ("file", v), name)
         for name in config.RESTART:   # where the server reads them: config.setting
@@ -163,6 +170,7 @@ class RestartSettings(unittest.TestCase):
         self.assertIsNone(self.state()["fell_back"])
         self.assertEqual(config.url_base(), "/sanguity")
         ss.reset(["URL_BASE"])   # (the rest of the tests at the root)
+        self.relogin()
         r = self.put({n: None for n in GOOD})   # back to the defaults, at the next start
         self.assertTrue(r.json()["restart_needed"])
         restart()
@@ -533,7 +541,13 @@ class UrlBaseHttpsLogProxy(unittest.TestCase):
             r = web.post("/sanguity/api/login", json={"username": "ada", "password": PW}, headers=H)
             self.assertEqual(r.status_code, 200, r.text)
             cookies = r.headers.get_list("set-cookie")
-            self.assertTrue(any(c.startswith("__Host-sg_session=") and "Path=/;" in c and "Secure" in c for c in cookies), cookies)
+            sfx = config.cookie_suffix("/sanguity")
+            self.assertRegex(sfx, r"^-[0-9a-f]{6}$")
+            self.assertNotEqual(sfx, config.cookie_suffix("/other"), "two bases on one host: two cookies (#1159's re-review)")
+            self.assertTrue(any(c.startswith(f"__Host-sg_session{sfx}=") and "Path=/;" in c and "Secure" in c for c in cookies), cookies)
+            other = TestClient(main.app, base_url="https://health.example.test")
+            other.cookies.set(f"__Host-sg_session{config.cookie_suffix('/other')}", web.cookies.get(f"__Host-sg_session{sfx}"), domain="health.example.test")
+            self.assertEqual(other.get("/sanguity/api/me").status_code, 401, "another base's cookie isn't this one's")
             self.assertTrue(any(c.startswith("sg_device=") and "Path=/sanguity/api/login" in c for c in cookies), cookies)
             me = web.get("/sanguity/api/me")
             self.assertEqual(me.status_code, 200, "signed in under the base")
@@ -550,17 +564,19 @@ class UrlBaseHttpsLogProxy(unittest.TestCase):
             from starlette.requests import Request
             req = Request({"type": "http", "scheme": "https", "path": "/", "headers": [(b"host", b"health.example.test")],
                            "server": ("health.example.test", 443), "query_string": b""})
-            self.assertEqual(routes_oidc._cookie(req), ("__Host-sanguity_oidc", "/"))
+            self.assertEqual(routes_oidc._cookie(req), (f"__Host-sanguity_oidc{sfx}", "/"))
             self.assertEqual(oidc.redirect_uri(routes_oidc._page_origin(req)), "https://health.example.test/sanguity/login.html")
             from server import routes_calendar
             self.assertEqual(routes_calendar._base_url(req), "https://health.example.test/sanguity")
             plain = TestClient(main.app, base_url="http://health.example.test")
             r = plain.post("/sanguity/api/login", json={"username": "ada", "password": PW}, headers=H)
-            self.assertTrue(any(c.startswith("sg_session=") and "Path=/sanguity/" in c for c in r.headers.get_list("set-cookie")))
+            self.assertTrue(any(c.startswith(f"sg_session{sfx}=") and "Path=/sanguity/" in c for c in r.headers.get_list("set-cookie")))
             r = plain.post("/sanguity/api/logout", headers=H)
-            self.assertTrue(any(c.startswith("sg_session=") and "Path=/sanguity/" in c for c in r.headers.get_list("set-cookie")))
+            self.assertTrue(any(c.startswith(f"sg_session{sfx}=") and "Path=/sanguity/" in c for c in r.headers.get_list("set-cookie")))
         finally:
             ss.reset(["URL_BASE"])
+        self.assertEqual((config.cookie_suffix(), config.session_cookie(True)), ("", ("__Host-sg_session", "/")), "no base: the plain name")
+        self.assertEqual(web.get("/api/me").status_code, 401, "the base changed: its cookie is ignored, and its person signs in again")
         for bad in ("/api", "/a b", "/../x", "x" * 101):
             self.assertEqual(self.put({"URL_BASE": bad}).status_code, 400, bad)
 

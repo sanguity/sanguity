@@ -333,7 +333,9 @@ def proxy_bypass(v):
 define("URL_BASE", "Address", "URL base", url_base, kind="text", default="", read=url_base,
        help="Serve Sanguity under a path of your domain, such as /sanguity, behind a reverse proxy that forwards that "
             "path, as it is or with it taken off. Every page, address the app gives out and cookie uses it; the "
-            "container's nginx serves under it, and sends its root there. Empty: at the address's root.")
+            "container's nginx serves under it, and sends its root there. A host name of its own is still best: "
+            "pages of other apps on the same host share its origin. Changing it signs everyone out (its cookies are "
+            "named for it). Empty: at the address's root.")
 define("HTTPS_CERT", "Built-in HTTPS", "Certificate file", data_file("The certificate"), kind="path", default="",
        read=data_file("The certificate"),
        help="A PEM certificate (with its chain) in the data folder, such as tls/cert.pem: with its key, Sanguity also "
@@ -351,7 +353,8 @@ define("LOG_LEVEL", "Logging", "Log level", one_of(LOG_LEVELS, "The log level"),
 define("OUTBOUND_PROXY", "Outbound proxy", "Proxy", proxy_address, kind="text", default="", read=proxy_address,
        help="Every outside connection (connected sources, Health Links, the sign-in provider, notifications, downloads) "
             "through this HTTP or SOCKS5 proxy, such as http://proxy.lan:3128 or socks5://10.0.0.2:1080. The hosts "
-            "allowed and their checks stay as they are. Empty: none.")
+            "allowed and their checks stay as they are; a blocked name still is, but an address block can't apply "
+            "to a name the proxy looks up. Empty: none.")
 define("OUTBOUND_PROXY_USER", "Outbound proxy", "Proxy username", proxy_user, kind="text", default="", read=proxy_user,
        help="Only if the proxy asks for one. Its password is set on its own, and never shown.")
 define("OUTBOUND_PROXY_BYPASS", "Outbound proxy", "Reached without the proxy", proxy_bypass, kind="text", default="",

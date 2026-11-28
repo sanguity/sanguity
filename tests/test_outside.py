@@ -728,6 +728,12 @@ class View(unittest.TestCase):
         c.close()
         with self.assertRaisesRegex(net.Refused, "127.0.0.1: it's blocked"):
             net.connection(p, f"http://{name}/x", ip="127.0.0.1")
+        # (#1159's re-review) compared as addresses: IPv6 however written, an IPv4-mapped one as its IPv4 address
+        self.setting("outside.blocked", ["10.0.0.5", "[2001:db8::1]:8443"])
+        for ip in ("::ffff:10.0.0.5", "::ffff:a00:5", "2001:0db8:0000::0001", "2001:DB8::1"):
+            self.assertIn("it's blocked", outside.address_refusal(ip) or "", ip)
+        self.assertIsNone(outside.address_refusal("10.0.0.6"))
+        self.assertIn("it's blocked", outside.refusal("A test's own purpose", "[2001:db8:0::1]") or "")
 
     def test_static_files_have_the_pages_headers(self):   # #1159's review: as nginx sends them
         c = client()
