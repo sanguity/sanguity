@@ -312,8 +312,12 @@ async function recordsDraw(data) {
   if (RANGES_USED) for (const n of document.querySelectorAll(".range-note")) n.textContent += RANGE_NOTE_SETTINGS;
   await cycleLoad();   // cycle tracking, only when turned on and for owners and editors (cycle.js, #183)
   storeSpan();
-  $("#meta").textContent = [DATA.source, DATA.built && "built " + fmtD(DATA.built), WATCH && WATCH.last_payload && "watch synced " + fmtDT(WATCH.last_payload)]
-    .filter(Boolean).join(" · ");   // a profile of imports alone has no build to name (#199: it said "undefined · built")
+  // when the records were built from their imports, and the watch's last sync: not the build's own name (a file's,
+  // the owner's report), but the demo's, which says it's made up (#1101); a profile of imports alone has no build to
+  // name (#199: it said "undefined · built"). Each date whole on its line (no-break spaces; a time may go to the next)
+  const nb = d => d.replace(/ /g, "\u00a0").replace(/,\u00a0(?=\d{1,2}:)/, ", ");
+  $("#meta").textContent = [PROFILE?.demo && DATA.source, DATA.built && "records imported " + nb(fmtD(DATA.built)), WATCH && WATCH.last_payload && "watch synced " + nb(fmtDT(WATCH.last_payload))]
+    .filter(Boolean).join(" · ");
   restore();   // a saved period naming a milestone that's since gone is All (setPeriod)
   // Labs opens on Latest on a phone and on Chart wider till a view's picked (#997), whatever was shown last; #labs
   // alone opens it there too, and each view's own address that view (#1026)

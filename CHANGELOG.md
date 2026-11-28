@@ -3988,6 +3988,10 @@ Everything on `main` so far; it becomes the first tagged release.
   person → Labs and ranges → Lab name matches) lists the matches an admin made for every profile under For every
   profile on this server, an admin's to keep, change or remove there with an Undo, read by everyone else; the palette
   and old addresses open the card.
+- **The records page's foot** (Fixes the owner's report): the page ends at its footer (a toast stack or a page's bar
+  not drawn no longer pads the end by a whole window); the "Not medical advice" notice is centred; the foot names the
+  version (General → About for an admin), links the source code and where to report a problem, and says when the
+  records were imported in place of the build's file name.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

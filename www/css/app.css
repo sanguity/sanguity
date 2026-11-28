@@ -472,8 +472,10 @@ header.topbar .tabs::-webkit-scrollbar{display:none}
 .menu-btn[aria-expanded="true"]{background:var(--hover)}
 .menu-ico{font-size:var(--fs-4);line-height:1}
 .menu-caret{font-size:var(--fs-1);color:var(--muted)}
-.pagefoot{padding:var(--sp-2) var(--sp-5) var(--sp-5);text-align:center}
-.pagefoot .meta{color:var(--muted);font-size:var(--fs-2)}
+.pagefoot,div.notice,.share-notice{text-align:center;text-wrap:balance}
+.pagefoot{padding:var(--sp-2) var(--sp-5) var(--sp-5)}
+.pagefoot .meta{color:var(--muted);font-size:var(--fs-2);margin:var(--sp-1) 0 0}
+.pagefoot a{white-space:nowrap}
 @media (max-width:700px){
   header.topbar{flex-wrap:wrap;gap:var(--sp-2) var(--sp-2);padding:var(--sp-2) var(--sp-3) var(--sp-2)}
   header.topbar .brand-name{flex:none}
