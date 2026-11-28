@@ -2,8 +2,10 @@
 data/server-settings.json (mode 0600, the app's own user, written whole and atomically), and read once, as the server
 starts: the upload limits, connected sources' and Health Links' limits, the password checks at once (HASH_PARALLEL),
 the trusted proxies (uvicorn's forwarded_allow_ips), the phone receiver's time zone and unclaimed data's days, and
-how long what a restore replaced is kept. Ports and the bind address stay Docker's. The environment still wins where
-it sets one (not empty): then that row is shown as set there, and a change to it is refused.
+how long what a restore replaced is kept. Ports and the bind address stay Docker's. The file is their one source of
+truth (#1158): on the first start of this version each the environment set was copied into it once (take_environment,
+said in Install activity and once on General), and from then on one the environment sets is ignored, with a warning in
+the log naming it when it's changed since.
 
 A bad value must never leave the server unable to start, so a change is never put in force at once:
 
@@ -59,7 +61,7 @@ DEFS = {}   # name (the variable's) -> Def, in the page's order
 
 def define(name, group, label, check, unit="", help="", kind="number", default=None, read=None, receiver=False, app=True):
     """A setting that needs a restart. Its default is config.VARS' for a variable of the app's, else default; read: the
-    environment's text -> its value (ValueError: unreadable, so as if unset), for the ones that aren't config.VARS'."""
+    environment's text -> its value (ValueError: unreadable, so not taken in, #1158), for the ones that aren't config.VARS'."""
     if name in DEFS:
         raise ValueError(f"{name} is defined twice")
     if name in config.VARS:
@@ -124,13 +126,6 @@ def proxies(v):
     return ", ".join(out)
 
 
-def _env_proxies(text):
-    """The environment's FORWARDED_ALLOW_IPS: always its own text, as uvicorn reads it (never proxies()' form of it);
-    one proxies() wouldn't take raises, so lookup logs it, and keeps the text all the same."""
-    proxies(text)
-    return text
-
-
 def proxies_cover(value, address):
     """Whether the trusted proxies value (as proxies() gives it) trusts address (a request's peer)."""
     if value == "*":
@@ -179,6 +174,8 @@ define("UPLOAD_MAX_FILE_MB", "Uploads", "One file", whole(1, 4096, "One file"), 
        "nginx takes one file sent of up to 4 GB.")
 define("UPLOAD_MAX_TOTAL_MB", "Uploads", "One upload, unpacked", whole(1, 65536, "One upload"), "MB")
 define("UPLOAD_MAX_FILES", "Uploads", "Files in one upload", whole(1, 100000, "Files in one upload"), "files")
+define("UPLOAD_MAX_ZIP_RATIO", "Uploads", "A file unpacked from a zip, at most", whole(20, 2000, "A file unpacked from a zip"),
+       "times its packed size", "A zip bomb is thousands of times its packed size; real exports are far below 200.")
 define("JOURNAL_PHOTO_MAX_MB", "Uploads", "A journal photo", whole(1, 25, "A journal photo"), "MB",
        "nginx takes one photo sent of up to 25 MB.")
 define("SYNC_HOURS", "Connected sources", "Time between a connection's pulls", whole(1, 168, "The time between pulls"), "hours")
@@ -192,9 +189,13 @@ define("SHL_MAX_FILES", "Health Links", "Files in one link", whole(1, 500, "File
 define("SHL_TIMEOUT", "Health Links", "Wait for each request", whole(5, 120, "The wait for each request"), "seconds")
 define("HASH_PARALLEL", "Server", "Password checks at once", whole(1, 8, "Password checks at once"), "at a time",
        "Each uses 64 MiB of memory while it runs; more wait their turn.")
-define("FORWARDED_ALLOW_IPS", "Server", "Trusted proxies", proxies, kind="text", default="127.0.0.1", read=_env_proxies,
-       help="Whose forwarded headers (the visitor's address, HTTPS or not) the server believes: addresses or networks, "
-            "comma-separated, or * where only the proxy can reach the app.")
+# (#1158) every template puts the app behind its own nginx, with no port of its own published (the all-in-one container
+# binds it to 127.0.0.1): there only nginx can reach it, and it sets the headers, so a template's default is "*";
+# a server started some other way believes only a proxy on its own machine until told otherwise
+TEMPLATE = bool(os.environ.get("SANGUITY_DEPLOYMENT", "").strip())
+define("FORWARDED_ALLOW_IPS", "Server", "Trusted proxies", proxies, kind="text", default="*" if TEMPLATE else "127.0.0.1",
+       read=proxies, help="Whose forwarded headers (the visitor's address, HTTPS or not) the server believes: addresses or "
+                          "networks, comma-separated, or * where only the proxy can reach the app (as in Sanguity's templates).")
 define("TZ", "Phone receiver", "Time zone", time_zone, kind="zone", default="UTC", read=time_zone, receiver=True, app=False,
        help="The receiver's days start at midnight here, for uploads that don't say their own.")
 define("SLOT_GRACE_DAYS", "Phone receiver", "Unclaimed data, kept", whole(1, 365, "Unclaimed data's days"), "days",
@@ -301,6 +302,11 @@ def start(now=None, say=_say):
     now = int(now if now is not None else time.time())
     with _lock:
         doc, err = read_doc()
+        if not err and take_environment(doc, now, say):
+            try:
+                write_doc(doc)
+            except OSError as e:
+                say(f"[settings] couldn't write {path()} ({type(e).__name__}): what the environment set is used this time only")
         good = clean(doc.get("good"))
         _state.update(tried=False, fell_back=None, unreadable=err)
         if err:
@@ -470,7 +476,7 @@ def asgi_app(app, forwarded_allow_ips):
 
 def uvicorn_options():
     """What python -m server gives uvicorn: the address it binds (Docker's: HOST and PORT) and whose forwarded
-    headers it believes (FORWARDED_ALLOW_IPS: the environment's, else the file's, else this machine's own only)."""
+    headers it believes (FORWARDED_ALLOW_IPS: the file's, else the default: "*" in a template, else this machine's own)."""
     return {"host": os.environ.get("HOST", "0.0.0.0"), "port": int(os.environ.get("PORT", "8000")),
             "forwarded_allow_ips": lookup("FORWARDED_ALLOW_IPS")[1]}
 
@@ -478,34 +484,80 @@ def uvicorn_options():
 # ---------------------------------------------------------------- what's in force, and changes
 
 def lookup(name):
-    """(where it comes from, the value in force): "environment", "file" (changed on the page, applied at the last
-    start) or "default". A variable of config.VARS through config.lookup, which reads the file's in turn."""
+    """(where it comes from, the value in force): "file" (changed on the page, applied at the last start) or "default".
+    A variable of config.VARS through config.lookup, which reads the file's in turn."""
     d = DEFS[name]
     if name in config.VARS:
         return config.lookup(name)
-    text = os.environ.get(name, "").strip()
-    if text:   # the environment's always wins, even one these checks wouldn't take (#1131's review): never dropped
-        try:
-            return "environment", d.read(text)
-        except (Refused, ValueError):
-            _unread(name, text)
-            # a text one as it's set (uvicorn reads the proxies its own way: Cloudflare's 22 ranges, "unix:"), a number
-            # at its default, as the receiver reads one it can't
-            return "environment", text if d.kind != "number" else d.default
     have = in_force()
     return ("file", have[name]) if name in have else ("default", d.default)
 
 
-_warned = set()
+WHERE = "Settings → Install → General → Needs a restart"
 
 
-def _unread(name, text):
-    """Said once per value: one the environment sets that this page's checks wouldn't take, used as it's set."""
-    if (name, text) not in _warned:
-        _warned.add((name, text))
-        import logging
-        logging.getLogger("sanguity").warning("%s is set in the environment to a value Settings → General wouldn't take; "
-                                              "it's used as it's set (the environment's always wins)", name)
+def take_environment(doc, now, say=_say):
+    """(#1158) Once, on the first start of this version: each of these the environment sets is copied into doc (the
+    good values, and the pending ones where there are: it was the one in force, and the page couldn't change it), and
+    doc["taken"] records when, which were copied ("names") and a fingerprint of each one's text ("seen"). From then on
+    the environment sets none of them: one it sets that's changed since is said in the log, naming it, and ignored.
+    One these checks don't take isn't copied (said, without the rest of its text). True when doc needs writing."""
+    seen = {n: t for n in DEFS if (t := os.environ.get(n, "").strip())}
+    taken = doc.get("taken")
+    if isinstance(taken, dict):
+        before = taken.get("seen") if isinstance(taken.get("seen"), dict) else {}
+        for n, t in seen.items():
+            if before.get(n) != config.fingerprint(t):
+                say("[settings] " + config.environment_changed(n, WHERE))
+        return False
+    good, names = clean(doc.get("good")), []
+    pending = clean(doc.get("pending")) if "pending" in doc else None
+    for n, t in seen.items():
+        d = DEFS[n]
+        try:
+            v = d.check(d.read(t) if d.read else config.VARS[n].read(t))
+        except (Refused, TypeError, ValueError):
+            say(f"[settings] {n} in the environment ({t[:40]!r}) isn't a value {WHERE} takes, so it isn't taken in: "
+                f"it's {d.default} now; change it there")
+            continue
+        for values in (good, pending) if pending is not None else (good,):
+            if v == d.default:
+                values.pop(n, None)
+            else:
+                values[n] = v
+        if v != d.default:
+            names.append(n)
+    doc["good"] = good
+    if pending is not None:
+        doc["pending"] = pending
+    doc["taken"] = {"at": now, "names": names, "seen": {n: config.fingerprint(t) for n, t in seen.items()}}
+    if names:
+        say(f"[settings] taken from the environment into {path()}, once: {', '.join(names)}. From now on they're "
+            f"changed on {WHERE} (or with python -m server.manage config set), not in the environment.")
+    return True
+
+
+def take_late(say=_say):
+    """(#1158) take_environment for a process the start-up path didn't start (the app run without python -m server: its
+    tests, a development server), as the app starts."""
+    global _started
+    with _lock:
+        doc, err = read_doc()
+        if err or isinstance(doc.get("taken"), dict):
+            return False
+        if not take_environment(doc, int(time.time()), say):
+            return False
+        write_doc(doc)
+        if not _state["tried"]:
+            _started = clean(doc.get("good"))
+        return True
+
+
+def taken():
+    """What the first start of this version took from the environment into the file: {"at", "names"} or None."""
+    doc, _ = read_doc()
+    t = doc.get("taken")
+    return {"at": t.get("at"), "names": [n for n in t.get("names") or [] if n in DEFS]} if isinstance(t, dict) else None
 
 
 def state():
@@ -518,8 +570,8 @@ def state():
     rows = []
     for name, d in DEFS.items():
         src, value = lookup(name)
-        nxt = value if src == "environment" or pending is None else pending.get(name, d.default)
-        rows.append({**d.public(), "value": value, "from": src, "can_change": src != "environment",
+        nxt = value if pending is None else pending.get(name, d.default)
+        rows.append({**d.public(), "value": value, "from": src, "can_change": True,
                      **({"next": nxt} if nxt != value else {})})
     return {"settings": rows, "restart_needed": pending is not None and pending != now,
             "trying": bool(doc.get("trying")), "fell_back": doc.get("fell_back"), "unreadable": err or _state["unreadable"],
@@ -528,7 +580,7 @@ def state():
 
 def change(values, by=None, now=None):
     """Save values ({name: value, or None for its default}) as pending, for the next start. Refused (Refused) where one
-    isn't taken, or (LookupError) one the environment sets or there's no such setting. Returns [(name, before, after)]
+    isn't taken, or (LookupError) there's no such setting. Returns [(name, before, after)]
     of the ones that change what the next start takes."""
     with _lock:
         doc, err = read_doc()
@@ -538,9 +590,6 @@ def change(values, by=None, now=None):
             d = DEFS.get(name)
             if d is None:
                 raise LookupError(f"There's no setting called {name} here.")
-            if lookup(name)[0] == "environment":
-                raise PermissionError(f"“{d.label}” is set by the server's environment ({name}), so it can't be changed "
-                                      f"here. To change it here, take {name} out of where the server is set up and start it again.")
             v = d.default if v is None or v == "" else d.check(v)
             if v == d.default:
                 new.pop(name, None)
@@ -579,7 +628,8 @@ def reset(names=None):
             return {}
         new = {k: v for k, v in good.items() if k not in names}
         left = {k: v for k, v in pending.items() if k not in names}
-        doc = {"good": new, **({"pending": left} if "pending" in doc and left != new else {})}
+        doc = {"good": new, **({"pending": left} if "pending" in doc and left != new else {}),
+               **({"taken": doc["taken"]} if "taken" in doc else {})}   # (#1158) never taken in again
         write_doc(doc)
         write_receiver(new)
         forget()
@@ -591,11 +641,6 @@ def write_receiver(values, say=_say):
     read as it starts; only when they differ from what's there (it restarts itself on a change). False when its folder
     isn't there (no receiver) or can't be written."""
     want = {n: v for n, v in values.items() if n in DEFS and DEFS[n].receiver}
-    for n, d in DEFS.items():   # the environment's, where it sets one: the receiver used to read it itself
-        if d.receiver and os.environ.get(n, "").strip():
-            src, v = lookup(n)
-            if src == "environment" and v != d.default:
-                want[n] = v
     target = receiver_path()
     if not os.path.isdir(os.path.dirname(target)):
         return False

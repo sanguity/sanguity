@@ -78,17 +78,20 @@ CONTAINER = {
 SECRETS = {"NOTIFY_TOKEN": "Notifications' access token", "OIDC_CLIENT_SECRET": "Sign-in provider's client secret"}
 
 
-# ---------------------------------------------------------------- the settings that tune the server (#999)
-# Each is read where it's used, through setting(NAME), so a change applies at once. Its value is the environment's
-# when the variable is set (not empty: the compose files pass "${NAME:-}", which is empty while .env doesn't set it),
-# else the value an admin saved in the app, else the default below. Only a variable that an install setting of
-# settings.py's registry stands for (define(..., env=NAME), which sets Var.setting) can have a saved value; the rest
-# are the environment's or their default. source(NAME) says which it is. With SANGUITY_SAVED_SETTINGS=off, saved values
-# are left out (#1006): the way back in when one locks everyone out (python -m server.manage config reset, too).
+# ---------------------------------------------------------------- the settings that tune the server (#999, #1158)
+# Each is read where it's used, through setting(NAME), so a change applies at once. The settings file is the one source
+# of truth, as Sonarr's and Radarr's (#1158): the value an admin saved in the app (an install setting of settings.py's
+# registry that stands for it: define(..., env=NAME) sets Var.setting), or, for one of RESTART, the one changed on the
+# page's Needs a restart as this process started (server_settings.py), else the default below. The environment no
+# longer sets any of them: on the first start of this version each one it set was taken into the settings once
+# (settings.take_environment, server_settings.take_environment), and a later change to it is ignored with a warning
+# naming it. The container's own (CONTAINER) are the environment's alone. source(NAME) says where a value comes from.
+# With SANGUITY_SAVED_SETTINGS=off, the values saved in the app are left out (#1006): the way back in when one locks
+# everyone out (python -m server.manage config reset NAME, or config set NAME VALUE, too).
 #
-# Adding one: a var() line below, then setting("NAME") where it's used, its line in both compose files' app service
-# ("NAME: ${NAME:-}", deploy/check.py checks), and in .env.example and the README's configuration. To let admins change
-# it in the app, define() it in settings.py with scope="install", private=False and env="NAME".
+# Adding one: a var() line below, then setting("NAME") where it's used, and a home on the page: define() it in
+# settings.py with scope="install", private=False and env="NAME" (applies at once), or in server_settings.py and
+# RESTART (read as the server starts). tests/test_env_audit.py fails on a variable that has neither.
 
 class Var:
     def __init__(self, name, default, read, keep, about):
@@ -98,14 +101,14 @@ class Var:
 
 VARS = {}   # name -> Var
 # (#1121) the variables changed on the page's Needs a restart (server_settings.py defines them; a test keeps the two the
-# same): kept in data/server-settings.json and read as the server starts, after the environment's and before the default
-RESTART = {"UPLOAD_MAX_FILE_MB", "UPLOAD_MAX_TOTAL_MB", "UPLOAD_MAX_FILES", "JOURNAL_PHOTO_MAX_MB", "SYNC_HOURS",
+# same): kept in data/server-settings.json and read as the server starts, before the default
+RESTART = {"UPLOAD_MAX_FILE_MB", "UPLOAD_MAX_TOTAL_MB", "UPLOAD_MAX_FILES", "UPLOAD_MAX_ZIP_RATIO", "JOURNAL_PHOTO_MAX_MB", "SYNC_HOURS",
            "SYNC_MAX_RESOURCES", "SYNC_MAX_ATTACHMENT_MB", "CONNECT_TIMEOUT", "SHL_MAX_MB", "SHL_MAX_FILES", "SHL_TIMEOUT",
            "HASH_PARALLEL", "RESTORE_KEEP_DAYS"}
 
 
 def var(name, default, read=int, keep=None, about=""):
-    """read: the variable's text -> its value (ValueError: unreadable, so left out); keep: a saved value -> the same
+    """read: the variable's text -> its value (ValueError: unreadable, so not taken in); keep: a saved value -> the same
     kind of value (the registry has checked it)."""
     VARS[name] = Var(name, default, read, keep or (lambda v: v), about)
 
@@ -137,7 +140,14 @@ var("SESSION_DAYS", 30, about="a session ends this long after sign-in...")
 var("SESSION_HOURS_WITHOUT_2FA", 12, about="...or this many hours after it, while the account has no second factor "
                                            "(0 = SESSION_DAYS for everyone)")
 var("SESSION_IDLE_MINUTES", 0, about="also end it after this long unused (0 = off)")
-var("COOKIE_SECURE", "auto", str.lower, about="auto = Secure when the request came over HTTPS; 1 always, 0 never")
+def _cookie(text):
+    v = text.strip().lower()
+    if v == "auto":
+        return v
+    return "1" if _yes(v) else "0"
+
+
+var("COOKIE_SECURE", "auto", _cookie, about="auto = Secure when the request came over HTTPS; 1 always, 0 never")
 var("TEMP_PASSWORD_DAYS", 7, about="a one-time password from an admin stops working after this")
 var("REAUTH_MINUTES", 5, about="the fresh check before the most powerful admin actions: the password, a code or a "
                                "passkey within this many minutes (signing in counts)")
@@ -188,17 +198,18 @@ def saved_ignored():
 
 
 def lookup(name):
-    """(where it comes from, the value in force) of the variable name: ("environment" | "install" | "file" | "default",
-    value): "file" for one of RESTART changed on the page, as this process started (#1121)."""
+    """(where it comes from, the value in force) of the variable name: ("install" | "file" | "default", value): "file"
+    for one of RESTART changed on the page, as this process started (#1121); "environment" only for one of CONTAINER
+    (RECEIVER_PORT), which the container sets."""
     v = VARS[name]
-    text = os.environ.get(v.name, "")
-    if text.strip():
-        try:
-            return "environment", v.read(text.strip())
-        except ValueError:   # unreadable: as if it weren't set (unreadable() says so at start)
-            if name in RESTART and not v.setting:   # (#1121) never the page's file instead: it's set, so the default
-                return "environment", v.default
-
+    if name in CONTAINER:
+        text = os.environ.get(v.name, "").strip()
+        if text:
+            try:
+                return "environment", v.read(text)
+            except ValueError:   # unreadable: as if it weren't set (unreadable() says so at start)
+                pass
+        return "default", v.default
     if v.setting and saved is not None and not saved_ignored():
         have = saved()
         if v.setting in have:
@@ -212,14 +223,28 @@ def lookup(name):
 
 
 def setting(name):
-    """The value in force of the variable name (a key of VARS): the environment's, else the one saved in the app,
-    else the default."""
+    """The value in force of the variable name (a key of VARS): the one saved in the app, else the default."""
     return lookup(name)[1]
 
 
 def source(name):
-    """Where setting(name) comes from: "environment", "install" (saved in the app), "file" (#1121) or "default"."""
+    """Where setting(name) comes from: "install" (saved in the app), "file" (#1121), "default", or "environment" for
+    one of CONTAINER."""
     return lookup(name)[0]
+
+
+def fingerprint(text):
+    """What's kept of a variable's text once it's been taken in (#1158): enough to tell it changed, never the text (a
+    secret's included)."""
+    import hashlib
+    return hashlib.sha256(text.strip().encode()).hexdigest()[:24]
+
+
+def environment_changed(name, where):
+    """The warning for a variable the environment sets again, or differently, after it was taken in (#1158)."""
+    return (f"{name} is set in the environment, but the settings file is where it's kept since it was taken in once: "
+            f"this change is ignored. Change it on {where}, or with python -m server.manage config set {name} VALUE; "
+            f"then take {name} out of the environment (.env, or the app's settings where it's deployed).")
 
 
 def public_address(origins=None):
@@ -239,9 +264,9 @@ def given_base():
 
 
 def unreadable():
-    """[(name, text)] of the variables set to something they can't be read as (left out, as if unset)."""
+    """[(name, text)] of the container's variables set to something they can't be read as (left out, as if unset)."""
     out = []
-    for v in VARS.values():
+    for v in (v for n, v in VARS.items() if n in CONTAINER):
         text = os.environ.get(v.name, "").strip()
         if text:
             try:

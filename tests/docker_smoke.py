@@ -118,12 +118,12 @@ def main():
         st, _, body = req("/api/backups")
         watch = (json.loads(body).get("watch") or {}) if st == 200 else {}
         check("backups can see the watch receiver's folder", watch.get("visible") is True, (st, watch))
-        # (#999) an install with no .env sets none of the server's settings: none shows as set by the environment (so
-        # fixed), as the compose files pass each as ${NAME:-}, the all-in-one container none, unless given
+        # (#999, #1158) none of the server's settings is the environment's: the settings file is their source of truth;
+        # only the container's own (RECEIVER_PORT, the published receiver port) are
         st, _, body = req("/api/settings/install")
         variables = (json.loads(body).get("variables") or {}) if st == 200 else {}
-        set_here = sorted(k for k, v in variables.items() if v.get("from") == "environment")
-        check("none of the server's settings is set by the environment without a .env (#999)",
+        set_here = sorted(k for k, v in variables.items() if v.get("from") == "environment" and not v.get("container"))
+        check("none of the server's settings is set by the environment (#999, #1158)",
               st == 200 and len(variables) > 20 and not set_here, (st, set_here))
 
         # ---- an upload through nginx: one file far above the 64 KB every other API request is held to

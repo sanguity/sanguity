@@ -245,8 +245,6 @@ class Settings(unittest.TestCase):
             if not settings.shown_to(key, False):   # (#998: an admin's alone, not given to robin)
                 self.assertNotIn(key, flat(m))
                 continue
-            if s.env and config.source(s.env) == "environment":   # (PUBLIC_ORIGINS, set above: General → Host's, #1000)
-                continue
             self.assertEqual(flat(m)[key], s.default, key)
         self.assertEqual(m["overview"]["keyLabs"], settings.KEY_LABS)
         # the page's own fallback (www/js/core.js) says the same as the server
@@ -350,8 +348,8 @@ class Settings(unittest.TestCase):
         got = ada.get("/api/settings/install").json()["sections"]
         sync = next(s for s in got if s["id"] == "sync")
         self.assertEqual(sync["title"], "Sync defaults")
-        self.assertTrue(all(st["scope"] == "install" and st["can_change"] == (st["from"] != "environment")
-                            for sec in got for st in sec["settings"]), got)   # (PUBLIC_ORIGINS is set above, #1000)
+        self.assertTrue(all(st["scope"] == "install" and st["can_change"] and st["from"] in ("install", "default")
+                            for sec in got for st in sec["settings"]), got)   # (#1158: PUBLIC_ORIGINS, set above, taken in)
         self.assertEqual({st["key"]: st["from"] for st in sync["settings"]}["sync.staleDays"], "default")
         self.assertNotIn("names", {s["id"] for s in got})   # only the install's: no profile's or person's settings
         # only admins, and changes pass the CSRF check
@@ -377,51 +375,42 @@ class Settings(unittest.TestCase):
         self.assertEqual((r.status_code, r.json()["reset"]), (200, ["sync.staleDays"]), r.text)
         self.assertEqual(self.merged(1, "robin")["sync"]["staleDays"], 3)
 
-    def test_the_environment_wins_only_when_set(self):
-        """#999: a server setting's variable set in the environment is the value in force, shown so, naming it, and a
-        change to it is refused (409); set to nothing (the compose files pass ${NAME:-}) or to something unreadable, it
-        isn't set, and the value saved in the app is in force, else the default. config.setting reads it at each use:
-        a change applies without a restart."""
-        from server import sync
+    def test_the_environment_is_taken_in_once(self):
+        """#1158 (in place of #999's "the environment wins"): the first start took what the environment set into the
+        settings (PUBLIC_ORIGINS, set above), logged in Install activity by start-up and said once on General; after
+        that a variable set in the environment changes nothing (each is changed here, at once, and only here), and one
+        changed since it was taken in is warned about at each start, naming it. The container's own (RECEIVER_PORT)
+        stay the environment's."""
+        from server import settings_import, sync
         ada, key = self.c["ada"], "testEnv.syncHours"
         item = lambda: {st["key"]: st for sec in ada.get("/api/settings/install").json()["sections"] for st in sec["settings"]}[key]   # noqa: E731
-        variable = lambda: ada.get("/api/settings/install").json()["variables"]["SYNC_HOURS"]   # noqa: E731
         hours = lambda: round((sync._due_after_failure(100) - dbm.now()) / 3600)   # noqa: E731  (a pull's wait, at most SYNC_HOURS)
-        with mock.patch.dict(os.environ):
-            os.environ.pop("SYNC_HOURS", None)
+        got = ada.get("/api/settings/install").json()
+        self.assertEqual(set(got["variables"]), set(config.VARS))
+        self.assertEqual(got["variables"]["PUBLIC_ORIGINS"]["from"], "install")
+        self.assertEqual({k: got["variables"]["RECEIVER_PORT"].get(k) for k in ("value", "from", "container")}, {"value": 8731, "from": "environment", "container": True})
+        self.assertIn({"name": "PUBLIC_ORIGINS", "label": "Public addresses"}, got["taken"]["names"])
+        with contextlib.closing(dbm.connect()) as db:
+            logged = db.execute("SELECT COUNT(*) FROM activity WHERE action='settings.install' AND actor='start-up'").fetchone()[0]
+        self.assertEqual(logged, 1, "logged once, by start-up")
+        self.assertEqual(ada.post("/api/settings/install/taken/seen", headers=H).status_code, 200)
+        self.assertIsNone(ada.get("/api/settings/install").json()["taken"], "said once")
+        with mock.patch.dict(os.environ, {"SYNC_HOURS": "24", "PUBLIC_ORIGINS": "https://health.example.test"}):
             st = item()
-            self.assertEqual((st["value"], st["from"], st["env"], st["can_change"]), (12, "default", "SYNC_HOURS", True))
-            self.assertEqual(variable(), {"value": 12, "from": "default", "default": 12, "setting": key})
-            # every variable is listed, with where its value comes from: none is the environment's here
-            got = ada.get("/api/settings/install").json()
-            self.assertEqual(set(got["variables"]), set(config.VARS))
-            self.assertEqual(got["variables"]["PUBLIC_ORIGINS"]["from"], "environment")   # this test sets it
-            # saved in the app: in force at once, everywhere it's read
+            self.assertEqual((st["value"], st["from"], st["env"], st["can_change"], hours()), (12, "default", "SYNC_HOURS", True, 12))
             r = ada.put(f"/api/settings/install/{key}", json={"value": 6}, headers=H)
             self.assertEqual(r.status_code, 200, r.text)
             self.assertEqual((config.setting("SYNC_HOURS"), config.source("SYNC_HOURS"), hours()), (6, "install", 6))
-            self.assertEqual((item()["from"], variable()["from"], self.merged(1, "ada")["testEnv"]["syncHours"]), ("install", "install", 6))
-            # set by the environment: that wins, said so and named; a change to it is refused, and the saved value kept
-            os.environ["SYNC_HOURS"] = "24"
-            st = item()
-            self.assertEqual((st["value"], st["from"], st["env"], st["can_change"], hours()), (24, "environment", "SYNC_HOURS", False, 24))
-            self.assertEqual(self.merged(1, "ada")["testEnv"]["syncHours"], 24)
-            for r in (ada.put(f"/api/settings/install/{key}", json={"value": 8}, headers=H),
-                      ada.put(f"/api/profiles/1/settings/{key}", json={"value": 8}, headers=H)):   # a profile page's too
-                self.assertEqual(r.status_code, 409, r.text)
-                self.assertIn("set by the server's environment (SYNC_HOURS)", r.json()["detail"])
+            said = []   # a later start: nothing taken in again; the one changed since is warned about, the one that isn't not
             with contextlib.closing(dbm.connect()) as db:
-                self.assertEqual(settings.stored(db, "install")[key], 6)
-            # set to nothing, as "${SYNC_HOURS:-}" passes it when .env doesn't: not set
-            os.environ["SYNC_HOURS"] = ""
-            self.assertEqual((item()["from"], item()["value"], hours()), ("install", 6, 6))
-            # something it can't be read as: left out (as before, when it was the default), and said at start
-            os.environ["SYNC_HOURS"] = "twelve"
-            self.assertEqual((config.source("SYNC_HOURS"), config.setting("SYNC_HOURS")), ("install", 6))
-            self.assertIn(("SYNC_HOURS", "twelve"), config.unreadable())
-            os.environ.pop("SYNC_HOURS")
+                self.assertEqual(settings_import.take(db, say=said.append), [])
+            self.assertTrue(any(s.startswith("Warning: SYNC_HOURS is set in the environment") and "ignored" in s for s in said), said)
+            self.assertFalse(any("PUBLIC_ORIGINS" in s for s in said), said)
             self.assertEqual(ada.delete(f"/api/profiles/1/settings/{key}", headers=H).status_code, 200)
             self.assertEqual((config.setting("SYNC_HOURS"), item()["from"], hours()), (12, "default", 12))
+        self.assertEqual(config.unreadable(), [])
+        with mock.patch.dict(os.environ, {"RECEIVER_PORT": "ninety"}):
+            self.assertEqual(config.unreadable(), [("RECEIVER_PORT", "ninety")])
         # the registry keeps a variable's setting to what the variable can be: the install's, plain, its default
         for kw, why in (({"env": "NO_SUCH_VARIABLE"}, "isn't a variable"), ({"env": "SYNC_HOURS"}, "another setting"),
                         ({"env": "SHL_TIMEOUT", "private": True}, "private=False"), ({"env": "SHL_TIMEOUT", "default": 5}, "its default")):
@@ -551,11 +540,12 @@ class Settings(unittest.TestCase):
         shown = {line.split()[0]: line for line in run("show").splitlines()}
         self.assertRegex(shown["SYNC_HOURS"], r"^SYNC_HOURS \(testEnv\.syncHours\)\s+6\s+saved in the app$")
         self.assertRegex(shown["SESSION_DAYS"], r"30\s+the default$")
-        self.assertRegex(shown["PUBLIC_ORIGINS"], r"https://health\.example\.test\s+set by the environment$")
+        self.assertRegex(shown["PUBLIC_ORIGINS"], r"https://health\.example\.test\s+saved in the app$")   # (taken in, #1158)
+        self.assertRegex(shown["RECEIVER_PORT"], r"8731\s+set by the container$")
         self.assertRegex(shown["sync.staleDays"], r"5\s+saved in the app$")
         self.assertEqual(set(config.VARS) - set(shown), set(), "every variable")
-        with mock.patch.dict(os.environ, {"SYNC_HOURS": "24"}):
-            self.assertRegex(run("show"), r"SYNC_HOURS \(testEnv\.syncHours\)\s+24\s+set by the environment  \(saved in the app: 6, not in force\)")
+        with mock.patch.dict(os.environ, {"SYNC_HOURS": "24"}):   # (#1158) the environment's isn't in force
+            self.assertRegex(run("show"), r"(?m)^SYNC_HOURS \(testEnv\.syncHours\)\s+6\s+saved in the app$")
         # one by its variable, one by its key
         with mock.patch.object(settings, "SAVED_SECONDS", 0):   # (as the running app sees it a moment later)
             said = run("reset", "SYNC_HOURS")
@@ -578,6 +568,17 @@ class Settings(unittest.TestCase):
             self.assertEqual(settings.stored(db, "install"), {})
         self.assertIn("Nothing to reset: no setting has a value saved in the app.", run("reset", "--all"))
         self.assertEqual(ada.get("/api/settings/install").json()["sections"][0]["settings"][0]["from"], "default")
+        # (#1158) config set NAME VALUE: the page's checks, saved, logged by the command line, in force at once
+        with mock.patch.object(settings, "SAVED_SECONDS", 0):
+            self.assertIn("PUBLIC_ORIGINS: https://health.example.test, saved in the app", run("set", "PUBLIC_ORIGINS", "https://health.example.test/"))
+            self.assertEqual(config.setting("PUBLIC_ORIGINS"), ("https://health.example.test",))
+            run("set", "sync.staleDays", "6")
+            self.assertEqual(self.merged(1, "robin")["sync"]["staleDays"], 6)
+            run("reset", "sync.staleDays")
+            for bad in (("SESSION_DAYS", "90"), ("COOKIE_SECURE", "sometimes"), ("RECEIVER_PORT", "9000"), ("NO_SUCH", "1")):
+                with self.assertRaises(SystemExit, msg=bad):
+                    run("set", *bad)
+        self.assertEqual(self.install_log()[0]["actor"], "command line")
 
     def test_saved_settings_off_lets_a_locked_out_install_back_in(self):
         """#1006: a value saved in the app that ends sign-ins (here 1 day, Sign-in rules's shortest, #1001: Zed's two
@@ -641,7 +642,7 @@ class Settings(unittest.TestCase):
     def test_security_settings_are_bounded_never_more_lenient(self):
         """#1001: each of Sign-in rules's settings takes the values from its least to its most, Sanguity's own
         default never exceeded (#998), and refuses one past either (400), saying its bounds; the page is given them. A
-        variable set in the environment (PASSWORD_MIN_LENGTH, here) shows locked and refuses a change (409)."""
+        variable set in the environment (PASSWORD_MIN_LENGTH, here) changes nothing (#1158)."""
         ada = self.c["ada"]
         ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
         bounds = {"security.sessionDays": (1, 30), "security.sessionHours": (1, 12), "security.idleMinutes": (5, 1440),
@@ -668,8 +669,8 @@ class Settings(unittest.TestCase):
                     self.security_put("security.profiles", v, 400)
                 self.assertEqual(got["security.profiles"]["choices"], {"everyone": "Everyone signed in", "admins": "Admins only"})
             st = {s["key"]: s for sec in ada.get("/api/settings/install").json()["sections"] for s in sec["settings"]}["security.passwordMin"]
-            self.assertEqual((st["from"], st["can_change"], st["env"]), ("environment", False, "PASSWORD_MIN_LENGTH"))
-            self.assertIn("PASSWORD_MIN_LENGTH", self.security_put("security.passwordMin", 20, 409).json()["detail"])
+            self.assertEqual((st["can_change"], st["env"]), (True, "PASSWORD_MIN_LENGTH"))
+            self.security_put("security.passwordMin", 20)
         finally:
             self.security_reset()
 
@@ -884,8 +885,8 @@ class Settings(unittest.TestCase):
     def test_a_change_that_applies_later_is_asked_now(self):   # #1042
         """With saved settings left out (SANGUITY_SAVED_SETTINGS=off), a change to an install setting that's asked first
         is asked all the same, from the value saved here, the one that applies once the flag is taken out (it was saved
-        unasked, and took effect then): fewer days of activity, a shorter sign-in. And a reset of one the environment
-        sets, from the value saved here to the default, which applies if the variable is taken out."""
+        unasked, and took effect then): fewer days of activity, a shorter sign-in. (#1158) The environment's changes
+        nothing: a reset is asked from the value saved here."""
         ada, now = self.c["ada"], dbm.now()
         ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
         put = lambda k, v, **kw: ada.put(f"/api/settings/install/{k}", json={"value": v, **kw}, headers=H)   # noqa: E731
@@ -908,10 +909,11 @@ class Settings(unittest.TestCase):
                 self.assertEqual(settings.stored(dbm.connect(), "install").get("security.sessionHours"), None, "not saved")
             self.assertEqual(config.setting("ACTIVITY_DAYS"), 400, "the flag taken out: nothing changed unasked")
             with mock.patch.dict(os.environ, {"ACTIVITY_DAYS": "500"}):
+                self.assertEqual(config.setting("ACTIVITY_DAYS"), 400, "the environment's isn't in force")
                 reset = lambda **kw: ada.request("DELETE", "/api/profiles/1/settings/activity.days", headers=H, **kw)   # noqa: E731
                 r = reset()
                 self.assertEqual((r.status_code, r.json()["detail"]["code"]), (409, "confirm"), r.text)
-                self.assertIn("The server's environment sets ACTIVITY_DAYS: this takes effect if it's taken out.", r.json()["detail"]["message"])
+                self.assertNotIn("environment", r.json()["detail"]["message"])
                 self.assertEqual(reset(json={"confirm": r.json()["detail"]["confirm"]["type"]}).status_code, 200)
             self.assertEqual(config.setting("ACTIVITY_DAYS"), 365)
         finally:
@@ -965,17 +967,17 @@ class Settings(unittest.TestCase):
         limits = {x["name"]: x for g in a["limits"] for x in g["limits"]}
         self.assertEqual(limits["SHL_MAX_MB"], {"name": "SHL_MAX_MB", "what": "What one link brings", "unit": "MB", "value": 64,
                                                  "from": "default", "default": 64, "restart": True})
-        with mock.patch.dict(os.environ, UPLOAD_MAX_FILES="500"):
+        with mock.patch.dict(os.environ, UPLOAD_MAX_FILES="500"):   # (#1158) the environment's isn't in force
             got = {x["name"]: x for g in ada.get("/api/settings/install/about").json()["limits"] for x in g["limits"]}["UPLOAD_MAX_FILES"]
-        self.assertEqual((got["value"], got["from"]), (500, "environment"))
+        self.assertEqual((got["value"], got["from"]), (20000, "default"))
         self.assertEqual(a["schema"], len(dbm.SCHEMA))
         # (#1119) the server's own setup, Host's and Security's before, with where it comes from; the limits changed
         # under Needs a restart said so (#1121); and every card's settings say where this install's environment is set
         with mock.patch.dict(os.environ, COOKIE_SECURE="1", SANGUITY_DEPLOYMENT="truenas"):
             got = ada.get("/api/settings/install/about").json()
             at = ada.get("/api/settings/install").json()["settings_at"]
-        self.assertEqual(got["server"]["cookie_secure"], {"from": "environment", "value": "1"})
-        self.assertEqual({x["name"] for g in got["limits"] for x in g["limits"] if not x["restart"]}, {"UPLOAD_MAX_ZIP_RATIO"})
+        self.assertEqual(got["server"]["cookie_secure"], {"from": "default", "value": "auto"})
+        self.assertEqual({x["name"] for g in got["limits"] for x in g["limits"] if not x["restart"]}, set(), "each on Needs a restart")
         self.assertEqual(at, general.KINDS["truenas"]["settings"])
 
     def test_rename_one_name(self):
@@ -1418,8 +1420,8 @@ class Settings(unittest.TestCase):
             dbm.meta_set(db, settings.SOURCES_KEPT, None)
             self.assertFalse(settings.keep_sources_on(db))
             self.assertEqual((held(), self.c["kim"].get("/api/me").json()["connected_sources"]), (False, False))
-            with mock.patch.dict(os.environ, {"CONNECTED_SOURCES": "1"}):   # the environment's wins, as every variable's
-                self.assertIs(self.c["kim"].get("/api/me").json()["connected_sources"], True)
+            with mock.patch.dict(os.environ, {"CONNECTED_SOURCES": "1"}):   # (#1158) the environment's changes nothing
+                self.assertIs(self.c["kim"].get("/api/me").json()["connected_sources"], False)
         finally:
             db.execute("DELETE FROM smart_clients")
             db.execute("DELETE FROM settings WHERE key=?", (key,))
@@ -1457,7 +1459,8 @@ class Settings(unittest.TestCase):
         not the Host it sent on; on RECEIVER_PORT, which the TrueNAS, Unraid and CasaOS templates now pass (deploy/check.py)
         and the app reads at each use."""
         url = f"/api/profiles/{self.fresh_profile('Behind a proxy (fictional)')}/watch/receiver"   # (its own: a secret is made)
-        with mock.patch.dict(os.environ, {"PUBLIC_ORIGINS": ""}):
+        saved = settings.saved_values
+        with mock.patch.object(config, "saved", lambda: {k: v for k, v in saved().items() if k != "host.publicOrigins"}):
             got = lambda **h: self.c["robin"].get(url, headers=h).json()["addresses"]   # noqa: E731
             self.assertEqual(got(), ["http://testserver:8731/ingest"])   # the Host (TestClient's)
             self.assertEqual(got(**{"Host": "app:8000", "X-Forwarded-Host": "health.example.org"}), ["http://health.example.org:8731/ingest"])

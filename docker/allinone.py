@@ -17,9 +17,10 @@ Folders (mount each one; see deploy/unraid/README.md):
   /srv/records             record exports for sources.json (read-only; optional)
   /config                  sources.json, settings.json, corrections.json (read-only; optional)
 
-Environment: PUID, PGID (default 1000), TZ (the watch receiver's time zone; default UTC), and the app's own
-settings (COOKIE_SECURE, UPLOAD_MAX_FILE_MB... as in .env.example). It sets none of them itself: those Settings →
-Install → General changes (PUBLIC_ORIGINS, SESSION_DAYS...) are the page's unless one is given here, which pins it (#1120).
+Environment: PUID, PGID (default 1000) and TZ (the containers' clock), the container's own (server/config.py's
+CONTAINER). The server's settings are the page's, kept in /data (#1158): one given here (PUBLIC_ORIGINS, SESSION_DAYS...)
+is taken in once, on the first start of a version that keeps them there, and ignored after, with a warning. The app
+listens on 127.0.0.1 only, so its trusted proxies default to * (only nginx, beside it, can reach it).
 """
 import os, signal, subprocess, sys, time
 
@@ -67,8 +68,7 @@ def main():
     services = {
         # SANGUITY_DEPLOYMENT: how it's deployed, for Settings → General → About (#1004); Unraid's template sets its own.
         # the receiver's time zone is the app's to give it (receiver-settings.json, #1158), never its own environment's
-        "app": (["python3", "-m", "server"], {"SANGUITY_DEPLOYMENT": "allinone", **base, "HOST": "127.0.0.1", "PORT": "8000",
-                                               "FORWARDED_ALLOW_IPS": "127.0.0.1"}),
+        "app": (["python3", "-m", "server"], {"SANGUITY_DEPLOYMENT": "allinone", **base, "HOST": "127.0.0.1", "PORT": "8000"}),
         "web": (["nginx", "-e", "stderr", "-c", os.path.join(NGINX_TMP, "nginx.conf"), "-g", "daemon off;"], base),
         "receiver": (["python3", "-I", "/app/receiver.py"], {**base, "DATA": WATCH, "PORT": "8081",
                                                           "SECRET_FILE": os.path.join(AUTH, "watch_secret")}),

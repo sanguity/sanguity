@@ -26,10 +26,9 @@ router = APIRouter()
 
 def _install(db):
     u = notify.url()
-    return {"url": u, "host": next(iter(notify.hosts()), None), "token": notify.token_source(db), "token_env": notify.TOKEN_ENV,
+    return {"url": u, "host": next(iter(notify.hosts()), None), "token": notify.token_source(db),
             "click": config.public_address(), "texts": [notify.message(k, "Ben") for k in notify.KINDS],
-            "people": db.execute("SELECT COUNT(DISTINCT user_id) FROM notify_optins").fetchone()[0],
-            "token_elsewhere": notify.token_source(db) == "environment-elsewhere"}
+            "people": db.execute("SELECT COUNT(DISTINCT user_id) FROM notify_optins").fetchone()[0]}
 
 
 @router.get("/api/settings/install/notify")
@@ -43,9 +42,6 @@ class Token(BaseModel):
 
 @router.put("/api/settings/install/notify/token")
 def install_token(body: Token, request: Request, s=Depends(admin), db=Depends(get_db)):
-    if (notify.token_source(db) or "").startswith("environment"):
-        raise HTTPException(409, f"The access token is set by the server's environment ({notify.TOKEN_ENV}), so it can't be "
-                                 "changed here. Change it there, or take it out to set it here.")
     fresh(request, s, "change the notification server's access token")
     had = notify.token_source(db)
     try:

@@ -83,14 +83,15 @@ def _setup_code(db):
 
 
 def say_settings():
-    """What the start says about the server's settings: saved values left out (#1006), and a variable left out (#999)."""
+    """What the start says about the server's settings: saved values left out (#1006), and a container's variable left
+    out (#999)."""
     if config.saved_ignored():   # the way back in when a saved value locked everyone out
-        print("SANGUITY_SAVED_SETTINGS=off: the server's settings saved in the app are left out, each its default or the "
-              "environment's. Change the one that needs it under Settings → Install → General, then take SANGUITY_SAVED_SETTINGS out and "
-              "start the app again.", flush=True)
+        print("SANGUITY_SAVED_SETTINGS=off: the server's settings saved in the app are left out, each its default. Change "
+              "the one that needs it under Settings → Install, then take SANGUITY_SAVED_SETTINGS out and start the app "
+              "again.", flush=True)
     for name, text in config.unreadable():   # left out, as if it weren't set: said, as nothing else would
-        print(f"{name} in the environment ({text[:40]!r}) isn't a number it can be, so it's left out: the value saved "
-              "in the app, or the default, is used instead.", flush=True)
+        print(f"{name} in the environment ({text[:40]!r}) isn't a number it can be, so it's left out: the default is "
+              "used instead.", flush=True)
 
 
 @asynccontextmanager
@@ -103,6 +104,11 @@ async def lifespan(app):
         try:
             atrest.check_key(db)   # stops here, saying why, if the key is missing or wrong
             atrest.load_pepper(db)
+            # (#1158) once, on the first start of this version: what the environment set, into the settings file (the
+            # restart ones: python -m server did it as it started, else here); then a change there is only warned about
+            restart_settings.take_late()
+            from . import settings_import
+            settings_import.take(db)
             if (gone := prof.sweep(db)):   # what a profile's deletion stopped part-way left (#932)
                 print(f"Removed {gone} folder(s) of deleted profiles that a stop part-way left.", flush=True)
             sealed = atrest.seal_everything(db)

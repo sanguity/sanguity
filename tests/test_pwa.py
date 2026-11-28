@@ -22,6 +22,7 @@ sys.path.insert(0, sys.argv[1])
 from fastapi.testclient import TestClient
 from server import atrest, db as dbm, main, security
 dbm.init(); db = dbm.connect(); atrest.check_key(db); atrest.load_pepper(db)
+from server import settings_import; settings_import.take(db, say=lambda *a: None)   # PUBLIC_ORIGINS, taken in (#1158)
 db.execute("INSERT INTO users(username, pw_hash, is_admin, created) VALUES('pwa', ?, 1, 0)", (security.hash_password("a long test passphrase"),))
 db.close()
 c = TestClient(main.app)

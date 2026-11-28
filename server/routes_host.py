@@ -106,6 +106,4 @@ def phone(request: Request, s=Depends(admin), db=Depends(get_db)):
     its environment), so their values here are the receiver's: else the ones changed on Needs a restart, copied for the
     receiver at Restart now (#1121), else its defaults; and which of them the environment sets."""
     return {"upload": watch_keys.addresses(_request_host(request)), "phones": watch_keys.with_secret(db),
-            "tz": server_settings.lookup("TZ")[1], "slot_grace_days": server_settings.lookup("SLOT_GRACE_DAYS")[1],
-            # (#1119) which the environment sets: tagged so, where the rest point to Needs a restart
-            "from_environment": [n for n in ("TZ", "SLOT_GRACE_DAYS", "RESTORE_KEEP_DAYS") if server_settings.lookup(n)[0] == "environment"]}
+            "tz": server_settings.lookup("TZ")[1], "slot_grace_days": server_settings.lookup("SLOT_GRACE_DAYS")[1]}

@@ -21,8 +21,18 @@ sys.path.insert(0, ROOT)
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, config, db as dbm, main   # noqa: E402
+from server import accounts, config, db as dbm, main, settings   # noqa: E402
 import logging   # noqa: E402
+
+
+def origins(text):
+    """(#1158) The public addresses, saved in the app: the environment no longer sets them."""
+    with contextlib.closing(dbm.connect()) as db:
+        if text:
+            settings.put(db, "host.publicOrigins", text.split(","))
+        else:
+            settings.clear(db, ["host.publicOrigins"], "install")
+    settings.forget_saved()
 
 H = {"X-Sanguity": "1"}
 PW = "an admin of the fictional install"
@@ -61,12 +71,12 @@ class HostCheck(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        os.environ.pop("PUBLIC_ORIGINS", None)
+        origins("")
         cls.ctx.__exit__(None, None, None)
         shutil.rmtree(TMP, True)
 
     def tearDown(self):
-        os.environ.pop("PUBLIC_ORIGINS", None)
+        origins("")
 
     def login(self, host, **headers):
         """The unauthenticated route a rebinding page would guess passwords at: "in" when let in (a wrong password's 401,
@@ -84,12 +94,12 @@ class HostCheck(unittest.TestCase):
             self.assertEqual((host, self.login(host), self.me(host)), (host, "in", 200))
 
     def test_b_listed_ip_and_local_pass(self):
-        os.environ["PUBLIC_ORIGINS"] = PUBLIC
+        origins(PUBLIC)
         for host in LISTED + IPS + LOCAL:
             self.assertEqual((host, self.login(host), self.me(host)), (host, "in", 200))
 
     def test_c_unlisted_name_refused(self):
-        os.environ["PUBLIC_ORIGINS"] = PUBLIC + ",http://192.168.1.20:8730"
+        origins(PUBLIC + ",http://192.168.1.20:8730")
         self.log.lines.clear()
         for host in UNLISTED:
             self.assertEqual((host, self.login(host), self.me(host)), (host, 400, 400))
@@ -105,7 +115,7 @@ class HostCheck(unittest.TestCase):
         self.assertEqual(self.me("app:8000", **{"X-Forwarded-Host": "health.example.test"}), 200)   # behind a proxy
 
     def test_d_ts_net_listed_like_any_name(self):
-        os.environ["PUBLIC_ORIGINS"] = "https://nas.tail1234.ts.net:8443"
+        origins("https://nas.tail1234.ts.net:8443")
         self.assertEqual((self.me("nas.tail1234.ts.net:8443"), self.me("other.tail1234.ts.net:8443")), (200, 400))
 
     def test_e_host_guard_refuses_a_list_without_this_page(self):

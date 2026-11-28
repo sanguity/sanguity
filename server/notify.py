@@ -35,16 +35,14 @@ the access gone, the server taken away) or a dose's an hour late is dropped.
 The access token is a secret, never given to a page (only whether there is one), and sent only to the server it is
 for, by scheme and host (an origin: https://ntfy.example.com, never its http:// on the same host):
   - one saved here (General → Notifications) is encrypted in meta (TOKEN_META) with the origin it was saved for;
-  - the server's environment's NOTIFY_TOKEN, which wins, goes to the origin it was first sent to, kept in meta
-    (ENV_META, with a hash of the token): a server at another origin gets none until the environment's token is
-    changed, when the next origin it's sent to is the one it's kept for.
-A token is letters, digits and signs (0x21-0x7e) only: one from the environment that isn't is ignored, said in the
-log without its value. Every contact goes through net.py's gateway under a permit for PURPOSE (outside.py lists it
+  - (#1158) the server's environment's NOTIFY_TOKEN was taken in once, as one saved here (settings_import.py), for the
+    origin it had been sent to (ENV_META, with a hash of the token, before), else today's server's; it isn't read after.
+A token is letters, digits and signs (0x21-0x7e) only. Every contact goes through net.py's gateway under a permit for PURPOSE (outside.py lists it
 under Outside connections), to the server's host alone. https only, unless the host is on the local network
 (settings.notify_url); a name sent to over http is resolved first, refused unless every address it has is a local
 one, and connected to at the address checked (never looked up again).
 """
-import hashlib, json, logging, os, secrets, threading, time, urllib.parse
+import json, logging, secrets, threading, time, urllib.parse
 from datetime import datetime, timedelta, time as Time
 
 from . import activity, config, crypto, db as dbm, net, outside, settings
@@ -105,24 +103,6 @@ def clean_token(value):
     return value
 
 
-_warned = set()
-
-
-def _env_token():
-    """The environment's token, cleaned; "" when it's unset, or isn't one (said in the log, once, without it)."""
-    raw = os.environ.get(TOKEN_ENV)
-    if not raw:
-        return ""
-    t = clean_token(raw)
-    if not t:
-        if TOKEN_ENV not in _warned:
-            _warned.add(TOKEN_ENV)
-            log.warning("%s isn't a token Sanguity can send (letters, digits and signs, no spaces, at most %d): ignored",
-                        TOKEN_ENV, TOKEN_MOST)
-        return ""
-    return t
-
-
 def _meta(db, k):
     stored = dbm.meta_get(db, k)
     try:
@@ -131,34 +111,15 @@ def _meta(db, k):
         return None
 
 
-def _env_origin(db, t, claim=False):
-    """The origin the environment's token t is kept for; with claim, today's server's, when it's kept for none yet (or
-    for an earlier token)."""
-    h = hashlib.sha256(t.encode()).hexdigest()
-    kept = _meta(db, ENV_META)
-    if kept and kept.get("hash") == h:
-        return kept.get("origin")
-    if claim and origin():
-        dbm.meta_set(db, ENV_META, crypto.enc(json.dumps({"origin": origin(), "hash": h})))
-        return origin()
-    return None
-
-
 def token_source(db):
-    """Where the access token comes from: "environment", "install" or None (ntfy's topics are open). The environment's
-    is "environment" while it goes to today's server (or hasn't gone anywhere yet); one saved here for another origin
+    """Where the access token comes from: "install" or None (ntfy's topics are open); one saved here for another origin
     is none."""
-    if (t := _env_token()):
-        return "environment" if _env_origin(db, t) in (None, origin()) else "environment-elsewhere"
     s = _meta(db, TOKEN_META)
     return "install" if s and s.get("origin") == origin() else None
 
 
 def token(db, claim=False):
-    """The token to send to today's server, or "". claim: about to send it (the environment's is kept for this origin
-    from the first time)."""
-    if (t := _env_token()):
-        return t if _env_origin(db, t, claim) == origin() or (not claim and _env_origin(db, t) is None) else ""
+    """The token to send to today's server, or "". (claim: about to send it; kept for the callers' sake.)"""
     s = _meta(db, TOKEN_META)
     return s["token"] if s and s.get("origin") == origin() and s.get("token") else ""
 

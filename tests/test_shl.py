@@ -27,6 +27,7 @@ from cryptography.hazmat.primitives.asymmetric import ec   # noqa: E402
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, activity, config, crypto, db as dbm, main, net, outside, profiles as prof, shl, uploads   # noqa: E402
+import given   # noqa: E402  (#1158: a setting as the app holds it)
 from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 import shl_server   # noqa: E402
 from tests import netguard   # noqa: E402
@@ -413,7 +414,7 @@ class Links(unittest.TestCase):
         key = os.urandom(32)
         jwe = shl.encrypt(json.dumps(shl_server.bundle()).encode(), key)
         self.srv.manifest("/shl/many", [(shl.FHIR, jwe)] * 3)
-        with mock.patch.dict(os.environ, {"SHL_MAX_FILES": "2"}):
+        with given.settings(SHL_MAX_FILES="2"):
             r = self.post("import", {"link": shl.encode(self.srv.base + "/shl/many", key), "confirm": True})
         self.assertEqual(r.status_code, 413, r.text)
 
