@@ -3738,6 +3738,59 @@ def main():
               and [r[2] for r in got1003["rows"][1:3]] == [os.environ.get("TZ") or "UTC", f"{os.environ.get('SLOT_GRACE_DAYS') or 7} days"]
               and ("asked" not in got1003 or "phones.example.test" in got1003["asked"])
               and got1003["after"] == ["https://phones.example.test/ingest", False] and got1003["back"] == 200, got1003)
+        # General → Needs a restart (#1121): a value saved from the bar waits for a restart (Restart needed, the server's
+        # value unchanged), one past its bound is refused and stays as typed, one the environment sets is plain text with
+        # its variable; Restart now asks, stops the app (here: recorded, the start-up path run in-process as Docker's
+        # restart would) and the card, read again once it answers, has the new value in force
+        from server import server_settings as ss1121
+        ctx1121 = browser.new_context(viewport={"width": 1400, "height": 900})
+        ctx1121.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
+        p1121, errs1121, got1121, stops1121 = ctx1121.new_page(), [], {}, []
+        p1121.on("pageerror", lambda e: errs1121.append(str(e)))
+        was1121, os.environ["SHL_TIMEOUT"] = os.environ.get("SHL_TIMEOUT"), "25"
+        stop1121, ss1121.stop_soon = ss1121.stop_soon, lambda *a, **k: (stops1121.append(1), ss1121.start(say=lambda m: None))
+        try:
+            p1121.goto(base + "/settings.html?profile=1#gen-restart")
+            p1121.wait_for_selector("#rs-upload-max-file-mb", timeout=20000)
+            got1121["env"] = p1121.evaluate("""(r => [r.querySelector('.tag').textContent, r.querySelector('.set-row-ctl').textContent, !!r.querySelector('input')])(
+                document.querySelector('#gen-restart [data-name=SHL_TIMEOUT]'))""")
+            p1121.fill("#rs-upload-max-file-mb", "99999")
+            p1121.click("#setBar button:has-text('Save')")
+            p1121.locator("#setBar .msg", has_text="Not saved").wait_for(timeout=10000)
+            got1121["refused"] = [p1121.inner_text("#setBar .msg"), p1121.input_value("#rs-upload-max-file-mb")]
+            p1121.fill("#rs-upload-max-file-mb", "2048")
+            got1121["dirty"] = p1121.evaluate("document.getElementById('gen-restart').getAttribute('data-dirty')")
+            p1121.click("#setBar button:has-text('Save')")
+            p1121.wait_for_selector("#rsRestart", timeout=10000)
+            got1121["saved"] = [p1121.inner_text("#genRsMsg"), config1000.setting("UPLOAD_MAX_FILE_MB"),
+                                p1121.evaluate("document.querySelector('#gen-restart [data-name=UPLOAD_MAX_FILE_MB] .tag:not(.set-unsaved)')?.textContent"),
+                                p1121.evaluate("document.getElementById('gen-restart').hasAttribute('data-dirty')")]
+            for w in (412, 1400) if os.environ.get("SANGUITY_SHOTS") else ():
+                p1121.set_viewport_size({"width": w, "height": 900})
+                p1121.locator("#gen-restart").screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"1121-restart-{w}.png"))
+            p1121.click("#rsRestart")
+            p1121.click("dialog.sg-ask button.primary")
+            p1121.locator("#genRsMsg", has_text="Restarted with the saved settings.").wait_for(timeout=20000)
+            got1121["after"] = [stops1121, config1000.setting("UPLOAD_MAX_FILE_MB"), p1121.evaluate("!!document.getElementById('rsRestart')"),
+                                p1121.inner_text("#genRsState")]
+        except Exception as e:
+            got1121["stopped"] = stopped(e)
+        finally:
+            ss1121.stop_soon = stop1121
+            os.environ.pop("SHL_TIMEOUT")
+            if was1121 is not None:
+                os.environ["SHL_TIMEOUT"] = was1121
+            if os.path.exists(ss1121.path()):
+                os.unlink(ss1121.path())
+            ss1121.forget()
+            ctx1121.close()
+        check("General → Needs a restart (#1121): saved from the bar it waits for a restart (Restart needed, the server's value unchanged), "
+              "past its bound refused and kept as typed, the environment's plain text with its variable; Restart now asks, restarts, "
+              "and the card read again has it in force", "stopped" not in got1121 and not errs1121
+              and got1121["env"] == ["Set in .env: SHL_TIMEOUT", "25 seconds", False]
+              and got1121["refused"][0].startswith("Not saved: One file must be a whole number from 1 to 4,096") and got1121["refused"][1] == "99999"
+              and got1121["dirty"] == "1" and got1121["saved"][1:] == [4096, "Restart needed", False] and "apply once the server restarts" in got1121["saved"][0]
+              and got1121["after"][:3] == [[1], 2048, False] and "checking them" in got1121["after"][3], [got1121, errs1121])
         # (#991) This person's and You's sections show the profile's and the person's own settings only: a server's own
         # (scope "install", as General's will be, #1000-#1004) is Install's, read from /api/settings/install, even where
         # the profile's sections list it beside theirs. One answered here into Dates and times, and a section of its own

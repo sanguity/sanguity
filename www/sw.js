@@ -42,6 +42,7 @@ const FILES = [
   "js/admin-phone.js",
   "js/gen-about.js",
   "js/gen-demo.js",
+  "js/gen-restart.js",
   "guide.html", "js/guide.js",
   "js/cycle.js", "js/sources-cycle.js",
   "js/targets.js",
