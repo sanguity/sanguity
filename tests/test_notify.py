@@ -93,7 +93,7 @@ class Notify(unittest.TestCase):
         db = dbm.connect()
         for t in ("notify_optins", "notify_sent", "notify_topics", "med_reminders", "outside_contacts"):
             db.execute(f"DELETE FROM {t}")
-        db.execute("DELETE FROM meta WHERE k IN (?, ?)", (notify.TOKEN_META, notify.ENV_META))
+        db.execute("DELETE FROM meta WHERE k IN (?, ?, ?)", (notify.TOKEN_META, notify.ENV_META, notify.TOPICS_META))
         notify._tested.clear()
         settings.clear(db, ["notify.url"], "install")
         db.close()
@@ -353,6 +353,57 @@ class Notify(unittest.TestCase):
         self.assertIn("notify.topic", acts)
         self.assertFalse(any(old.rsplit("/", 1)[1] in json.dumps(e) or new.rsplit("/", 1)[1] in json.dumps(e)
                              for e in activity.for_accounts(self.db())), "no topic in any log")
+
+    def test_another_server_makes_every_topic_new_asked_first(self):
+        """(#1130's re-review) An admin pointing the server at a host of their own learns no topic used afterwards."""
+        ada, kim = self.signed_in("ada"), self.signed_in("kim")
+        self.assertEqual(ada.put("/api/settings/install/notify.url", json={"value": self.ntfy.url}, headers=H).status_code, 200)
+        old = {n: kim.get("/api/me/notify").json()["topic"].rsplit("/", 1)[1] if n == "kim" else notify.topic(self.db(), self.uid[n])
+               for n in ("kim", "lee")}
+        # the same origin (a path under it): kept, nothing asked
+        self.assertEqual(ada.put("/api/settings/install/notify.url", json={"value": self.ntfy.url + "/ntfy"}, headers=H).status_code, 200)
+        self.assertEqual(notify.topic(self.db(), self.uid["kim"]), old["kim"])
+        for other in ("https://" + self.ntfy.host, "https://ntfy.example.test"):   # another scheme, or host
+            r = ada.put("/api/settings/install/notify.url", json={"value": other}, headers=H)
+            self.assertEqual(r.status_code, 409, r.text)
+            c = r.json()["detail"]["confirm"]
+            self.assertEqual(c["count"], 2)
+            self.assertIn("every person's topic new", c["message"])
+            r = ada.put("/api/settings/install/notify.url", json={"value": other, "confirm": "2"}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            new = {n: notify.topic(self.db(), self.uid[n]) for n in ("kim", "lee")}
+            self.assertTrue(all(new[n] != old[n] for n in new), (old, new))
+            self.assertEqual(kim.get("/api/me/notify").json()["topic"], other + "/" + new["kim"], "the new address shown")
+            old = new
+        self.assertIn("another server", settings.get_def("notify.url").help)
+
+    def test_a_reset_makes_the_persons_topic_new(self):
+        """(#1130's re-review) An admin's password or second-factor reset, one's own password change or two-factor
+        sign-in turned off, a recovery code's sign-in: that person's topic made new (no one else's; none made for
+        someone who has none)."""
+        self.set_server()
+        db = self.db()
+        for n in ("kim", "lee"):
+            notify.topic(db, self.uid[n])
+
+        def renewed(do):
+            before = {n: notify.topic(db, self.uid[n], make=False) for n in ("kim", "lee")}
+            do()
+            after = {n: notify.topic(db, self.uid[n], make=False) for n in ("kim", "lee")}
+            return after["kim"] != before["kim"] and after["lee"] == before["lee"]
+        self.assertTrue(renewed(lambda: accounts.set_temp_password(db, self.uid["kim"])), "an admin's password reset")
+        db.execute("UPDATE users SET pw_hash=?, must_change_pw=0, temp_pw_expires=NULL WHERE id=?",
+                   (main.sec.hash_password(PW["kim"]), self.uid["kim"]))
+        self.assertTrue(renewed(lambda: accounts.turn_off_2fa(db, self.uid["kim"], passkeys_too=True)), "an admin's 2FA reset")
+        self.assertTrue(renewed(lambda: accounts.turn_off_2fa(db, self.uid["kim"])), "one's own 2FA turned off")
+        kim = self.signed_in("kim")
+        self.assertTrue(renewed(lambda: self.assertEqual(kim.post("/api/me/password", json={"current": PW["kim"], "new": "another fictional long passphrase"},
+                                                                   headers=H).status_code, 200)), "one's own password changed")
+        db.execute("UPDATE users SET pw_hash=? WHERE id=?", (main.sec.hash_password(PW["kim"]), self.uid["kim"]))
+        accounts.set_temp_password(db, self.uid["ada"])   # someone with no topic gets none made
+        self.assertIsNone(notify.topic(db, self.uid["ada"], make=False))
+        db.execute("UPDATE users SET pw_hash=?, must_change_pw=0, temp_pw_expires=NULL WHERE id=?",
+                   (main.sec.hash_password(PW["ada"]), self.uid["ada"]))
 
     def test_a_restore_keeps_todays_topics_choices_and_token(self):
         from server import backup

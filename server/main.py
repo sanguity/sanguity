@@ -918,6 +918,7 @@ def change_password(body: PasswordChange, request: Request, s=Depends(any_user),
         # its calendar feeds end too (#597, the owner's decision), as signing out everywhere ends them (#590): a password
         # is changed when someone else may have had it, and so may a feed's address; the page said how many beforehand
         feeds = calendar.drop_for(db, s["id"])
+        notify.renew(db, s["id"])   # (#1130) and their notification topic is made new, for the same reason
         activity.log(db, "password", s, ip=_client_ip(request))
     return {"ok": True, "signed_out_elsewhere": n, "calendar_feeds": feeds}
 
