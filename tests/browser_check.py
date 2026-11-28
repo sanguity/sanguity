@@ -18160,6 +18160,51 @@ def main():
             page.wait_for_function("!(DATA.oop.plans || []).length", timeout=10000)
             check("…and removed, its claims are summed by calendar year again", js("DATA.oop.years.every(y => y.plan == null)") and
                   js("document.activeElement.textContent") == "Deductible and out-of-pocket max", js("document.activeElement.outerHTML.slice(0, 80)"))
+            # ---- bills (#1128): a provider's bill typed in on What you paid, with its file, lined up against the claim
+            # with the same provider and date of service (what the plan says you owe, paid so far); "No claim yet"
+            # chosen; 320 px; removed
+            js("applyPreset('all'); billState.edit = null; costState.view = 'paid'; renderCosts()")
+            settle(300)
+            c1128 = js("DATA.costs.filter(c => c.owe > 0 && c.billed > c.owe + 1 && c.prov && byId.get(c.id)).at(-1)")
+            page.click("#billAdd")
+            page.wait_for_selector("#billEdit", timeout=5000)
+            focus1128 = js("document.activeElement.id")
+            page.fill("#bill-service", c1128["d"])
+            page.fill("#bill-provider", c1128["prov"])
+            page.fill("#bill-amount", js("v => v.toLocaleString('en-US')", c1128["billed"]))
+            page.set_input_files("#bill-file", files=[{"name": "bill.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.4 fictional bill"}])
+            page.click("#billEdit button:text-is('Save')")
+            page.wait_for_function("((DATA.oop || {}).bills || []).length === 1 && !document.getElementById('billEdit')", timeout=20000)
+            settle(300)
+            b1128 = js("DATA.oop.bills[0]")
+            text1128 = page.inner_text(f"#bill-{b1128['id']}")
+            check("a bill typed in on Costs is lined up against its claim: billed, what the plan says you owe and the difference, paid so far (#1128)",
+                  b1128["match"] == "auto" and b1128["claim"] is not None and js("b => billFacts(b)", b1128) in text1128
+                  and "your plan says you owe" in text1128 and "paid so far" in text1128 and focus1128 == "bill-service"
+                  and js("document.activeElement.id") == "billAdd", [b1128, text1128, focus1128])
+            page.click(f"#bill-{b1128['id']} button:text-is('Open the bill')")
+            page.wait_for_selector("#drawer.open #dbody :is(iframe.doc, a[href*='/documents/'])", timeout=5000)
+            check("…its file is a document of the records, opened in the drawer", "/documents/" in js("(e => e.getAttribute('src') || e.getAttribute('href'))(document.querySelector('#dbody :is(iframe.doc, a[href*=\"/documents/\"])'))"))
+            js("closeDrawer()")
+            page.click(f"#bill-{b1128['id']} .bill-change")
+            page.wait_for_selector("#billEdit", timeout=5000)
+            page.select_option("#bill-claim", "0")
+            page.click("#billEdit button:text-is('Save')")
+            page.wait_for_function("DATA.oop.bills[0].none === true && !document.getElementById('billEdit')", timeout=10000)
+            check("…changed to “No claim yet”, it says so, and keeps its file", "No claim for this bill yet, as chosen." in page.inner_text(f"#bill-{b1128['id']}")
+                  and js("DATA.oop.bills[0].file") == b1128["file"], page.inner_text(f"#bill-{b1128['id']}"))
+            page.set_viewport_size({"width": 320, "height": 800})
+            page.click(f"#bill-{b1128['id']} .bill-change")
+            settle(300)
+            check("…the bills card and its form fit 320 px", js("document.documentElement.scrollWidth") <= 320, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click("#billEdit button:text-is('Cancel')")
+            settle(200)
+            page.click(f"#bill-{b1128['id']} button:text-is('Remove')")
+            page.click(".sg-ask button:text-is('Remove')")
+            page.wait_for_function("!(DATA.oop.bills || []).length", timeout=10000)
+            check("…and removed, focus on the bills' heading", js("document.activeElement.textContent") == "Bills", js("document.activeElement.outerHTML.slice(0, 80)"))
+            js("billState.edit = null; costState.view = 'claims'; renderCosts()")
 
             # ---- readings typed in at home (#224): blood pressure, glucose, temperature and blood oxygen typed on Sources
             # for the demo person, whose phone sends the same measures; checked as typed (plausible values, the unit),

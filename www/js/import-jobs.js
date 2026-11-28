@@ -357,7 +357,7 @@
   const RESTORED = [["corrections", ["correction", "corrections"]], ["journal", ["journal entry", "journal entries"]],
     ["photos", ["photo", "photos"]], ["doses", ["logged dose", "logged doses"]], ["reminders", ["medication reminder", "medication reminders"]],
     ["medEntries", ["medication you added or changed", "medications you added or changed"]],   // (#1091)
-    ["costPlans", ["plan year", "plan years"]]];   // (#1127)
+    ["costPlans", ["plan year", "plan years"]], ["costBills", ["bill", "bills"]]];   // (#1127, #1128)
   function restoredLine(r, done) {
     const said = RESTORED.filter(([k]) => (r || {})[k] > 0).map(([k, words]) => plural(r[k], words));
     if (!said.length) return null;

@@ -57,7 +57,7 @@ FIELDS = (("documents", "id", "path"), ("activity", "id", "detail"), ("users", "
           ("labmap_changes", "id", "value"),   # (#1097)
           ("oidc_identities", "id", "name"),   # (#1109)
           ("journal_spots", "id", "name"),   # (#1139)
-          ("cost_plans", "id", "body"))   # (#1127)
+          ("cost_plans", "id", "body"), ("cost_bills", "id", "body"))   # (#1127, #1128)
 
 
 def anything_encrypted(db):

@@ -13,8 +13,17 @@ in the profile's activity log (as an "edit" with action "cost": what was said, n
                                                 "deductible", "oop", "familyDeductible"?, "familyOop"?} (amounts)
   PUT    /api/profiles/{pid}/costs/plans/{id}   the same, changed
   DELETE /api/profiles/{pid}/costs/plans/{id}   removed
+  POST   /api/profiles/{pid}/costs/bills        a provider's bill (#1128; costplan.py): {"service": "YYYY-MM-DD",
+                                                "provider", "amount", "due"?: "YYYY-MM-DD", "claim"?: a claim's event
+                                                id, 0 for no claim yet, -1 or left out to work it out, "file_import"?:
+                                                the import holding the bill's file, a document typed in just before,
+                                                "drop_file"?: true to keep no file}
+  PUT    /api/profiles/{pid}/costs/bills/{id}   the same, changed (its file kept unless file_import or drop_file);
+                                                with file_import, the reply has the records too ("records")
+  DELETE /api/profiles/{pid}/costs/bills/{id}   removed (its file, a document of the records, stays)
                                        each -> {"oop": as the mark's reply}, logged as an "edit" with action "cost"
-                                       ("of": "plan", "change": "add" | "change" | "remove"; never an amount)
+                                       ("of": "plan" or "bill", "change": "add" | "change" | "remove"; never an
+                                       amount or a name)
 """
 import json
 
@@ -121,4 +130,65 @@ def change_plan(pid: int, eid: int, body: Plan, request: Request, response: Resp
 @router.delete("/api/profiles/{pid}/costs/plans/{eid}")
 def remove_plan(pid: int, eid: int, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
     _entry(db, s, pid, request, "plan", "remove", lambda db: costplan.drop_plan(db, pid, eid) or None)
+    return _oop(db, pid, response)
+
+
+class Bill(BaseModel):
+    service: str
+    provider: str = ""
+    amount: Optional[float] = None
+    due: Optional[str] = None
+    claim: Optional[int] = None
+    file_import: Optional[int] = None
+    drop_file: bool = False
+
+
+def _bill(db, pid, body, eid=None):
+    """The bill as kept, from what was sent: the claim chosen by its key, the file by its document's key."""
+    was = costplan.bill(db, pid, eid) if eid is not None else {}
+    if was is None:
+        return None
+    data = records.assemble(db, pid) or {}
+    events = {e["id"]: e for e in data.get("events") or []}
+    fields = body.model_dump(include={"service", "provider", "amount", "due"})
+    if body.claim is not None and body.claim > 0:
+        if body.claim not in events or not any(isinstance(c, dict) and c.get("id") == body.claim for c in data.get("costs") or []):
+            raise costplan.PlanError("Choose one of this profile's claims.")
+        fields["claim"] = edits.key_of(events[body.claim])
+    elif body.claim == 0:
+        fields["claim"] = ""
+    if body.file_import is not None:
+        doc = next((e for e in data.get("events") or [] if e.get("imp") == body.file_import and e.get("k") in ("document", "letter")), None)
+        if doc is None:
+            raise costplan.PlanError("The bill's file wasn't saved: choose it again.")
+        fields["file"] = edits.key_of(doc)
+    elif was.get("file") and not body.drop_file:
+        fields["file"] = was["file"]
+    return costplan.check_bill(fields)
+
+
+def _bill_reply(db, pid, body, response, status=200):
+    """{"oop"}; with a file just attached, the records too ("records", as an edit's reply, #271): its document is new
+    to the page."""
+    if body.file_import is None:
+        return _oop(db, pid, response)
+    from .routes_edits import with_records
+    return with_records(db, pid, {}, status)
+
+
+@router.post("/api/profiles/{pid}/costs/bills", status_code=201)
+def add_bill(pid: int, body: Bill, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
+    _entry(db, s, pid, request, "bill", "add", lambda db: costplan.save_bill(db, pid, s, _bill(db, pid, body)))
+    return _bill_reply(db, pid, body, response, 201)
+
+
+@router.put("/api/profiles/{pid}/costs/bills/{eid}")
+def change_bill(pid: int, eid: int, body: Bill, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
+    _entry(db, s, pid, request, "bill", "change", lambda db: (b := _bill(db, pid, body, eid)) and costplan.save_bill(db, pid, s, b, eid))
+    return _bill_reply(db, pid, body, response)
+
+
+@router.delete("/api/profiles/{pid}/costs/bills/{eid}")
+def remove_bill(pid: int, eid: int, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
+    _entry(db, s, pid, request, "bill", "remove", lambda db: costplan.drop_bill(db, pid, eid) or None)
     return _oop(db, pid, response)

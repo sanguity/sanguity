@@ -1,4 +1,5 @@
-"""Plan years on the Costs tab (#1127): how much of the deductible and the out-of-pocket maximum the claims have met.
+"""Plan years and bills on the Costs tab: how much of the deductible and the out-of-pocket maximum the claims have
+met (#1127), and a provider's bill lined up against what the plan says you owe (#1128, "bills" below).
 
 A plan year is typed in by the person (Costs → Plan years; routes_costs.py): the day it starts, the plan's deductible
 and out-of-pocket maximum for one person, and the family amounts when they want them. It runs a year from its start
@@ -199,3 +200,118 @@ def years(data, typed):
         y.update(towardDeductible=round(sum(_money(c.get("ded")) for c in rs), 2), outOfPocket=round(sum(_money(c.get("owe")) for c in rs), 2),
                  claims=[c["id"] for c in rs], noSplit=sum(1 for c in rs if not isinstance(c.get("ded"), (int, float))))
     return sorted(out + list(cal.values()), key=lambda y: y["start"], reverse=True)
+
+
+# ---------------------------------------------------------------- bills (#1128)
+#
+# A provider's bill, typed in on Costs: the date of service, the provider, the amount billed, and the due date when
+# given. Its file, when there is one, is a document typed in on its own (the page saves it first, as hand entry saves
+# a document: manual_items.py), which the bill names by its key; never read for numbers. Kept in cost_bills (schema
+# version 52), as plan years are.
+#
+# A bill is lined up against a claim: the one a person chose (its key in "claim"), none ("claim": "", "no claim yet"),
+# else the claim worked out the way payments are matched (oop.py): the provider sharing a word with the claim's, the
+# date of service within BILL_DAYS days of the claim's, the amount billed the claim's share or its billed amount first,
+# then the nearest in time; one bill a claim. A claim imported later is offered then, as it's worked out each time.
+# Served as data["oop"]["bills"]: [{id, service, provider, amount, due, claim (event id), match ("marked" | "auto" |
+# None), none (said to have no claim yet), owe (the claim's share), paid (payments matched to that claim, oop.py),
+# payments ([i]), file (the document's event id), by, at, changed, changed_by}], newest service first.
+
+BILL_DAYS = 3
+MAX_BILLS = 2000
+TEXT_MAX = 300
+
+
+def check_bill(fields):
+    """A bill as kept, from what was typed ({service, provider, amount, due}; claim and file kept as given), or
+    PlanError saying why not."""
+    body = {"service": day(fields.get("service"), "date of service").isoformat()}
+    prov = " ".join(fields["provider"].split()) if isinstance(fields.get("provider"), str) else ""
+    if not prov:
+        raise PlanError("Type who the bill is from.")
+    if len(prov) > TEXT_MAX:
+        raise PlanError(f"The provider's name is at most {TEXT_MAX} characters.")
+    body["provider"] = prov
+    body["amount"] = amount(fields.get("amount"), "amount billed")
+    if fields.get("due"):
+        body["due"] = day(fields.get("due"), "due date").isoformat()
+    for k in ("claim", "file"):
+        v = fields.get(k)
+        if v is not None:
+            if not isinstance(v, str) or len(v) > 4000 or (k == "file" and not v):
+                raise PlanError(f"The bill's {k} isn't one Sanguity keeps.")
+            body[k] = v
+    return body
+
+
+def bills(db, pid):
+    """The profile's bills as kept: {id, service, provider, amount, due?, claim?, file?, by, at, changed, changed_by}
+    (an export's "costBills")."""
+    return [_listed(r, b) for r, b in _rows(db, "cost_bills", pid)]
+
+
+def bill(db, pid, eid):
+    r = db.execute("SELECT body FROM cost_bills WHERE id=? AND profile_id=?", (eid, pid)).fetchone()
+    return json.loads(crypto.dec(r["body"])) if r else None
+
+
+def save_bill(db, pid, who, body, eid=None):
+    """Add a bill (eid None) or change one; body as check_bill gives it. Call inside a transaction. Returns its id, or
+    None when there's no such bill."""
+    if eid is None and db.execute("SELECT COUNT(*) FROM cost_bills WHERE profile_id=?", (pid,)).fetchone()[0] >= MAX_BILLS:
+        raise PlanError(f"A profile keeps at most {MAX_BILLS} bills.")
+    return _save(db, "cost_bills", pid, who, body, eid)
+
+
+def drop_bill(db, pid, eid):
+    return _drop(db, "cost_bills", pid, eid)
+
+
+def lined_up(data, kept, claim_paid, key_of):
+    """The bills served (see above). kept: bills(); claim_paid: {claim event id: (paid, [payment i])} from oop.py;
+    key_of(event) -> its key."""
+    from . import oop
+    events = {e.get("id"): e for e in data.get("events") or [] if isinstance(e, dict)}
+    by_key = {}
+    for e in events.values():
+        by_key.setdefault(key_of(e), e)
+    claims = [c for c in data.get("costs") or [] if isinstance(c, dict) and c.get("id") in events
+              and isinstance(c.get("d"), str) and str(c.get("status") or "") != "Replaced"]
+    ckey = {}
+    for c in claims:
+        ckey.setdefault(key_of(events[c["id"]]), c)
+    out, taken = [], set()
+    for b in kept:
+        x = {k: b.get(k) for k in ("id", "service", "provider", "amount", "due", "by", "at", "changed", "changed_by")}
+        doc = by_key.get(b.get("file")) if b.get("file") else None
+        x.update(claim=None, match=None, none=b.get("claim") == "", owe=None, paid=0.0, payments=[],
+                 file=doc["id"] if doc and doc.get("k") in ("document", "letter") else None)
+        c = ckey.get(b.get("claim")) if b.get("claim") else None
+        if c is not None:
+            x["claim"], x["match"] = c["id"], "marked"
+            taken.add(c["id"])
+        out.append(x)
+    pairs = []
+    for x, b in zip(out, kept):
+        if x["claim"] is not None or x["none"] or b.get("claim"):   # a claim chosen that's gone: not worked out instead
+            continue
+        d = date.fromisoformat(x["service"]).toordinal()
+        for c in claims:
+            try:
+                gap = abs(date.fromisoformat(c["d"][:10]).toordinal() - d)
+            except ValueError:
+                continue
+            if gap <= BILL_DAYS and oop._alike(x["provider"], c.get("prov") or c.get("title")):
+                same = any(abs(_money(c.get(k)) - x["amount"]) < 0.005 for k in ("owe", "billed"))
+                pairs.append((0 if same else 1, gap, x["id"], c["id"], x, c))
+    pairs.sort(key=lambda t: t[:4])
+    for _, _, _, _, x, c in pairs:
+        if x["claim"] is None and c["id"] not in taken:
+            x["claim"], x["match"] = c["id"], "auto"
+            taken.add(c["id"])
+    by_id = {c["id"]: c for c in claims}
+    for x in out:
+        if x["claim"] is not None:
+            x["owe"] = _money(by_id[x["claim"]].get("owe"))
+            x["paid"], x["payments"] = claim_paid.get(x["claim"], (0.0, []))
+    return sorted(out, key=lambda x: (x["service"], x["id"]), reverse=True)
