@@ -81,8 +81,9 @@ Account events (no profile), readable by admins:
                 Delete now, or by actor TIME_LIMIT days after the restore (backup_jobs.sweep_replaced, #595)
   directory.update {"origin", "read": {list: entries}, "failed": {list: why}}: the provider directory's lists read
                 by an admin's Add the lists / Update now, or by actor WEEKLY_DIRECTORY (directory/update.py, #992)
-  notify.test {"ok", "why"?} / notify.token {"change": "set" | "remove"}: an admin's Test of the notification server,
-                or its access token saved or removed (never the token); notify.fail {"kind", "tries", "why"}: a
+  notify.test {"ok", "why"?} / notify.token {"change": "set" | "remove"} / notify.topic: a test notification to one's
+                own topic (an admin's Test, or anyone's), the server's access token saved or removed (never the
+                token), someone's own topic made new (never the topic); notify.fail {"kind", "tries", "why"}: a
                 notification that didn't go through after its tries, by actor NOTIFICATIONS (notify.py, #1130; never
                 what it said)
   records.rekey {"left": [what]}: records saved before #1022 that start-up couldn't key as they are now, left as they
@@ -106,7 +107,7 @@ ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "ac
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",
                    "labmap.remove", "settings.user", "settings.install", "connect.source", "outside",
                    "backup.create", "backup.check", "backup.fail", "backup.schedule", "backup.replaced", "directory.update",
-                   "records.rekey", "records.copies", "notify.test", "notify.fail", "notify.token")
+                   "records.rekey", "records.copies", "notify.test", "notify.fail", "notify.token", "notify.topic")
 COMMAND_LINE, SETUP_BUILD = "command line", "setup build"
 SCHEDULED_SYNC = "scheduled sync"   # a connected source's pull on its schedule (sync.py)
 SHARE_LINK = "share link"           # whoever holds a share link, opening it (share_links.py)

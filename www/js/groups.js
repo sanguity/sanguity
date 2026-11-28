@@ -100,7 +100,7 @@ const SG_PAGES = {
      finds: [["Install on this device", "installApp", "app home screen"], ["Offline records on this device", "offlineRecords", "offline without a connection"]]},
     // (#1130) shown once the server has a notification server: this person's, per profile they can see
     {id: "notifications", title: "Notifications", icon: "send", part: "You", hint: "new results and dose reminders, sent to this server's own notification server.",
-     has: ["notify"], words: "notify push ntfy alert new results dose reminders medication turn on off"},
+     has: ["notify"], words: "notify push ntfy alert new results dose reminders medication turn on off topic subscribe make a new test"},
     {id: "display", title: "Display", icon: "monitor", part: "You", has: ["sec-appearance", "sec-dates", "sec-units"],
       finds: [["Appearance", "sec-appearance", "default use browser in range results grey gray green"],   // (not "theme": the theme is your menu's Dark or Light mode, #410; In-range results, #1108)
         ["Dates and times", "sec-dates", "time zone date format"],

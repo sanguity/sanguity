@@ -3037,8 +3037,9 @@ def oidc_check(check, browser, base, cookies):
 def notify_check(check, browser, base, cookies):
     """(#1130) Notifications, against a fake ntfy server (tests/fakentfy.py), as the admin whose cookies are given:
     General → Notifications drawn, an http:// server on the internet refused, the server and its access token saved
-    from the group's bar (the token never on the page after), Send a test reaching it; You → Notifications shown only
-    once a server is set, each profile's New results and Dose reminders turned on at once; Outside connections listing
+    from the group's bar (the token never on the page after), Send a test reaching the admin's own topic; You →
+    Notifications shown only once a server is set, with this person's own topic to subscribe to (Make a new topic
+    replacing it) and each profile's New results and Dose reminders turned on at once; Outside connections listing
     it. Each part at 320 px, at 200% text, dark, in forced colours, with no serious axe finding. Puts everything back
     as it was. Returns script errors."""
     from server import db as dbm1130, notify as notify1130
@@ -3082,7 +3083,7 @@ def notify_check(check, browser, base, cookies):
         got = js("[[...document.querySelectorAll('#gen-notify button')].find(b => b.textContent === 'Send a test').disabled, document.getElementById('notify').hidden]")
         check("General → Notifications (#1130): drawn with no server, Send a test off, and You → Notifications not offered before one is set",
               got == [True, True], got)
-        page.fill("#notifyUrl", "http://ntfy.example.test/sanguity")
+        page.fill("#notifyUrl", "http://ntfy.example.test")
         page.click("#setBar button:has-text('Save')")
         page.locator("#setBar .msg", has_text="isn't saved").or_(page.locator("#setBar .msg", has_text="aren't saved")).first.wait_for(timeout=10000)
         said = js("document.querySelector('#setBar .msg').textContent")
@@ -3099,9 +3100,12 @@ def notify_check(check, browser, base, cookies):
         page.get_by_role("button", name="Send a test").click()
         page.wait_for_function("(m => /^Sent to/.test(m.textContent) || m.classList.contains('bad'))(document.querySelector('#gen-notify .row .msg'))", timeout=15000)
         said = js("document.querySelector('#gen-notify .row .msg').textContent")
-        got = [(p["body"], p["headers"].get("Authorization")) for p in ntfy.posts]
-        check("…Send a test reaches it, with the token as its bearer and only the test's words", said.startswith("Sent to " + ntfy.host)
-              and got == [(notify1130.message("test"), "Bearer " + token)], [said, got])
+        got = [(p["path"], p["body"], p["headers"].get("Authorization")) for p in ntfy.posts]
+        db = dbm1130.connect()
+        mine = "/" + notify1130.topic(db, db.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()[0], make=False)
+        db.close()
+        check("…Send a test reaches the admin's own topic, with the token as its bearer and only the test's words",
+              said.startswith("Sent to your own topic on " + ntfy.host) and got == [(mine, notify1130.message("test"), "Bearer " + token)], [said, got])
         fits = looks("General → Notifications", "#gen-notify")
         # ---- You → Notifications: each profile's two kinds, turned on at once
         page.goto(base + "/settings.html?profile=1#notify")
@@ -3114,6 +3118,13 @@ def notify_check(check, browser, base, cookies):
         db.close()
         check("…You → Notifications, once a server is set: each profile this person can see with New results and Dose "
               "reminders, a box turned on at once and said", len(rows) >= 2 and all(n == 2 for _, n in rows) and kinds == ["doses"], [rows, kinds])
+        was = js("document.getElementById('notifyTopic').textContent")
+        page.click("#notifyAgain")
+        answer_ask(page)
+        page.locator("#notifyTopicMsg", has_text="A new topic").wait_for(timeout=10000)
+        now = js("[document.getElementById('notifyTopic').textContent, document.activeElement.id]")
+        check("…its own topic shown to subscribe to (with Copy), and Make a new topic, asked first, replaces it, focus kept on the button",
+              was == ntfy.url + mine and now[0] != was and now[0].startswith(ntfy.url + "/sanguity-") and now[1] == "notifyAgain", [was, now])
         fits += looks("You → Notifications", "#notify")
         # ---- Outside connections lists it
         page.goto(base + "/settings.html?profile=1#outside")
@@ -3135,6 +3146,7 @@ def notify_check(check, browser, base, cookies):
             db = dbm1130.connect()
             db.execute("DELETE FROM notify_optins")
             db.execute("DELETE FROM notify_sent")
+            db.execute("DELETE FROM notify_topics")
             db.close()
     return errs
 

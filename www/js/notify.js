@@ -1,18 +1,21 @@
 /* Sanguity · Notifications (#1130; routes_notify.py, notify.py). Two cards:
    - Settings → Install → General: Notifications (#gen-notify, admins): the notification server (the install setting
-     notify.url, an ntfy topic's address) and its access token (never shown back: only whether one is saved, or set by
+     notify.url, an ntfy server's address) and its access token (never shown back: only whether one is saved, or set by
      NOTIFY_TOKEN in the server's environment), kept as typed and marked "not saved" until the group's bar
      (settings-nav.js: notifySave, after the fresh check, in the card) saves them or puts them back (notifyDiscard);
-     beside them Test, and the only words a notification says. admin.js starts it (adminStart: loadNotifyServer).
-   - Settings → You → Notifications (#notify, everyone): shown once the server is set; each profile this person can
-     see, with New results and Dose reminders, each turned on or off at once. account.js starts it (acctStart).
+     beside them Test (to the admin's own topic), and the only words a notification says. admin.js starts it
+     (adminStart: loadNotifyServer).
+   - Settings → You → Notifications (#notify, everyone): shown once the server is set; this person's own topic's
+     address to subscribe to (Copy, Send a test, Make a new topic), and each profile they can see, with New results
+     and Dose reminders, each turned on or off at once. account.js starts it (acctStart).
    call() and plural() are settings.js's. */
 "use strict";   // $, el, setRow, helpNodes, present, toast and sayIn come from util.js
 
 let NOTIFY = null, NOTIFY_REAUTH = null;
 const notifyReauth = () => NOTIFY_REAUTH || (NOTIFY_REAUTH = el("div", {id: "notifyReauth", class: "reauth", hidden: true}));
 const notifyUrlDirty = () => !!NOTIFY && NOTIFY.st.can_change && $("#notifyUrl").value.trim() !== NOTIFY.st.value;
-const notifyTokenDirty = () => !!NOTIFY && NOTIFY.d.token !== "environment" && $("#notifyToken").value.trim() !== "";
+const notifyEnv = () => !!NOTIFY && (NOTIFY.d.token || "").startsWith("environment");
+const notifyTokenDirty = () => !!NOTIFY && !notifyEnv() && $("#notifyToken").value.trim() !== "";
 
 async function loadNotifyServer(note) {
   const card = $("#gen-notify");
@@ -27,14 +30,15 @@ function drawNotifyServer(sec, d, note) {
   NOTIFY = {sec, st, d};
   const msg = el("span", {class: "msg set-msg"});
   const url = el("input", {id: "notifyUrl", type: "url", spellcheck: "false", autocapitalize: "none", autocomplete: "off",
-    placeholder: "https://ntfy.example.com/sanguity", "aria-labelledby": "notifyUrlName", "aria-describedby": "notifyUrlHint"});
+    placeholder: "https://ntfy.example.com", "aria-labelledby": "notifyUrlName", "aria-describedby": "notifyUrlHint"});
   url.value = st.value;
-  const tokenHint = d.token === "environment" ? `Set by ${d.token_env} in the server's environment (.env, or the app's settings on TrueNAS or Unraid), so it's changed there.`
-    : d.token ? "Saved, encrypted, and never shown again: sent to this server alone. Type a new one to replace it; left empty, it's kept."
-    : "Optional: an access token of your ntfy server's, for a topic that isn't open to everyone. Kept for this server alone.";
+  const tokenHint = d.token_elsewhere ? `${d.token_env}, in the server's environment, was first sent to another server, so it isn't sent to this one: change it there to use it here.`
+    : d.token === "environment" ? `Set by ${d.token_env} in the server's environment (.env, or the app's settings on TrueNAS or Unraid), so it's changed there. Sent to the first server it's used with alone.`
+    : d.token ? "Saved, encrypted, and never shown again: sent to this server alone (its https:// or http:// address as saved). Type a new one to replace it; left empty, it's kept."
+    : "Optional: an access token of your ntfy server's, where it doesn't let everyone send. Kept for this server alone.";
   const tok = el("input", {id: "notifyToken", type: "password", spellcheck: "false", autocapitalize: "none", autocomplete: "new-password",
     placeholder: d.token ? "Saved" : "", "aria-labelledby": "notifyTokenName", "aria-describedby": "notifyTokenHint",
-    readonly: d.token === "environment" || null});
+    readonly: (d.token || "").startsWith("environment") || null});
   const urlRow = setRow([el("h3", {class: "sub", id: "notifyUrlName"}, st.label, el("span", {class: "tag set-unsaved", text: "not saved"})),
     el("div", {id: "notifyUrlHint"}, helpNodes(st.help))], url, {class: "set", "data-key": st.key});
   const tokRow = setRow([el("h3", {class: "sub", id: "notifyTokenName"}, "Access token", el("span", {class: "tag set-unsaved", text: "not saved"})),
@@ -48,7 +52,7 @@ function drawNotifyServer(sec, d, note) {
   const testMsg = el("span", {class: "msg", role: "status"});
   const test = el("button", {type: "button", class: "btn", text: "Send a test", disabled: !d.url, onclick: async () => {
     test.disabled = true; sayIn(testMsg, "Sending…");
-    try { await call("settings/install/notify/test", "POST"); sayIn(testMsg, `Sent to ${d.host}: check that it arrived.`); }
+    try { await call("settings/install/notify/test", "POST"); sayIn(testMsg, `Sent to your own topic on ${d.host}: check that it arrived.`); }
     catch (e) { sayIn(testMsg, e.message, true); }
     test.disabled = false;
     SgOutside.load();   // (each contact is listed there)
@@ -57,7 +61,7 @@ function drawNotifyServer(sec, d, note) {
   card.replaceChildren(...present(
     el("div", {class: "set-hd"}, el("h2", {id: "gen-notify-hd", tabindex: -1, text: sec.title})),
     helpNodes(sec.help), msg, notifyReauth(), urlRow, tokRow,
-    ro("Test", d.url ? `Sends a test notification to ${d.host} now.` : "Set the notification server, and save it, first.",
+    ro("Test", d.url ? `Sends a test notification to your own topic there now: subscribe to it under Settings, Notifications.` : "Set the notification server, and save it, first.",
       el("div", {class: "row"}, test, testMsg)),
     ro("What each says", (d.click ? `Tapping one opens ${d.click}.` : "Tapping one opens nothing until a public address is set under Host.") +
       ` ${d.people ? `${plural(d.people, "person")} turned some on.` : "Nobody has turned any on yet."}`,
@@ -75,7 +79,7 @@ async function notifySave(msg, had) {
       await fresh(() => call(`settings/install/${NOTIFY.st.key}`, "PUT", {value, was: NOTIFY.st.value}), notifyReauth());
       saved.push("the notification server");
     }
-    if (token && NOTIFY.d.token !== "environment") {
+    if (token && !notifyEnv()) {
       await fresh(() => call("settings/install/notify/token", "PUT", {token}), notifyReauth());
       saved.push("its access token");
     }
@@ -107,6 +111,20 @@ async function loadNotify() {
   card.hidden = !d.set_up;
   if (!d.set_up) return;
   const msg = el("p", {class: "msg", id: "notifyMsg", role: "status"});
+  const addr = el("code", {id: "notifyTopic", text: d.topic});
+  const tmsg = el("span", {class: "msg", role: "status"});
+  const test = el("button", {type: "button", class: "btn small", text: "Send a test", onclick: async () => {
+    test.disabled = true; sayIn(tmsg, "Sending…");
+    try { await call("me/notify/test", "POST"); sayIn(tmsg, "Sent: check that it arrived."); }
+    catch (e) { sayIn(tmsg, e.message, true); }
+    test.disabled = false;
+  }});
+  const again = el("button", {type: "button", class: "btn small", id: "notifyAgain", text: "Make a new topic", onclick: async () => {
+    if (!await ask({title: "Make a new topic?", action: "Make a new topic", message: ["Notifications stop reaching the topic you have now. " +
+        "Subscribe to the new one in the ntfy app on each device."]})) return;
+    try { await call("me/notify/topic", "POST"); await loadNotify(); sayIn($("#notifyTopicMsg"), "A new topic: subscribe to it on each device."); $("#notifyAgain").focus(); }
+    catch (e) { sayIn(tmsg, e.message, true); }
+  }});
   const rows = d.profiles.map(p => setRow([el("p", {class: "set-row-name", id: "notifyP" + p.id, text: p.name})],
     [el("div", {class: "notify-kinds", role: "group", "aria-labelledby": "notifyP" + p.id}, ...NOTIFY_KINDS.map(([k, label]) => {
       const box = el("input", {type: "checkbox", checked: p[k], "data-kind": k, onchange: async () => {
@@ -121,9 +139,14 @@ async function loadNotify() {
     }))], {"data-profile": p.id}));
   card.replaceChildren(...present(
     el("h2", {id: "notifyHd", tabindex: -1, text: "Notifications"}),
-    helpNodes(`Sent to ${d.host}, this server's own notification server, when you turn them on for a profile.\n` +
+    helpNodes(`To your own topic on ${d.host}, this server's own notification server, for the profiles you turn them on for.\n` +
       "Each says only which profile and what kind, like “Sanguity: new results for Ben”: never a result, a medication " +
       "or anything else of the records. Tapping one opens Sanguity, where you sign in to see what it is. New results: " +
-      NOTIFY_KINDS[0][2] + ". Dose reminders: " + NOTIFY_KINDS[1][2] + ". Whoever reads that topic sees them, so ask your admin who does."),
+      NOTIFY_KINDS[0][2] + ". Dose reminders: " + NOTIFY_KINDS[1][2] + ". The topic is yours alone and can't be guessed: " +
+      "keep its address to yourself, since whoever subscribes to it sees what's sent there."),
+    setRow([el("p", {class: "set-row-name", text: "Your topic"}),
+      el("p", {class: "hint", text: "Subscribe to this address in the ntfy app on your phone (Subscribe to topic, Use another server)."})],
+      [el("div", {class: "copy-val-row"}, addr, copyBtn(() => addr.textContent, {what: "your topic's address", sel: addr})),
+       el("div", {class: "row"}, test, again, tmsg), el("p", {class: "msg", id: "notifyTopicMsg", role: "status"})]),
     ...(rows.length ? rows : [emptyState("No profile yet: once one is yours or shared with you, it's listed here.", null, {cls: ""})]), msg));
 }

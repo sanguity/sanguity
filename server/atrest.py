@@ -55,7 +55,8 @@ FIELDS = (("documents", "id", "path"), ("activity", "id", "detail"), ("users", "
           ("med_reminders", "id", "body"), ("med_doses", "id", "body"),   # (#162, #235)
           ("med_entries", "id", "body"),   # (#1091)
           ("labmap_changes", "id", "value"),   # (#1097)
-          ("oidc_identities", "id", "name"))   # (#1109)
+          ("oidc_identities", "id", "name"),   # (#1109)
+          ("notify_topics", "user_id", "topic"))   # (#1130) each person's own notification topic
 
 
 def anything_encrypted(db):
@@ -142,8 +143,11 @@ def seal_everything(db):
     if pepper is not None and crypto.field_needs_resealing(pepper):
         dbm.meta_set(db, "pepper", crypto.enc(crypto.dec(pepper)))
         fields += 1
-    oidc = dbm.meta_get(db, "oidc.secret")   # the sign-in provider's client secret (#1109, oidc.SECRET_META)
-    if oidc is not None and crypto.field_needs_resealing(oidc):
-        dbm.meta_set(db, "oidc.secret", crypto.enc(crypto.dec(oidc)))
-        fields += 1
+    # the sign-in provider's client secret (#1109, oidc.SECRET_META); the notification server's access token, and where
+    # the environment's was first sent (#1130, notify.TOKEN_META, notify.ENV_META)
+    for k in ("oidc.secret", "notify.token", "notify.token_env"):
+        v = dbm.meta_get(db, k)
+        if v is not None and crypto.field_needs_resealing(v):
+            dbm.meta_set(db, k, crypto.enc(crypto.dec(v)))
+            fields += 1
     return {"files": files, "fields": fields}

@@ -133,10 +133,10 @@ Everything on `main` so far; it becomes the first tagged release.
   summary with the Apple Health importer's mapping (HRV kept as SDNN); repeated and overlapping uploads count once.
   Setup steps for both phone apps are on the Settings page's watch card. Garmin, Fitbit and Withings come in
   through Health Connect or Apple Health instead of integrations of their own (#52, #53, #54).
-- Notifications, off by default and only to a notification server you run (a self-hosted ntfy topic, under General →
-  Notifications, with a write-only access token and Send a test): each person turns on New results and Dose
-  reminders per profile under Settings → Notifications, and each says only "Sanguity: new results for Ben" or
-  "Sanguity: a dose is due for Ben", sent once in the background and retried (#1130).
+- Notifications, off by default and only to a notification server you run (a self-hosted ntfy server, under General →
+  Notifications, with a write-only access token and Send a test): each person gets a topic of their own and turns on
+  New results and Dose reminders per profile they can see under Settings → Notifications, and each says only
+  "Sanguity: new results for Ben" or "Sanguity: a dose is due for Ben", sent once in the background and retried (#1130).
 
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for
