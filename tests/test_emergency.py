@@ -217,6 +217,34 @@ class Api(unittest.TestCase):
         self.assertEqual(c.get(self.url("/emergency")).status_code, 404, "not shared: not found")
         self.assertEqual(c.post(self.url("/emergency/pdf"), json={}, headers=H).status_code, 404)
 
+    def test_6_insurance(self):
+        """(#1137) The card's Insurance part from the profile's insurance plans (insurance.card_lines): its name, member
+        ID and group number in one line each, on the preview and the PDF, never on the lock-screen image's parts."""
+        robin = self.c["robin"]
+        r = robin.post(self.url("/insurance"), json={"name": "Fictional Health Plan", "member": "FX123456", "group": "G-77",
+                                                     "phones": [{"label": "Member services", "number": "+1 555 0142"}]}, headers=H)
+        self.assertEqual(r.status_code, 201, r.text)
+        iid = r.json()["id"]
+        self.assertEqual(robin.post(self.url("/insurance"), json={"name": "Fictional Dental"}, headers=H).status_code, 201)
+        try:
+            line = "Fictional Health Plan · Member ID FX123456 · Group G-77"
+            c = self.c["kim"].get(self.url("/emergency")).json()
+            self.assertEqual(c["insurance"], [{"line": line}, {"line": "Fictional Dental"}], "each plan in one line, the parts it has")
+            self.assertEqual(c["sections"][-1], {"heading": "Insurance", "lines": [line, "Fictional Dental"]})
+            self.assertNotIn("555 0142", str(c["sections"]), "no phone numbers")
+            self.assertFalse(any("FX123456" in str(x) or "Fictional" in str(x) for x in c["short"]), "never on the lock-screen image")
+            pdf = self.c["kim"].post(self.url("/emergency/pdf"), json={"paper": "letter"}, headers=H).content
+            ops = zlib.decompress(re.search(rb"stream\n(.*?)\nendstream", pdf, re.S).group(1))
+            self.assertIn(b"(INSURANCE) Tj", ops)
+            self.assertIn(b"Member ID FX123456", ops)
+            self.assertIn(b"Fictional Dental", ops)
+        finally:
+            for p in robin.get(self.url("/insurance")).json()["plans"]:
+                robin.delete(self.url(f"/insurance/{p['id']}"), headers=H)
+        self.assertTrue(iid)
+        c = self.c["kim"].get(self.url("/emergency")).json()
+        self.assertEqual((c["insurance"], [s["heading"] for s in c["sections"]][-1]), ([], "Active problems"), "none: no Insurance part")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

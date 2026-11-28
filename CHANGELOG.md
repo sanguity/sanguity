@@ -150,7 +150,8 @@ Everything on `main` so far; it becomes the first tagged release.
   "Sanguity: new results for Ben" or "Sanguity: a dose is due for Ben", sent once in the background and retried (#1130).
 - Insurance cards (#1137): Settings → This person → Insurance cards keeps each health plan's name, member ID, group
   number and phone numbers, with a photo of the card's front and back (encrypted, metadata taken out); a share link
-  shows them only when its maker ticks Insurance cards, and they go with the export and backups.
+  shows them only when its maker ticks Insurance cards, and they go with the export and backups. The emergency card's
+  Insurance part lists each plan's name, member ID and group number (text only; never on the lock-screen image).
 - Searchable scanned documents (#1129): scanned letters and reports are read on the server by Tesseract (in the
   Docker images, with English), as they're added and in one background pass over those already there, so the
   Timeline's search and the palette find them by their words; a PDF with its own text uses it. The text is kept

@@ -15,8 +15,9 @@ card(db, pid, uid, name) is the card as a plain object, the page's preview and b
   contacts     the emergency contacts typed under About this person, in order
   asOf         today, for the person making it: everything on the card is as of then
   documents    [{kind, kept}] key documents marked as on file (#1135, keydocs.py), said without the document
-  insurance    [] for now: a place for #1137's insurance cards (plan, member ID, group number), shown only when there
-               are some
+  insurance    [{line}] each insurance plan (#1137, insurance.card_lines: its name, member ID and group number in one
+               line), shown only when there are some; text alone, never a card's photo, and never on the lock-screen
+               image
 Nothing is guessed: an empty part says "None recorded".
 
 render_pdf(card, paper) lays it out on one page, Letter or A4: everything, in type that reads at arm's length, and
@@ -28,7 +29,7 @@ turns it on.
 """
 import datetime, re
 
-from . import keydocs, pdfdoc, person, records, settings, summary
+from . import insurance, keydocs, pdfdoc, person, records, settings, summary
 
 NKA_CODES = {"716186003", "409137002", "429625007", "428607008"}   # SNOMED CT: no known allergy, drug, food, environmental
 _NKA = re.compile(r"^\s*(no known|nka\b|nkda\b|no allerg)", re.I)
@@ -132,7 +133,7 @@ def _problems(data):
 
 # other parts of the card, registered by the features that have them (#1135 key documents; #1137 insurance cards):
 # name -> rows(db, pid, data) giving the list the card holds under that name
-PARTS = {}
+PARTS = {"insurance": lambda db, pid, data: [{"line": p["line"]} for p in insurance.card_lines(db, pid)]}   # (#1137)
 
 
 def card(db, pid, uid, name):
