@@ -54,6 +54,7 @@ MAX_PIXELS = 60_000_000      # a page's picture bigger than this isn't (an A4 pa
 MAX_CHARS = 200_000          # text kept of one document
 LAYER_CHARS = 32             # a PDF page with this many letters and digits of its own is read from its text layer
 MEMORY = 1024 * config.MB    # address-space limit of the PDF reader's process, where the system has one
+TESSERACT_MEMORY = 1536 * config.MB   # ... and of each Tesseract run's
 MAX_LANG_BYTES = 64 * config.MB   # a language file (tessdata_fast's are 1 to 13 MB; tessdata's largest about 50)
 TRIES = 2
 TICK = 600                   # seconds between looks for documents no one woke the thread for
@@ -139,19 +140,38 @@ def _tessdata(codes, files=None):
         shutil.rmtree(d, ignore_errors=True)
 
 
-def _tesseract(image, folder, codes, deadline, dpi=None):
-    """The text Tesseract finds in image (bytes of a picture it reads). Raises _OutOfTime, or _Unreadable."""
+def _limited():
+    """(Run in the child before Tesseract starts) its address space capped, as the PDF reader's is."""
+    try:
+        import resource
+        resource.setrlimit(resource.RLIMIT_AS, (TESSERACT_MEMORY, TESSERACT_MEMORY))
+    except (ImportError, ValueError, OSError):
+        pass
+
+
+# no debug output, and no list of its settings, whatever a language file's own settings say: a second guard to _clean's.
+# (It keeps debug_file off; a language's tessedit_write_params_to_file is acted on as the language loads, before
+# the command line's settings, so only _clean taking it out stops that one.)
+NO_FILES = ["-c", "debug_file=/dev/null", "-c", "tessedit_write_params_to_file="]
+
+
+def _tesseract(image, folder, codes, deadline, dpi=None, page=None):
+    """The text Tesseract finds in image (bytes of a picture it reads; page: one page of a TIFF of several). Raises
+    _OutOfTime, or _Unreadable."""
     left = deadline - time.monotonic()
     if left < 1:
         raise _OutOfTime()
-    cmd = [binary() or "tesseract", "stdin", "stdout", "--tessdata-dir", folder, "-l", "+".join(codes)]
+    cmd = [binary() or "tesseract", "stdin", "stdout", "--tessdata-dir", folder, "-l", "+".join(codes), *NO_FILES]
     if dpi:
         cmd += ["--dpi", str(int(dpi))]
+    if page is not None:
+        cmd += ["-c", f"tessedit_page_number={int(page)}"]
     if (nice := shutil.which("nice")):
         cmd = [nice, "-n", "10", *cmd]
-    try:
+    try:   # (preexec_fn only sets the limit: no lock or other thread's state is touched in the child)
         p = subprocess.run(cmd, input=image, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=folder, env=_env(),
-                           timeout=min(RUN_TIMEOUT, left), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                           timeout=min(RUN_TIMEOUT, left), preexec_fn=_limited if os.name == "posix" else None,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except subprocess.TimeoutExpired:
         raise _OutOfTime() from None
     except OSError:
@@ -159,6 +179,83 @@ def _tesseract(image, folder, codes, deadline, dpi=None):
     if p.returncode != 0:
         raise _Unreadable()
     return p.stdout[:MAX_CHARS * 4].decode("utf-8", "replace")
+
+
+# ---------------------------------------------------------------- a picture's size, from its own header
+
+def dimensions(data):
+    """[(width, height)] of each page of a picture, as its own header says (PNG, JPEG, GIF, BMP, WebP, PNM, TIFF), or
+    None when it's none of those or its header can't be read: what Tesseract would decode, checked before it does."""
+    try:
+        if data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR":
+            return [struct.unpack(">II", data[16:24])]
+        if data[:2] == b"\xff\xd8":
+            return _jpeg(data)
+        if data[:6] in (b"GIF87a", b"GIF89a"):
+            return [struct.unpack("<HH", data[6:10])]
+        if data[:2] == b"BM":
+            w, h = struct.unpack("<ii", data[18:26])
+            return [(abs(w), abs(h))]
+        if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            return _webp(data)
+        if (m := re.match(rb"P[1-6]\s+(?:#[^\n]*\s+)*(\d{1,9})\s+(?:#[^\n]*\s+)*(\d{1,9})\s", data[:512])):
+            return [(int(m.group(1)), int(m.group(2)))]
+        if data[:4] in (b"II*\x00", b"MM\x00*"):
+            return _tiff(data)
+    except (struct.error, ValueError, IndexError):
+        pass
+    return None
+
+
+def _jpeg(data):
+    i = 2
+    while i + 9 < len(data):
+        if data[i] != 0xFF:
+            return None
+        marker = data[i + 1]
+        if marker == 0xFF:
+            i += 1
+        elif marker in (0x01, 0xD8) or 0xD0 <= marker <= 0xD7:
+            i += 2
+        elif 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):   # a frame's start: its size
+            h, w = struct.unpack(">HH", data[i + 5:i + 9])
+            return [(w, h)]
+        else:
+            i += 2 + struct.unpack(">H", data[i + 2:i + 4])[0]
+    return None
+
+
+def _webp(data):
+    kind = data[12:16]
+    if kind == b"VP8X":
+        return [(1 + int.from_bytes(data[24:27], "little"), 1 + int.from_bytes(data[27:30], "little"))]
+    if kind == b"VP8L":
+        b = int.from_bytes(data[21:25], "little")
+        return [((b & 0x3FFF) + 1, ((b >> 14) & 0x3FFF) + 1)]
+    if kind == b"VP8 ":
+        w, h = struct.unpack("<HH", data[26:30])
+        return [(w & 0x3FFF, h & 0x3FFF)]
+    return None
+
+
+def _tiff(data):
+    """Each page's size, from its image file directory (ImageWidth, ImageLength)."""
+    e = "<" if data[:2] == b"II" else ">"
+    at, out, seen = struct.unpack(e + "I", data[4:8])[0], [], set()
+    while at and at not in seen and len(out) < 10000:
+        seen.add(at)
+        n = struct.unpack(e + "H", data[at:at + 2])[0]
+        size = {}
+        for k in range(n):
+            tag, kind = struct.unpack(e + "HH", data[at + 2 + 12 * k:at + 6 + 12 * k])
+            value = data[at + 10 + 12 * k:at + 14 + 12 * k]
+            if tag in (256, 257):
+                size[tag] = struct.unpack(e + "H", value[:2])[0] if kind == 3 else struct.unpack(e + "I", value)[0]
+        if len(size) < 2:
+            return None
+        out.append((size[256], size[257]))
+        at = struct.unpack(e + "I", data[at + 2 + 12 * n:at + 6 + 12 * n])[0]
+    return out or None
 
 
 # ---------------------------------------------------------------- a PDF's pages, in a process of its own
@@ -344,9 +441,17 @@ def read(path, ext, codes=("eng",)):
         return {"state": "failed", "why": "too_big"}
     data = crypto.read_file(path)
     deadline = time.monotonic() + MAX_SECONDS
+    if ext != "pdf":   # a picture's own size, as its header says, before Tesseract decodes it
+        pages = dimensions(data)
+        if not pages:
+            return {"state": "failed", "why": "unreadable"}
+        if any(w * h > MAX_PIXELS for w, h in pages[:MAX_PAGES]):
+            return {"state": "failed", "why": "too_big"}
     with _tessdata(codes) as folder:
         if ext == "pdf":
             got = _read_pdf(data, folder, codes, deadline)
+        elif len(pages) > 1:   # a TIFF of several pages: each read on its own, MAX_PAGES at most
+            got = _read_tiff(data, folder, codes, deadline, len(pages))
         else:
             try:
                 got = {"texts": [_tesseract(data, folder, codes, deadline)], "ocr": True}
@@ -363,6 +468,21 @@ def read(path, ext, codes=("eng",)):
     return {"state": "found", "source": "ocr" if got["ocr"] else "layer", "text": text, **out}
 
 
+def _read_tiff(data, folder, codes, deadline, pages):
+    texts, done, capped = [], 0, None
+    for i in range(min(pages, MAX_PAGES)):
+        try:
+            texts.append(_tesseract(data, folder, codes, deadline, page=i))
+        except _OutOfTime:
+            capped = "time"
+            break
+        except _Unreadable:
+            pass
+        done += 1
+    return {"texts": texts, "ocr": True, "pages": pages, "read": done,
+            "capped": capped or ("pages" if pages > MAX_PAGES else None)}
+
+
 def _read_pdf(data, folder, codes, deadline):
     pages, texts, done, capped, ocr = None, [], 0, None, False
     for h, payload in _pdf_pages(data, deadline):
@@ -374,7 +494,10 @@ def _read_pdf(data, folder, codes, deadline):
         if "text" in h:
             texts.append(h["text"])
         elif "image" in h:
+            size = dimensions(payload)   # the picture's own header, not the size the PDF declared for it
             try:
+                if not size or len(size) > 1 or size[0][0] * size[0][1] > MAX_PIXELS:
+                    raise _Unreadable()
                 texts.append(_tesseract(payload, folder, codes, deadline, h.get("dpi")))
                 ocr = True
             except _OutOfTime:
@@ -460,8 +583,10 @@ def step(db):
 
 
 def in_use():
-    """The languages documents are read with: English, and those of ocr.languages there's a file for."""
-    return ["eng"] + [c for c in settings.install_value("ocr.languages") or [] if os.path.isfile(_file_of(c))]
+    """The languages documents are read with: English, and those of ocr.languages there's a file for whose settings
+    are only recognition's (_clean made them so as it was added; one put in the folder some other way, or by a
+    version before, isn't used until it's added again)."""
+    return ["eng"] + [c for c in settings.install_value("ocr.languages") or [] if _config_ok(_file_of(c))]
 
 
 def read_one(db, doc, path, ext):
@@ -583,11 +708,75 @@ def _shape(path):
     return bool(starts) and all(4 + 8 * n <= s < size for s in starts) and starts == sorted(starts)
 
 
+# A language file's own settings (its first part, the "config"; tessdata's Chinese, Japanese, Korean, Hindi and
+# Arabic files have one) are applied by Tesseract each time it starts, and a setting can name a file it then writes
+# (debug_file, tessedit_write_params_to_file). Only these recognition settings are kept, each with a value that names
+# no path; the rest are taken out before the file is first tried (and in_use passes over a file with any other).
+CONFIG_KEPT = re.compile(r"^(?:preserve_interword_spaces|tessedit_ocr_engine_mode|tessedit_char_(?:black|white)list|"
+                         r"pageseg_devanagari_split_strategy|segment_nonalphabetic_script|merge_fragments_in_matrix|"
+                         r"(?:tosp|classify|textord|language_model|chop|wordrec|segsearch|edges|lstm)_[a-z0-9_]+)$")
+CONFIG_NEVER = re.compile(r"file|debug|write|dir|path|output|print|display|show|save|dump|log", re.I)
+
+
+def _safe_config(raw):
+    keep = []
+    for line in raw.decode("utf-8", "replace").splitlines():
+        parts = line.strip().split(None, 1)
+        if (len(parts) == 2 and CONFIG_KEPT.match(parts[0]) and not CONFIG_NEVER.search(parts[0])
+                and not re.search(r"[/\\\x00-\x1f\x7f]", parts[1].strip())):
+            keep.append(f"{parts[0]} {parts[1].strip()}")
+    return ("\n".join(keep) + "\n").encode() if keep else b""
+
+
+def _config_ok(path):
+    """Whether the language file at path has no settings, or only those _safe_config keeps."""
+    try:
+        if not _shape(path):
+            return False
+        with open(path, "rb") as f:
+            head = f.read(4 + 8 * 64)
+            n = struct.unpack("<i", head[:4])[0]
+            starts = struct.unpack(f"<{n}q", head[4:4 + 8 * n])
+            if starts[0] == -1:
+                return True
+            end = min([s for s in starts[1:] if s != -1] or [os.path.getsize(path)])
+            if not 0 <= end - starts[0] <= 65536:
+                return False
+            f.seek(starts[0])
+            part = f.read(end - starts[0])
+    except OSError:
+        return False
+    return _safe_config(part) == part
+
+
+def _clean(path):
+    """Rewrite the language file at path with its config (part 0) holding only CONFIG_KEPT's settings, or none.
+    Its parts keep their order; where each starts is worked out again. (_shape has checked the table.)"""
+    with open(path, "rb") as f:
+        data = f.read()
+    n = struct.unpack("<i", data[:4])[0]
+    starts = list(struct.unpack(f"<{n}q", data[4:4 + 8 * n]))
+    if starts[0] == -1:
+        return
+    order = sorted((s, i) for i, s in enumerate(starts) if s != -1)
+    parts = {i: data[s:(order[k + 1][0] if k + 1 < len(order) else len(data))] for k, (s, i) in enumerate(order)}
+    parts[0] = _safe_config(parts[0])
+    at, out, new = 4 + 8 * n, [], [-1] * n
+    for _, i in order:
+        if parts[i] or i != 0:
+            new[i] = at
+            out.append(parts[i])
+            at += len(parts[i])
+    with open(path, "wb") as f:
+        f.write(struct.pack("<i", n) + struct.pack(f"<{n}q", *new) + b"".join(out))
+
+
 def _add(code, tmp):
     """Check the file at tmp and put it in place as code's; tmp is removed either way. Raises LanguageError."""
     try:
         if not _shape(tmp):
             raise LanguageError("That isn't a Tesseract language file (.traineddata), so it wasn't added.")
+        _clean(tmp)
         if not available():
             raise LanguageError("This server has no Tesseract to try it with, so it wasn't added.")
         with _tessdata([code], {code: tmp}) as folder:
