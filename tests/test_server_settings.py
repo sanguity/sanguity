@@ -391,6 +391,30 @@ class RestartSettings(unittest.TestCase):
         self.assertIn("nothing is known to start it again", says)
         self.assertIn("stays stopped until you start it yourself", says)
 
+    def test_n_proxies_exactly_as_given(self):
+        """#1131's re-review: the environment's proxies reach uvicorn as its own text, never widened (10.0.0.5/8 isn't
+        made 10.0.0.0/8); on the page a network with host bits set is refused, saying which it's in; networks that
+        together are every IPv4 or IPv6 address are refused (* says so, and is confirmed); the typed confirmation
+        matches whatever its case."""
+        for env in ("10.0.0.5/8", "10.0.0.5, 172.16.0.0/12", " 10.0.0.1 ,10.0.0.2"):
+            with mock.patch.dict(os.environ, {"FORWARDED_ALLOW_IPS": env}), self.assertNoLogs("sanguity", "WARNING") if env != "10.0.0.5/8" else self.assertLogs("sanguity", "WARNING"):
+                ss._warned.clear()
+                self.assertEqual(ss.uvicorn_options()["forwarded_allow_ips"], env.strip())
+                self.assertEqual(ss.lookup("FORWARDED_ALLOW_IPS"), ("environment", env.strip()))
+        with self.assertRaisesRegex(ss.Refused, r"10\.0\.0\.0/8"):
+            ss.proxies("10.0.0.5/8")
+        r = self.put({"FORWARDED_ALLOW_IPS": "10.0.0.5/8"})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("10.0.0.0/8", r.json()["detail"])
+        for v in ("0.0.0.0/1, 128.0.0.0/1", "::/1, 8000::/1", "10.0.0.1, 0.0.0.0/2, 64.0.0.0/2, 128.0.0.0/1"):
+            r = self.put({"FORWARDED_ALLOW_IPS": v})
+            self.assertEqual(r.status_code, 400, v)
+            self.assertIn("every IPv", r.json()["detail"])
+        self.assertEqual(ss.proxies("0.0.0.0/1, 10.0.0.1"), "0.0.0.0/1, 10.0.0.1", "half isn't all")
+        r = self.c.put("/api/settings/install/restart/values", json={"values": {"FORWARDED_ALLOW_IPS": "*"}, "confirm": "  Trust Everyone "}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(ss.next_values(), {"FORWARDED_ALLOW_IPS": "*"})
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
