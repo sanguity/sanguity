@@ -13189,7 +13189,9 @@ def main():
                                                                     "note: '', med: null, where: [], photos: [{id: 'browser-check-811a', alt: ''}, {id: 'browser-check-811b', alt: ''}]}, {}, closeDrawer)")}
             set784 = [
                 ("dose", "Skipped", lambda: page.click("#dbody .dose-st [data-st=skipped]")),
-                ("dose", "its time", lambda: page.fill("#dbody .jform input[type=time]", "07:15")),
+                # a time other than the form's own: it starts at now, so at 07:15 "07:15" would change nothing (a run at 07:15 UTC failed)
+                ("dose", "its time", lambda: page.fill("#dbody .jform input[type=time]",
+                                                      "19:45" if page.input_value("#dbody .jform input[type=time]") == "07:15" else "07:15")),
                 ("dose", "its date", lambda: page.fill("#dbody .jform input[type=date]", js("isoDay(Date.now() - 3 * DAY)"))),
                 ("reminder", "a time", lambda: page.fill("#dbody .mr-times input", "08:30")),
                 ("reminder", "a day", lambda: page.click("#dbody .mr-days button")),
