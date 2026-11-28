@@ -20957,15 +20957,15 @@ def main():
             page.wait_for_selector("#sec-units input[name=units-lab][value=si]", timeout=10000)
             page.check("#sec-units input[name=units-lab][value=si]")
             page.check("#sec-units input[name=units-weight][value=kg]")
-            # ---- pick one on Settings (#193): the theme, each part's units and the sex for reference ranges are segmented
+            # ---- pick one on Settings (#193): the theme, In-range results (#1108), each part's units and the sex for reference ranges are segmented
             # controls of radios, each with exactly one checked, and the radio picked (above, through its see-through box)
             # is the one that looks selected
             radios = r"""[...document.querySelectorAll('#sections fieldset.set-radios > .seg')].map(g => [g.closest('[id^=sec-]').id + ' ' + (g.parentElement.dataset.part || ''),   // (the sections': Backups' How often is Install's, #991)
               g.querySelectorAll(':scope > label > input[type=radio]:checked').length, g.children.length,
               [...g.children].filter(l => getComputedStyle(l).boxShadow.includes('inset')).map(l => l.querySelector('input').value).join()])"""
             got = js(radios)
-            check("pick one on Settings: every group of radios is one control with exactly one checked (theme, units, sex for ranges)",
-                  len(got) == 5 and all(n == 1 and k > 1 for _, n, k, _ in got), got)
+            check("pick one on Settings: every group of radios is one control with exactly one checked (theme, In-range results, units, sex for ranges)",
+                  len(got) == 6 and all(n == 1 and k > 1 for _, n, k, _ in got), got)
             check("…and the one picked looks selected", [x[3] for x in got if x[0] in ("sec-units lab", "sec-units weight")] == ["si", "kg"], got)
             # each saved as it's picked (#272)
             page.wait_for_function("SET_ITEMS.units.st.value.lab === 'si' && SET_ITEMS.units.st.value.weight === 'kg'", timeout=10000)
