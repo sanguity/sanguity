@@ -75,7 +75,7 @@ const SgOutside = (() => {
       contacts(v.card_keys, "No issuer's key fetched yet: each is listed once a health card's signature is checked with it."),
       ...(v.directory ? [sub("Provider directory"),   // (#992) an admin's alone: the lists Find your provider searches
         el("p", {class: "muted"}, `Epic's and Oracle Health's lists, from ${v.directory.hosts.join(" and ")}: read only when an admin asks, or weekly once one turns that on, in `,
-          el("a", {href: "#directory", text: "Provider directory"}), "."),
+          el("a", {href: "#directory", text: "Connected sources, Provider directory"}), "."),   // (#1153)
         contacts(v.directory.contacts, "Not read yet: each host is listed once the lists are read.")] : []),
       ...(v.sign_in ? [sub("Sign-in provider"),   // (#1109) the install's, an admin's alone
         el("p", {class: "muted"}, "Contacted when someone signs in or links an identity with it, or an admin tests it, in ",

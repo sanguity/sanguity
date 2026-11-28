@@ -395,7 +395,7 @@ class Reach(unittest.TestCase):
             self.assertIn(self.status("ada", path).status_code, (200, 204), path)
 
     def test_connected_sources_off_refuses_every_route_of_theirs(self):   # #1096
-        """With connected sources off (General → Experimental), every connections, sync and directory route is refused
+        """With connected sources off (Install → Connected sources' switch, #1153), every connections, sync and directory route is refused
         saying so, to every account (the admin too), once the sign-in's own checks have passed: no session is still 401."""
         theirs = [k for k in ROUTES if re.match(r"/api/(connect/|directory|provider-directory|profiles/\{pid\}/connect)", k[1])]
         from server import routes_connect, routes_directory   # (the routers refused while they're off)

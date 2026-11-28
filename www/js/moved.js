@@ -13,13 +13,17 @@
      upload secret (#166) went to Sources, the calendar feed (#168) to Sharing; the server's (#167) went to Admin and
      came back with it (#991). About this person and Targets went from Sharing to Settings (#267), and so did renaming
      and deleting a profile (#402), while New profile is the profile menu's and the visit summary's measures ticked
-     at first went from Settings to Sharing; Install's Lab name matches, to each profile's (#1114); General's Security and Sign-in provider, to Accounts and sign-in (#1119). A "?" on its own in a new address (before its # or at its end) is the old
+     at first went from Settings to Sharing; Install's Lab name matches, to each profile's (#1114); General's Security and Sign-in provider, to Accounts and sign-in (#1119); General's Backups and logging, to Backups' Folder and
+     key (and Logs and activity's Logging), its Experimental, to Connected sources (with Connected-source apps), and
+     its About, to an About of its own (#1153). A "?" on its own in a new address (before its # or at its end) is the old
      one's query.
    Each old page also says where it went, for a browser that doesn't run this. */
 "use strict";
 const SG_MOVED = {
   "settings.html": {labmaps: "settings.html?#labmatches", watch: "sources.html?#phone", calendar: "sharing.html?#calendar", "sec-summary": "sharing.html?#sumTicked",
-    "gen-security": "settings.html?#signin-rules", "gen-signin": "settings.html?#signin-provider"},   // (#1119: General's, now Accounts and sign-in's)
+    "gen-security": "settings.html?#signin-rules", "gen-signin": "settings.html?#signin-provider",   // (#1119: General's, now Accounts and sign-in's)
+    "gen-backups": "settings.html?#bk-files", "gen-experimental": "settings.html?#cs-switch", "gen-about": "settings.html?#install-about",
+    apps: "settings.html?#admin"},   // (#1153: General's, and Install's Connected-source apps group, now in Connected sources)
   "sharing.html": {about: "settings.html?#about", targets: "settings.html?#targets", profile: "settings.html?#profile",
     profileCard: "settings.html?#profile", newProfile: "guide.html?new"},
 };

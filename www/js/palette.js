@@ -251,7 +251,8 @@ const SgPalette = (() => {
         const here = P.page === page;   // (first of those found as well, #524)
         const up = {icon: g.icon, title: g.title, ctx: P.title, at: g.place, words: g.words, here, go: () => goTo(P, g.id)};
         out.push(up);
-        for (const [title, id, words, needs] of g.finds || []) if (!needs || role >= RANK[needs]) out.push({icon: sgIcon(P.page.replace(".html", "/") + id), title, ctx: `${P.title} › ${g.title}`, at: g.place, words, here, up, go: () => goTo(P, id, true)});
+        const off = g.csHas && !sgConnected(ME);   // (#1153) the parts of a group that are connected sources', only while they're on
+        for (const [title, id, words, needs] of g.finds || []) if ((!needs || role >= RANK[needs]) && !(off && g.csHas.includes(id))) out.push({icon: sgIcon(P.page.replace(".html", "/") + id), title, ctx: `${P.title} › ${g.title}`, at: g.place, words, here, up, go: () => goTo(P, id, true)});
       }
     }
     if (page !== "guide.html") out.push({icon: sgIcon("guide"), title: "Getting started", ctx: "Page", words: "guide first records", go: () => { location.href = "guide.html" + (pid() ? "?profile=" + pid() : ""); }});

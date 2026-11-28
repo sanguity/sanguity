@@ -15,7 +15,8 @@
      role it needs, if its group doesn't: Tabs, #423]. The palette goes to page#id, which opens the group and scrolls
      to the part.
    A group with rest: true (Settings' More: the sections no other group names) isn't searched; one with cs: true is
-   connected sources' (#1096), listed and searched only while they're on (sgConnected).
+   connected sources' (#1096), listed and searched only while they're on (sgConnected), as are the parts in a group's
+   csHas (#1153: Install's Connected sources, whose switch is there either way).
 
    The icons (#399): one per place, the same wherever it's shown (the top bar and its menus, a phone's tab bar, the
    sidebars, the palette), and none for two places. A page's and a group's are theirs below; the records tabs' and the
@@ -23,8 +24,8 @@
    tab), "add" (the bar's), "sources" (a page), "sources/upload" (a group, or a part: its own, else its group's).
    Loaded before nav.js, which draws the bar with them. Plain script; all files share one scope. */
 "use strict";
-/* connected sources (#1096): experimental, off unless an admin turns them on (Settings → Install → General →
-   Experimental). The one rule every page asks, from /api/me (its connected_sources, a plain true or false): off,
+/* connected sources (#1096): experimental, off unless an admin turns them on (Settings → Install → Connected sources,
+   #1153). The one rule every page asks, from /api/me (its connected_sources, a plain true or false): off,
    nothing of theirs is offered (the cs groups, Add's Connect, the guide's way, the Overview's and Sources' notes) */
 const sgConnected = me => !!(me && me.connected_sources);
 const SG_ICON = {
@@ -33,6 +34,7 @@ const SG_ICON = {
   search: "search", add: "plus", you: "circle-user", guide: "compass", theme: "sun-moon", logout: "log-out",
   dose: "pill", medadd: "clipboard", journal: "notebook", reading: "gauge", fuadd: "list-todo", rqadd: "mail",   // Add's Today (#1092: Add a medication its own; #1138: a follow-up its own, check is a menu's tick)
   family: "users",   // the palette's Family history and Add a relative (#1134)
+  "settings/directory": "book-user",   // Install's Provider directory, in Connected sources since #1153
   "settings/sec-tabs": "pencil",   // Edit tabs… (the profile menu, More) and the palette's Tabs
   "sharing/newProfile": "user-plus",   // New profile
 };
@@ -114,18 +116,14 @@ const SG_PAGES = {
         ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches lab tests"]]},
     // Install: the Admin page's groups (#167: admin.js, admin-sources.js, admin-backups.js, outside.js, activity.js),
     // admins only. General (#998) first: the server's own settings, each of its sections (#1000-#1005) a part in its has
-    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-backups", "gen-phone", "gen-notify", "gen-restart", "gen-experimental", "gen-ocr", "gen-demo", "gen-about"], place: "admin", words: "server install configuration",
+    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-phone", "gen-notify", "gen-restart", "gen-ocr", "gen-demo"], place: "admin", words: "server install configuration",
      finds: [["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names published web port forwarded request"],
-       ["Backups and logging", "gen-backups", "backups folder encryption key file keys logs log output docker security activity kept days how long delete older"],   // (the schedule's Backups', #532: it only links there)
        ["Phone receiver", "gen-phone", "upload address watch scale health connect receiver port time zone unclaimed restore replaced"],
        ["Notifications", "gen-notify", "notification server ntfy topic push access token test send"],   // (#1130)
        ["Needs a restart", "gen-restart", "restart now upload limits file size files journal photo sync attachment pulls timeout health links password checks at once hash parallel trusted proxies forwarded time zone unclaimed restore replaced kept server-settings " +
         "ones most unpacked records fetches data wait vendor answer each request what brings between connection"],   // (#1121; its rows' labels, #524: "ones", so "one" is found but "one-time password" stays Accounts', #502)
-       ["Experimental", "gen-experimental", "connected sources portals health plans fhir epic mychart sync find your provider turn on off"],   // (#1096)
        ["Text recognition", "gen-ocr", "ocr tesseract scanned documents scans searchable search text languages language file traineddata import download tessdata"],   // (#1129)
-       ["Demo profile", "gen-demo", "demo sample example fictional made-up look around try add remove demo"],   // (#1101)
-       ["About", "gen-about", "version release releases what's new schema database deployed deployment truenas unraid casaos docker folders runs as user uid gid configuration limits upload size zip journal photo sync attachment timeout health links " +
-        "server internal port bind secure session cookie"]]},   // (Host's and Security's before, #1119)
+       ["Demo profile", "gen-demo", "demo sample example fictional made-up look around try add remove demo"]]},   // (#1101)
     // (#1119, the owner's decision) Accounts and sign-in: People, then Sign-in rules and Sign-in provider (General's
     // before), found by their words as there
     {id: "accounts", title: "Accounts and sign-in", icon: "user-cog", part: "Install", admin: true, has: ["users", "signin-rules", "signin-provider"], place: "admin",
@@ -140,14 +138,27 @@ const SG_PAGES = {
        ["Require two-factor sign-in", "signin-rules", "2fa everyone"],   // (#1001; #528: "require 2fa")
        ["Sign-in provider", "signin-provider", "oidc openid connect single sign-on sso issuer client id secret redirect uri scopes acr " +
         "that counts as two factors button's name authentik keycloak authelia google test connection sign in with oidc only passwords off"]]},   // (#1109)
-    {id: "installLog", title: "Install activity", icon: "logs", part: "Install", admin: true, has: ["installLog"], place: "admin", words: "log sign-ins failed audit"},
-    {id: "backups", title: "Backups", icon: "archive", part: "Install", admin: true, has: ["backups"], place: "admin", words: "backup restore back up now make check show all fewer " +
-      "schedule how often daily weekly off keep newest many oldest replaced delete now before-restore"},   // #200 (#595: Restore's; #532: its schedule's; and each field's and segmented control's label finds its place)
-    {id: "apps", title: "Connected-source apps", icon: "app-window", part: "Install", admin: true, cs: true, has: ["admin", "sec-sync"], place: "admin",
-     words: "set up a source client portal app test connection change remove delete waiting for review done id secret issuer vendor epic mychart oracle cerner " +
-       "new return address redirect uri sandbox use add another notes name people see fhir base how signs scopes ask", finds: [["Sync defaults", "sec-sync", "attachments"]]},   // (#506: a source's buttons; #510: its form's; #515: delete; #519: its return address)
-    {id: "directory", title: "Provider directory", icon: "book-user", part: "Install", admin: true, cs: true, has: ["directory"], place: "admin", words: "providers epic oracle cerner hospitals lists add the update now download keep them up to date weekly"},
+    // (#1153, the owner's decision) Backups: the backups themselves, then where they're kept and the key (General →
+    // Backups and logging's before); Logs and activity: how long activity is kept and where the logs are read (the
+    // same's), then Install activity; one Connected sources group, its switch first (General → Experimental's), the
+    // rest of it (csHas) only while they're on; About last. Each found by its words as before
+    {id: "backups", title: "Backups", icon: "archive", part: "Install", admin: true, has: ["backups", "bk-files"], place: "admin", words: "backup restore back up now make check show all fewer " +
+      "schedule how often daily weekly off keep newest many oldest replaced delete now before-restore",   // #200 (#595: Restore's; #532: its schedule's; and each field's and segmented control's label finds its place)
+     finds: [["Folder and key", "bk-files", "backups and logging folder encryption key file keys where kept mounted"]]},
+    {id: "logs", title: "Logs and activity", icon: "logs", part: "Install", admin: true, has: ["logging", "installLog"], place: "admin",
+     words: "install activity log sign-ins failed audit",   // (Install activity's, the group's own title before; its card's now)
+     finds: [["Logging", "logging", "backups and logs log output docker security activity kept days how long delete older"]]},
+    {id: "connected", title: "Connected sources (experimental)", icon: "app-window", part: "Install", admin: true, has: ["cs-switch", "admin", "sec-sync", "directory"],
+     csHas: ["admin", "sec-sync", "directory"], place: "admin",
+     finds: [["On or off", "cs-switch", "experimental connected sources portals health plans fhir epic mychart sync find your provider turn on off"],   // (#1096)
+       ["Connected-source apps", "admin", "set up a source client portal app test connection change remove delete waiting for review done id secret issuer vendor epic mychart oracle cerner " +
+        "new return address redirect uri sandbox use add another notes name people see fhir base how signs scopes ask"],   // (#506: a source's buttons; #510: its form's; #515: delete; #519: its return address)
+       ["Sync defaults", "sec-sync", "attachments"],
+       ["Provider directory", "directory", "providers epic oracle cerner hospitals lists add the update now download keep them up to date weekly"]]},
     {id: "outside", title: "Outside connections", icon: "globe", part: "Install", admin: true, has: ["outside"], place: "admin", words: "network internet"},
+    {id: "install-about", title: "About", icon: "info", part: "Install", admin: true, has: ["install-about"], place: "admin",
+     words: "version release releases what's new schema database deployed deployment truenas unraid casaos docker folders runs as user uid gid configuration limits upload size zip journal photo sync attachment timeout health links " +
+        "server internal port bind secure session cookie"},   // (#1004; Host's and Security's before, #1119)
     {id: "more", title: "More", icon: "folder", has: [], rest: true},   // a section no group names yet
   ]},
 };

@@ -179,9 +179,9 @@ one can be skipped, and the guide stays in your menu. To look around first, tick
 create the account (or, any time, **Settings → Install → General → Demo profile**): a separate profile, **Demo
 (fictional)**, with two years of made-up records, beside yours and never in it, named so in the profile menu and
 under its records; **Remove demo** there deletes it and everything in it, and no other profile. Connected sources (signing in to a portal or health plan) are
-experimental and off by default: an admin turns them on under **Settings → Install → General → Experimental**
+experimental and off by default: an admin turns them on under **Settings → Install → Connected sources (experimental)**
 ([Connected sources](#connected-sources)). Add accounts for
-other people under **Settings → Install → Accounts** (for admins), then share profiles with them under **Sharing → People**.
+other people under **Settings → Install → Accounts and sign-in** (for admins), then share profiles with them under **Sharing → People**.
 
 **Your records:** put each export in its own folder under `RECORDS_DIR` (default `./records`), copy
 `sources.example.json` to `sources.json` and describe them, then `docker compose run --rm setup rebuild`; the first profile picks up the rebuild automatically.
@@ -450,15 +450,15 @@ anything is decrypted.
 
 **Experimental, not recommended yet, and off by default** (#1096): registering an app with each vendor and copying its
 IDs back is a lot to ask for now, so uploads and the phone are the ways in. An admin turns connected sources on under
-**Settings → Install → General → Experimental** (or with `CONNECTED_SOURCES=1` in `.env`); off, none of this section
-is shown (Sources' portals, Find your provider, Settings' Connected-source apps and Provider directory), nothing
+**Settings → Install → Connected sources (experimental)** (or with `CONNECTED_SOURCES=1` in `.env`); off, none of this
+section is shown (Sources' portals, Find your provider, the rest of that Settings group: Set up a source and the Provider directory), nothing
 syncs and nobody is contacted for it, and connections made before and what they brought are kept, syncing again once
 it's on. An install upgraded with a source set up or a connection keeps it on.
 
 Instead of downloading exports, a profile can be connected to a patient portal's FHIR API (SMART on FHIR, Epic's
 first) under **Sources → Portals and health plans**. Each install registers its own app
 with each vendor ([why](docs/connected-sources-oauth.md)), so an admin sets each source up once, under **Settings → Install →
-Connected-source apps**:
+Connected sources → Set up a source**:
 
 1. Set the public address (**Settings → Install → General → Host**, or `PUBLIC_ORIGINS` in `.env`) to the address you
    open Sanguity at; the return address is that plus
@@ -491,7 +491,7 @@ with the same source keys as the portal's export file would give them, so a file
 once. A source set up before appointments, allergies, fills and immunizations were pulled needs their scopes added
 (the setup screen says which it leaves out); its connections ask to sign in again only when someone turns one on. **What it pulls…** on a connection changes the choice for future pulls; a kind turned off keeps
 what it brought unless you remove it, which is an entry in the import history that undoing puts back. Attachments
-(visit notes, scans, reports) follow rules set for the whole server under Settings → Install → Connected-source apps (fetched automatically or
+(visit notes, scans, reports) follow rules set for the whole server under Settings → Install → Connected sources → Sync defaults (fetched automatically or
 only when asked, which kinds of file, the largest, and a total per connection), which each connection can change;
 the ones left out are listed with **Fetch anyway**. When a connection stops syncing (several failures in a row,
 access ended, or no successful sync for `Warn when a connection hasn't synced` days, 3 by default), the profile's
@@ -543,7 +543,7 @@ start time and title. Like the records, they are encrypted at rest. Milestones a
 
 **Find your hospital, clinic or insurer**, in the connect step of **Sources → Portals and health plans**, searches a
 directory of FHIR endpoints by name, location, city or state, and says whether it can be connected here: one set up on
-this server connects from there; otherwise an admin is taken to **Settings → Install → Connected-source apps** with its FHIR base
+this server connects from there; otherwise an admin is taken to **Settings → Install → Connected sources** with its FHIR base
 filled in (each vendor's setup steps are there, in one place), and everyone else is told what to ask their admin
 for. Epic's and Oracle Health's lists can't be shipped with Sanguity, so each server reads its own copy: an admin
 presses **Add the lists** in **Settings → Install → Provider directory**, which names the two hosts it contacts first,
@@ -752,8 +752,8 @@ too. With none set, every name works, as before.
   typing its name, the watch receiver's copy of its phone data included; the original exports and older backups are
   left alone.
 - **Activity log:** each profile's owners can see who opened its records and documents, and who shared, renamed or
-  changed it, and when (**Sharing → Activity**); admins see account changes (**Settings → Install → Install activity**). Entries are kept for a year, or
-  what an admin sets under **Settings → Install → General → Backups and logging** (30 days to 10 years; fewer days asks first,
+  changed it, and when (**Sharing → Activity**); admins see account changes (**Settings → Install → Logs and activity**). Entries are kept for a year, or
+  what an admin sets there, under **Logging** (30 days to 10 years; fewer days asks first,
   with the count of entries the next daily clean-up deletes), unless `ACTIVITY_DAYS` in `.env` sets it there.
 - **Encrypted at rest** (AES-256-GCM): records, documents, settings and the sensitive database fields are
   unreadable without the key in `auth/data_key`, so a copied data folder or backup gives nothing away. See

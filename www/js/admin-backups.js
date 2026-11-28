@@ -55,7 +55,6 @@ function drawBackups(st) {
   notice.replaceChildren(...(st.late ? [el("b", {text: "Backups need attention. "}), st.warning + " ",
     el("a", {href: "#backups", text: "Go to Backups"})] : []));
   bkMark();
-  if (typeof genBkSchedule === "function") genBkSchedule(st);   // its line on General → Backups and logging (#1002)
   drawSchedule(st);
   drawList(st);
   drawReplaced(st);

@@ -5,7 +5,7 @@ the connect step of **Sources → Portals and health plans** (#166; `providers.j
 searches a directory of endpoints and shows, for the one chosen, its vendor, how realistic connecting it is under the
 decision in [connected-sources-oauth.md](connected-sources-oauth.md) (option 1: each install registers its own app
 with each vendor), and whether it can be connected here: a source set up on this server with the same FHIR base is
-connected from there; otherwise an admin is taken to **Settings → Connected-source apps** with the FHIR base filled in,
+connected from there; otherwise an admin is taken to **Settings → Install → Connected sources** with the FHIR base filled in,
 where each vendor's setup steps are (`connections.GUIDES`, their one copy), and everyone else is told what to ask
 their admin for.
 

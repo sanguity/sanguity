@@ -4,8 +4,8 @@
    - This person: the profile shown (Dashboard, About this person and its targets, Labs and ranges, Milestones,
      Workouts, Rename or delete; settings.js, about.js, profile-card.js);
    - You: Sign-in and security and This device (account.js, pwa.js; the Account page before), and Display;
-   - Install, for admins only: General (#998), Accounts, Install activity, Backups, Connected-source apps, the Provider
-     directory and Outside connections (admin.js and the scripts after it; the Admin page before),
+   - Install, for admins only: General (#998), Accounts and sign-in, Backups, Logs and activity, Connected sources
+     (experimental), Outside connections and About (#1153; admin.js and the scripts after it; the Admin page before),
      with the admins' notices (NOTICES) over each.
    The old Account and Admin pages' addresses open their group here (moved.js), each part with the id it had.
 
@@ -68,12 +68,12 @@ let SET_NAV = null;   // the sidebar (sideNav), for account.js's and admin.js's 
   const NOTICES = ["secNotice", "codeNotice", "syncNotice", "backupNotice"].map(id => document.getElementById(id)), none = document.getElementById("noProfiles");
   // Install's parts with changes to save (the backups kept, the sync defaults' numbers: admin-backups.js, admin-sources.js)
   const ADM = {"gen-host": [hostSave, hostDiscard], "signin-rules": [genSecSave, genSecDiscard], "signin-provider": [signinSave, signinDiscard],
-               "gen-backups": [genBkSave, genBkDiscard],   // General's (#998): the days of activity kept (gen-backups.js)
+               logging: [genBkSave, genBkDiscard],   // Logs and activity's (General's before #1153): the days of activity kept (gen-backups.js)
                "gen-phone": [phoneSave, phoneDiscard], "gen-notify": [notifySave, notifyDiscard], "gen-restart": [genRsSave, genRsDiscard], backups: [bkKeepSave, bkKeepDiscard], "sec-sync": [syncSave, syncDiscard]};
   const nav = SET_NAV = sideNav({id: "setNav", page: "Settings", groups: GROUPS, find: "Find in Settings", none: q => `Nothing in Settings matches “${q}”.`,
     // the groups with something to show: a part that's there, not hidden by its own script; locked, Sign-in and security alone
     allowed: (g, parts) => ready && parts.some(p => !p.hidden) && (!locked || g.id === "security"),
-    alias: {install: "installApp", offline: "offlineRecords", sources: "apps"},   // Account's short ones; Settings' Connected sources before #167
+    alias: {install: "installApp", offline: "offlineRecords", sources: "connected"},   // Account's short ones; Settings' Connected sources before #167 (and since #1153)
     shown: () => { if (told && said.textContent === told) sayIn(said, ""); },   // (whyNot's, said for the group first shown)
     label: g => { const w = SAY[whoOf(g)]; return g.title + (w ? " · " + w[0] : ""); },
     intro: (g, q) => {

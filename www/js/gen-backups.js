@@ -1,21 +1,24 @@
-/* Sanguity · Settings → Install → General → Backups and logging (#1002, #998). Backups: the folder and the encryption
-   key (its path and how many keys, never a key), each with what mounts it on this kind of install, and the schedule
-   in a line linking to Install → Backups, where it's set (admin-backups.js draws that line again as it changes it:
-   genBkSchedule). Logging: how long activity is kept (the install setting activity.days, ACTIVITY_DAYS), kept as
-   typed and marked "not saved" until the group's bar saves it (genBkSave, settings-nav.js ADM) or puts it back
-   (genBkDiscard); keeping fewer days, where that deletes entries, says how many and goes ahead only once that count
-   is typed (admin.js confirmed, the server's one rule), with the fresh check; set by the environment, it's text (util.js envRow, #1119), naming
-   its variable. Then where the app's output and its security log are read (read-only). call(), say(), plural() and
+/* Sanguity · Settings → Install: two cards from what General → Backups and logging was (#1002, #998; the owner's
+   decision on #1153). Backups → Folder and key (#bk-files): the folder and the encryption key (its path and how many
+   keys, never a key), each with what mounts it on this kind of install, beside the schedule and the rest of Backups
+   (admin-backups.js). Logs and activity → Logging (#logging): how long activity is kept (the install setting
+   activity.days, ACTIVITY_DAYS), kept as typed and marked "not saved" until the group's bar saves it (genBkSave,
+   settings-nav.js ADM) or puts it back (genBkDiscard); keeping fewer days, where that deletes entries, says how
+   many and goes ahead only once that count is typed (admin.js confirmed, the server's one rule), with the fresh
+   check; set by the environment, it's text (util.js envRow, #1119), naming its variable. Then where the app's output and its security log are read (read-only). call(), say(), plural() and
    fresh() are settings.js's and admin.js's. */
 "use strict";
-let GB = null, gbTyped = null;   // what the card was drawn from: {where, st (the setting), backups}; the days typed, not saved
+let GB = null, gbTyped = null;   // what the cards were drawn from: {where, st (the setting), at}; the days typed, not saved
 const GB_KEY = "activity.days";
 
 async function loadGenBackups() {
   try {
-    const [where, inst, backups] = await Promise.all([call("settings/install/backups-logging"), call("settings/install"), call("backups")]);
-    GB = {where, st: gbSetting(inst), backups, at: inst.settings_at};
-  } catch (e) { $("#genBk").replaceChildren(el("p", {class: "msg bad", text: e.message})); return; }
+    const [where, inst] = await Promise.all([call("settings/install/backups-logging"), call("settings/install")]);
+    GB = {where, st: gbSetting(inst), at: inst.settings_at};
+  } catch (e) { for (const c of ["#bkFiles", "#genBk"]) $(c).replaceChildren(el("p", {class: "msg bad", text: e.message})); return; }
+  const {key: k, folder: f} = GB.where, keys = k.keys == null ? "it can't be read here" : plural(k.keys, "key");
+  $("#bkFiles").replaceChildren(gbLines([["Folder", el("code", {text: f.path}), f.set_by],
+    ["Encryption key", [el("code", {text: k.file}), ` (${keys}; the first encrypts)`], k.set_by && "its folder, " + k.set_by]]));
   drawGenBackups();
 }
 const gbSetting = inst => inst.sections.flatMap(s => s.settings).find(st => st.key === GB_KEY);
@@ -23,10 +26,10 @@ const gbSetting = inst => inst.sections.flatMap(s => s.settings).find(st => st.k
 /* "kv" lines: [name, value nodes, what sets it] */
 const gbLines = rows => el("dl", {class: "kv"}, ...rows.flatMap(([dt, dd, by]) =>
   [el("dt", {}, dt), el("dd", {}, ...[].concat(dd), by ? el("div", {class: "hint"}, "Set by: " + by + ".") : null)]));
-const gbSchedule = b => b.schedule === "off" ? "Off" : `${b.schedule[0].toUpperCase() + b.schedule.slice(1)}, keeping the newest ${plural(b.keep, "backup")}`;
 
+/* Logging: the days kept, then where the logs are read */
 function drawGenBackups() {
-  const {where: w, st, backups: b} = GB, card = $("#genBk"), had = card.contains(document.activeElement) ? document.activeElement.id : null;
+  const {where: w, st} = GB, card = $("#genBk"), had = card.contains(document.activeElement) ? document.activeElement.id : null;
   let row, days = null;
   if (!st.can_change) row = envRow(st, GB.at, {value: plural(st.value, "day"), head: ["h3", {class: "sub"}]});   // (#1119) set by the environment
   else {
@@ -39,31 +42,18 @@ function drawGenBackups() {
   const mark = () => {
     gbTyped = !days || days.value === String(st.value) ? null : days.value;
     row.classList.toggle("set-changed", gbTyped != null);
-    if (gbTyped != null) $("#gen-backups").setAttribute("data-dirty", 1); else $("#gen-backups").removeAttribute("data-dirty");
+    if (gbTyped != null) $("#logging").setAttribute("data-dirty", 1); else $("#logging").removeAttribute("data-dirty");
   };
-  const keys = w.key.keys == null ? "it can't be read here" : plural(w.key.keys, "key");
   const logs = w.logs.command ? [el("code", {text: w.logs.command}), " ", copyBtn(w.logs.command, {what: "the command"}), ` ${w.logs.where}.`] : w.logs.where + ".";
   card.replaceChildren(
-    el("h3", {class: "sub", text: "Backups"}),
-    gbLines([["Folder", el("code", {text: w.folder.path}), w.folder.set_by],
-      ["Encryption key", [el("code", {text: w.key.file}), ` (${keys}; the first encrypts)`], w.key.set_by && "its folder, " + w.key.set_by],
-      ["Schedule", [el("span", {id: "genBkSched", text: gbSchedule(b) + ". "}), el("a", {href: "#backups", text: "Change it under Backups"})]]]),
-    el("h3", {class: "sub", text: "Logging"}),
     row,
     gbLines([["The app's output", logs],
       ["Security log", "In the same output, one line for each event, starting “security ”: sign-ins, refusals and the fresh check. Never health data."],
-      ["Activity", [el("a", {href: "#installLog", text: "Install activity"}), " for the server's own; each profile's on its Sharing page."]]]),
+      ["Activity", [el("a", {href: "#installLog", text: "Install activity"}), ", below, for the server's own; each profile's on its Sharing page."]]]),
     el("div", {id: "genBkReauth", class: "reauth", hidden: true}),
     el("span", {class: "msg", id: "genBkMsg", role: "status"}));
   mark();
   if (had && !card.contains(document.activeElement)) document.getElementById(had)?.focus({preventScroll: true});
-}
-/* Install → Backups changed its schedule: the line here too */
-function genBkSchedule(b) {
-  if (!GB) return;
-  GB.backups = b;
-  const line = $("#genBkSched");
-  if (line) line.textContent = gbSchedule(b) + ". ";
 }
 
 /* the days to the server: where that deletes entries, it says how many, and it's done once that count is typed

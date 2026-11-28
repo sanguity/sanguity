@@ -417,13 +417,13 @@ def reset_install_section(body: Section, request: Request, s=Depends(admin), db=
 
 @router.get("/api/settings/install/backups-logging")
 def install_backups_logging(s=Depends(admin)):
-    """(#1002) General → Backups and Logging: the backups folder, the key, where the logs are read (general.py)."""
+    """(#1002) Backups' Folder and key, and Logging (General → Backups and Logging before #1153): the backups folder, the key, where the logs are read (general.py)."""
     return general.backups_logging()
 
 
 @router.get("/api/settings/install/about")
 def install_about(s=Depends(admin)):
-    """(#1004) General → About: the version, the deployment, the folders, the limits (general.py). Contacts nobody."""
+    """(#1004) Install → About (General's before #1153): the version, the deployment, the folders, the limits (general.py). Contacts nobody."""
     return general.about()
 
 

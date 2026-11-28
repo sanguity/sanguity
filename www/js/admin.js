@@ -1,8 +1,10 @@
 /* Sanguity · Settings → Install (#991; the Admin page before, #167): what only admins do, for the whole server, as
    groups of Settings' sidebar (settings-nav.js, which starts this: adminStart): General (#998, its sections their own
    scripts), Accounts and sign-in (People; Sign-in rules, gen-security.js, #1001; Sign-in provider, gen-signin.js:
-   General's before #1119), Backups (admin-backups.js, #200), Connected-source apps and
-   their sync defaults, the Provider directory (both admin-sources.js), Outside connections (outside.js) and Install activity (activity.js), with the admins' notices over each. Someone who isn't an admin
+   General's before #1119), Backups (admin-backups.js, #200; its folder and key, gen-backups.js), Logs and activity
+   (Logging, gen-backups.js; Install activity, activity.js), Connected sources (experimental: the switch,
+   gen-security.js; Set up a source and the sync defaults, the Provider directory, both admin-sources.js; #1153),
+   Outside connections (outside.js) and About (gen-about.js), with the admins' notices over each. Someone who isn't an admin
    isn't shown them (settings-nav.js says why where an address names one), and the server refuses them their routes.
    Admins need a second factor of their own once the server has more than one account: until then each part says
    so. call(), say(), when(), plural() and ME are settings.js's. */
@@ -62,7 +64,10 @@ function syncNotice(rows) {
 function adminGate() {
   $("#adminTf").hidden = false; $("#adminTools").hidden = $("#userDanger").hidden = true; $("#users").hidden = false;
   $("#secNotice").hidden = $("#codeNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
-  for (const id of ["#gen-host", "#signin-rules", "#signin-provider", "#gen-backups", "#gen-phone", "#gen-notify", "#gen-restart", "#gen-experimental", "#gen-ocr", "#gen-demo", "#gen-about", "#backups", "#admin", "#sec-sync", "#directory", "#installLog"]) gateCard($(id));
+  // (#1153) connected sources' parts only while they're on (a group's csHas): off, their group holds the switch alone
+  const off = sgConnected(ME) ? [] : SG_PAGES.settings.groups.flatMap(g => g.csHas || []);
+  for (const id of ["gen-host", "signin-rules", "signin-provider", "gen-phone", "gen-notify", "gen-restart", "gen-ocr", "gen-demo", "backups", "bk-files",
+                    "logging", "installLog", "cs-switch", "admin", "sec-sync", "directory", "install-about"]) if (!off.includes(id)) gateCard($("#" + id));
 }
 function gateCard(card) {
   if (card.querySelector(".adm-gate")) return;
@@ -457,8 +462,9 @@ function loadInstallLog() {
 async function adminStart(first) {
   if (!ME.user.is_admin) return;
   await first;
-  const cs = sgConnected(ME);   // (#1096) connected sources' groups only while they're on (csShown)
-  for (const g of SG_PAGES.settings.groups) if (g.admin && (cs || !g.cs)) for (const id of g.has) $("#" + id).hidden = false;
+  const cs = sgConnected(ME);   // (#1096) connected sources' parts only while they're on (csShown)
+  for (const g of SG_PAGES.settings.groups) if (g.admin) for (const id of g.has) $("#" + id).hidden = !cs && !!g.csHas?.includes(id);
+  $("#csOffWhy").hidden = cs;
   SgOutside.load();     // outside.js
   if (ME.user.admin_needs_two_factor) { adminGate(); SET_NAV.again(); return; }
   loadInstallLog();
@@ -467,12 +473,14 @@ async function adminStart(first) {
                      cs && loadDirectory()]);   // General's parts (#998); #992: the directory's lists, an admin's alone
   SET_NAV.again();
 }
-/* (#1096) connected sources switched on or off in General → Experimental: their groups here (Connected-source apps
-   with the sync defaults, the Provider directory) shown and read, or hidden; the outside connections and About read
-   again. The rest of the app follows as each page is next opened (its /api/me) */
+/* (#1096) connected sources switched on or off in their group's switch (#1153: General → Experimental's before): the
+   rest of the group here (Set up a source with the sync defaults, the Provider directory) shown and read, or hidden,
+   the switch alone saying why; the outside connections and About read again. The rest of the app follows as each
+   page is next opened (its /api/me) */
 async function csShown(on) {
   ME.connected_sources = on;
-  for (const g of SG_PAGES.settings.groups) if (g.cs) for (const id of g.has) $("#" + id).hidden = !on;
+  for (const g of SG_PAGES.settings.groups) for (const id of g.csHas || []) $("#" + id).hidden = !on;
+  $("#csOffWhy").hidden = on;
   SgOutside.load();
   await Promise.all([loadGenAbout(), hostWords(), on && loadSetup(), on && loadSync(), on && loadDirectory()]);
   SET_NAV.again();

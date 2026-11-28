@@ -102,7 +102,7 @@ function genSecDiscard() {
   $("#genSecHd").focus();
 }
 
-/* ---------------------------------------------------------------- General → Experimental (#1096) */
+/* ---------------------------------------------------------------- Connected sources' switch (#1096; General → Experimental before #1153) */
 /* each of its settings a switch, saved as it's switched (the fresh check, in the card), as the weekly directory update's
    is (admin-sources.js); one the environment sets as text (util.js envRow). Connected sources' (the only one
    now) shows or hides their parts of Install at once (admin.js csShown) */

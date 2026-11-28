@@ -1,4 +1,4 @@
-/* Sanguity · Settings → Install → General → About (#1004, #998): this server's version (a checkout says it has none),
+/* Sanguity · Settings → Install → About (#1004, #998; General's before #1153): this server's version (a checkout says it has none),
    its database's schema version, how it's deployed (SANGUITY_DEPLOYMENT, each template's), who it runs as, its
    folders and configuration files, each with what mounts or sets it on this kind of install, a link to the releases
    page (only a link: nothing is contacted, #998's decision 5), what only the server's own setup sets (#1119), and the
@@ -30,7 +30,7 @@ async function loadGenAbout() {
         "PORT and HOST in the app's own environment, which no compose file changes"],
       [env("Secure session cookie", "COOKIE_SECURE", s.cookie_secure), secure + ".", "COOKIE_SECURE in .env (the Secure cookie field on TrueNAS or Unraid)"]]),
     el("h3", {class: "sub", text: "Limits"}),
-    el("p", {class: "hint"}, "Changed under ", el("a", {href: "#gen-restart", text: "Needs a restart"}), ", above, where a variable set in .env wins; the zip ratio only in .env."),
+    el("p", {class: "hint"}, "Changed under ", el("a", {href: "#gen-restart", text: "General, Needs a restart"}), ", where a variable set in .env wins; the zip ratio only in .env."),   // (#1153: another group's)
     ...a.limits.flatMap(g => [el("p", {}, el("b", {text: g.group})),
       el("ul", {}, ...g.limits.map(l => el("li", {}, `${l.what}: `, el("b", {text: `${n(l.value)} ${l.unit}`}),
         ...(l.from === "environment" ? envTag(l.name) : [" (", el("code", {text: l.name}), l.restart ? ")" : ", in .env only)"]))))]));
