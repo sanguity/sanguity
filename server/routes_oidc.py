@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 from . import accounts, activity, config, crypto, db as dbm, oidc, security as sec
 from .main import (_audit, _client_ip, _remember_device, _request_host, _same_site, _secure, _session, _start_session,
-                   admin, fresh, get_db, second_step, settled)
+                   admin, fresh, get_db, must_change, second_step, settled)
 
 router = APIRouter()
 
@@ -102,7 +102,7 @@ def login_return(body: Return, request: Request, response: Response, db=Depends(
         return {**step, "username": u["username"]}
     _remember_device(request, response, db, u["id"])
     _start_session(request, response, db, u["id"], "oidc" + (" (the provider's two factors)" if mfa else ""), idp_mfa=mfa)
-    return {"must_change_pw": bool(u["must_change_pw"]), "username": u["username"]}
+    return {"must_change_pw": must_change(db, u), "username": u["username"]}
 
 
 def _linked(db, request, entry, issuer, sub, claims):

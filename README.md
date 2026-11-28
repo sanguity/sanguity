@@ -805,6 +805,12 @@ Examples (`health.example.com` is your Sanguity's address):
 
   The issuer is Authelia's own address, like `https://auth.example.com`; with `two_factor` its ID tokens say
   `amr` with `mfa`.
+- **Google:** Google Cloud console → APIs & Services → Credentials → Create credentials → OAuth client ID, type Web
+  application, authorized redirect URI `https://health.example.com/login.html`. The issuer is
+  `https://accounts.google.com`; its token endpoint and signing keys are on other hosts (`oauth2.googleapis.com`,
+  `www.googleapis.com`), which Sanguity contacts because Google's own discovery document names them, as listed under
+  Outside connections. Google's ID tokens don't say whether two factors were used, so the account's own code or
+  passkey follows, where it has one.
 
 ### Install as a phone app
 
