@@ -217,6 +217,15 @@
     <div id="genBk"></div>
   </section>
   <section class="card conn adm" id="gen-phone" hidden><h2>Phone receiver</h2></section>   <!-- the upload address (admin-phone.js, #1003) -->
+  <!-- General → Needs a restart (#1121, gen-restart.js): the settings read as the server starts, Restart now -->
+  <section class="card conn adm" id="gen-restart" hidden>
+    <h2 id="genRsHd" tabindex="-1">Needs a restart</h2>
+    <p class="hint">Settings the server reads only as it starts. Save, then Restart now; new values are kept once the server runs healthy with them.</p>
+    <div id="genRsReauth" class="reauth" hidden></div>
+    <div id="genRsState"></div>
+    <div id="genRsBody"></div>
+    <span class="msg" id="genRsMsg" role="status"></span>
+  </section>
   <!-- General → Experimental (#1096, gen-security.js): connected sources' switch, off by default -->
   <section class="card conn adm" id="gen-experimental" hidden>
     <h2 id="genExpHd" tabindex="-1">Experimental</h2>
@@ -427,6 +436,7 @@
 <script src="js/admin-phone.js"></script>
 <script src="js/gen-about.js"></script>
 <script src="js/gen-demo.js"></script>
+<script src="js/gen-restart.js"></script>
 <script src="js/settings-nav.js"></script>
 </body>
 </html>
