@@ -610,7 +610,7 @@ class PageBudgets(unittest.TestCase):
             page.fill("#p", PW)
             page.click("#b")
             page.wait_for_url(lambda u: "login" not in u)
-            page.goto(f"{BASE}/index.html?profile=1#labs")
+            page.goto(f"{BASE}/index.html?profile=1#labs-chart")   # (its charts: Labs opens on Latest, #1160)
             page.wait_for_function(READY_JS, timeout=60000)
             page.evaluate("() => { applyPreset('all'); state.marks = true; medsOnTrends = true; renderAll(); }")
             for width in (1400, 375, 320):

@@ -14053,7 +14053,7 @@ def main():
             js("localStorage.removeItem(stateKey())")   # nothing chosen in this browser: Trends starts with the default view
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
-            js("switchTab('labs')")
+            js("switchTab('labs', 'chart')")   # (its charts: Labs opens on Latest, #1160)
             settle(300)
             check("with nothing chosen in this browser, Trends starts with the default view",
                   picked() == sorted(labs3[:2]) and js("document.getElementById('viewPick').value") == "CBC (browser check)", picked())
@@ -14080,7 +14080,7 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
-            js("switchTab('labs')")
+            js("switchTab('labs', 'chart')")   # (its charts: Labs opens on Latest, #1160)
             settle(300)
             check("a view removed on Settings is gone from Trends", js("[...document.querySelectorAll('#viewPick option')].map(o => o.value)") == ["CBC (browser check)"])
             # #263: deleting a view asks nothing now; a toast says it, with an Undo that puts it back
@@ -14122,7 +14122,7 @@ def main():
             js("v => api('profiles/1/settings/trends.views', {method: 'PUT', body: JSON.stringify({value: v})}).then(r => r.status)", abg)
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
-            js("switchTab('labs')")
+            js("switchTab('labs', 'chart')")   # (its charts: Labs opens on Latest, #1160)
             settle(300)
             steps = []
             for n in ("Alpha", "Beta"):
@@ -14227,7 +14227,7 @@ def main():
                 js(f"localStorage.setItem(stateKey(), {json.dumps(kept)})")
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
-            js("switchTab('labs')")
+            js("switchTab('labs', 'chart')")   # (its charts: Labs opens on Latest, #1160)
             settle(300)
 
             # ---- keyboard and screen-reader basics (#209) on the records page (light theme): "Skip to content" readable;
@@ -18406,7 +18406,7 @@ def main():
             page.wait_for_function("state.tab === 'timeline'", timeout=5000)
             tl500 = js("[window._page500, location.pathname + location.search + location.hash]")
             check("from “/?profile=N”, the dialog's Open Labs and “See them on the timeline” change the tab without a reload (#500)",
-                  labs500 == [1, f"/?profile={dpid497}#labs-chart"] and tl500 == [1, f"/?profile={dpid497}#timeline"], [labs500, tl500])   # (#labs: Labs where it opens, then at its view's own, #1026)
+                  labs500 == [1, f"/?profile={dpid497}#labs-latest"] and tl500 == [1, f"/?profile={dpid497}#timeline"], [labs500, tl500])   # (#labs: Labs where it opens, Latest, then at its view's own, #1026, #1160)
             # (#513) that import's lab draw open in the drawer, then its toast's Undo: the drawer doesn't show it any more
             iid513 = js(f"fetch('api/profiles/{dpid497}/imports', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.imports[0].id)")
             js(f"openEvent(EV.find(e => e.imp === {iid513} && e.k === 'lab'))")
@@ -19949,7 +19949,7 @@ def main():
             check("…saved, saying the name went into an existing series", card.startswith("Imported.") and "1 lab name put in an existing series" in card, card)
             page.goto(base + "/")
             page.wait_for_function("typeof SERIES !== 'undefined' && SERIES.length > 0 && PROFILE && PROFILE.name === 'Second person'", timeout=20000)
-            js("switchTab('labs')")
+            js("switchTab('labs', 'chart')")   # (its charts: Labs opens on Latest, #1160)
             settle(300)
             hgb = js("SERIES.filter(s => s.name === 'Hemoglobin').flatMap(s => s.pts.map(p => [p[0].slice(0, 10), p[1]]))")
             check("…and its result is on Trends in the existing Hemoglobin series",
@@ -22318,11 +22318,11 @@ def main():
             page.goto(base + "/#timeline")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             check("…while a link to a shown tab opens it", js("state.tab") == "timeline", js("state.tab"))
-            for old, view in (("heatmap", "heatmap"), ("trends", "chart"), ("labs", "chart")):   # #172: the old tabs' links open Labs
+            for old, view in (("heatmap", "heatmap"), ("trends", "chart"), ("labs", "latest")):   # #172: the old tabs' links open Labs; #labs Latest (#1160)
                 page.goto(base + "/#" + old)
                 page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
                 check(f"…a link to #{old} opens Labs as a {view}", js("[state.tab, state.labsView]") == ["labs", view]
-                      and js("id => !document.getElementById('view-labs').hidden && !document.getElementById(id).hidden", "labsHeatmap" if view == "heatmap" else "labsChart"),
+                      and js("id => !document.getElementById('view-labs').hidden && !document.getElementById(id).hidden", {"heatmap": "labsHeatmap", "chart": "labsChart", "latest": "labsLatest"}[view]),
                       js("[state.tab, state.labsView]"))
             page.goto(base + "/settings.html?profile=1#sec-tabs")
             page.wait_for_selector("#sec-tabs input[data-tab=costs]", timeout=10000)
@@ -22449,7 +22449,7 @@ def main():
                         break
                 return bad
             more_whole = {}
-            js("switchTab('labs')")
+            js("switchTab('labs', 'chart')")   # (its list and charts: Labs opens on Latest, #1160)
             for w in (701, 740, 900, 1100, 1200, 1280):
                 for docked in ((False, True) if w >= 1200 else (False,)):
                     page.set_viewport_size({"width": w, "height": 900})
@@ -22591,17 +22591,17 @@ def main():
             addr = lambda: tp.evaluate("[location.search, location.hash, state.tab, state.labsView, history.length]")
             n0 = tp.evaluate("history.length")
             check("tab address: opening the page with no # names the tab it opens, without a history entry of its own",
-                  addr()[1:] == ["#overview", "overview", "chart", n0] and n0 == blank + 1, [addr(), blank])
+                  addr()[1:] == ["#overview", "overview", "latest", n0] and n0 == blank + 1, [addr(), blank])
             for t in ("timeline", "labs", "costs"):
                 tab_click(tp, "#tab-" + t)
-            check("…picking Timeline, Labs and Costs adds an entry each, the address naming the tab", addr()[1:] == ["#costs", "costs", "chart", n0 + 3], addr())
+            check("…picking Timeline, Labs and Costs adds an entry each, the address naming the tab", addr()[1:] == ["#costs", "costs", "latest", n0 + 3], addr())
             tp.go_back()
             tp.go_back()
             tp.wait_for_function("state.tab === 'timeline'", timeout=5000)
             check("…Back twice lands on Timeline", addr()[1:3] == ["#timeline", "timeline"] and tp.evaluate("!document.getElementById('view-timeline').hidden"), addr())
             tp.go_forward()
             tp.wait_for_function("state.tab === 'labs'", timeout=5000)
-            check("…and Forward on Labs", addr()[1:3] == ["#labs-chart", "labs"], addr())   # (its charts' own address, #1026)
+            check("…and Forward on Labs", addr()[1:3] == ["#labs-latest", "labs"], addr())   # (the view it opened on's own address, Latest, #1026, #1160)
             tp.evaluate("switchTab('overview'); switchTab('costs'); switchTab('heatmap')")
             check("…the app's own switches replace the entry (Labs as the heatmap: #labs-heatmap)", addr()[1:] == ["#labs-heatmap", "labs", "heatmap", n0 + 3], addr())
             # a view switch is picked, as a tab is (#442): an entry each, and Back returns to the view before, on the tab
@@ -23012,7 +23012,7 @@ def main():
             page.keyboard.press("Escape")
             settle(200)
             page.set_viewport_size({"width": 375, "height": 800})
-            js("() => { switchTab('labs'); for (const s of SERIES.filter(s => !s.watch).slice(0, 2)) state.sel.add(s.name); renderLabs(); }")
+            js("() => { switchTab('labs', 'chart'); for (const s of SERIES.filter(s => !s.watch).slice(0, 2)) state.sel.add(s.name); renderLabs(); }")   # (its charts: Labs opens on Latest, #1160)
             settle(400)
             c353["labs 375"] = js(CONTROLS353_JS)
             c353["cards 375"] = js("""() => { const c = getComputedStyle(document.querySelector('#charts .chart')), l = document.getElementById('series'),
@@ -23111,7 +23111,7 @@ def main():
             check("…the weight tile in kg, with the reported lb", "kg" in wtile and re.search(r"Reported [\d.]+ lb", wtile), wtile)
             # over all of the records: the period earlier checks can leave saved (the last 30 days) starts hours after the
             # demo's last creatinine, so the charts had no results and the table no rows in some runs
-            js("state.sel = new Set(['Creatinine', 'Total Bilirubin']); state.tables.clear(); setPeriod('all'); switchTab('labs'); renderLabs()")
+            js("state.sel = new Set(['Creatinine', 'Total Bilirubin']); state.tables.clear(); setPeriod('all'); switchTab('labs', 'chart'); renderLabs()")   # (its charts: Labs opens on Latest, #1160)
             page.wait_for_selector("#charts .chart .unit", timeout=10000)
             heads = js("[...document.querySelectorAll('#charts .chart .unit')].map(u => u.textContent)")
             check("Trends: the chart says it's converted; bilirubin's doesn't", len(heads) == 2   # charts come in the series' order
@@ -25103,6 +25103,7 @@ def main():
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             tab_click(page, "#tab-labs")
+            js("switchTab('labs', 'chart')")   # (its charts: Labs opens on Latest, #1160)
             js("applyPreset('all')")
             settle()
             check("…the new milestone is marked on Trends",
@@ -26025,7 +26026,7 @@ def main():
             check("…never over a report's own range or flag, nor in another unit",
                   [g[3:] for g in got if g[2].startswith(days[3])][0] == [30, 400, "", ""] and [g for g in got if g[2].startswith(days[11])][0][5:] == ["L", ""]
                   and all(g[6] == "" for g in got if g[1] == "ug/L"))
-            js("state.sel = new Set(['Ferritin']); applyPreset('all'); switchTab('labs'); renderLabs()")
+            js("state.sel = new Set(['Ferritin']); applyPreset('all'); switchTab('labs', 'chart'); renderLabs()")   # (its charts: Labs opens on Latest, #1160)
             settle(400)
             card = "[...document.querySelectorAll('#charts .chart')].find(c => c.querySelector('.unit').textContent.startsWith('ng/mL'))"
             check("Trends: the chart says where the range came from, and colours the results outside it",
@@ -29074,7 +29075,7 @@ def main():
             on_day = js(hgb_day)
             check("Trends: the same result from the file and the sync is one point, with both sources (#96)",
                   len(on_day) == 1 and on_day[0].count(";") == 1 and "same result" in on_day[0], on_day)
-            js("setRange(Date.parse('2025-01-01'), Date.parse('2025-12-31')); state.sel = new Set(['Hemoglobin']); state.tables.add('Hemoglobin'); switchTab('labs')")
+            js("setRange(Date.parse('2025-01-01'), Date.parse('2025-12-31')); state.sel = new Set(['Hemoglobin']); state.tables.add('Hemoglobin'); switchTab('labs', 'chart')")   # (its charts: Labs opens on Latest, #1160)
             page.wait_for_selector("#charts table.data tbody tr", timeout=10000)
             rows = js("[...document.querySelectorAll('#charts .chart')].filter(c => c.querySelector('.name').textContent === 'Hemoglobin')"
                       ".map(c => c.querySelectorAll('tbody tr').length)")
