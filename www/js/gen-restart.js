@@ -3,7 +3,8 @@
    trusted proxies, the receiver's time zone and unclaimed data's days, what a restore replaced). Each is kept as typed,
    marked "not saved" and counted in the card's data-dirty until the group's bar saves them all at once (genRsSave,
    the fresh check in the card) or puts them back (genRsDiscard); saved, the card says Restart needed with Restart now,
-   which stops the app for Docker to start again, then waits for it to answer and reads the card again. A new value is
+   which stops the app (its question says it starts again only where its container restarts it: the server's
+   restart_says), then waits for it to answer and reads the card again. A new value is
    tried and kept once the server has run healthy with it; one that didn't is said here, with why. One the server's
    environment sets is plain text with its variable (no control). call(), sayIn(), ask() and plural() are the page's. */
 "use strict";
@@ -72,8 +73,11 @@ async function genRsSave(msg, had) {
   if (!todo.length) return;
   const values = Object.fromEntries(todo.map(st => { const raw = document.getElementById(rsId(st.name)).value.trim();
     return [st.name, raw === "" ? null : st.kind === "number" ? +raw : raw]; }));
-  try { RS = await fresh(() => call("settings/install/restart/values", "PUT", {values}), $("#genRsReauth")); }
+  let d;   // (trusting every address is typed to confirm first: admin.js confirmed)
+  try { d = await confirmed(typed => fresh(() => call("settings/install/restart/values", "PUT", {values, confirm: typed}), $("#genRsReauth"))); }
   catch (e) { sayIn(msg, `Not saved: ${e.why || e.message}`, true); return; }
+  if (!d) { sayIn(msg, "Not saved: the trusted proxies weren't confirmed.", true); return; }
+  RS = d;
   const said = `Saved ${todo.map(st => `“${st.label}”`).join(", ")}: ${RS.restart_needed ? "they apply once the server restarts." : "back as the server runs now."}`;
   rsDraw(said);
   if (had) $("#genRsHd").focus({preventScroll: true});
@@ -85,7 +89,7 @@ function genRsDiscard() {
 }
 async function rsRestart() {
   if (!await ask({title: "Restart the server now?", action: "Restart now",
-    message: "Sanguity stops and starts again with the saved settings, which takes a few seconds; anyone using it meanwhile waits. If the new settings don't come up healthy, it goes back to the ones before and says so here."})) return;
+    message: [RS.restart_says, "Starting again takes a few seconds; anyone using it meanwhile waits. If the saved settings don't come up healthy, it goes back to the ones before and says so here."]})) return;
   const msg = $("#genRsMsg");
   try { await fresh(() => call("settings/install/restart", "POST"), $("#genRsReauth")); }
   catch (e) { sayIn(msg, e.message, true); return; }
