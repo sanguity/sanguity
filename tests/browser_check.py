@@ -7008,7 +7008,8 @@ def main():
                     fit351 += [f"{tab} {width} px, {k}: {x}" for k in ("wide", "overlap", "baseline") for x in got[k]]
             page.set_viewport_size({"width": 1400, "height": 900})
             check("tiles at 1400, 375 and 320 px (#351): no value or label wider than its tile, none overlapping another, and the "
-                  "values in each row of tiles on one baseline", not fit351 and all(n > 0 and r > 0 for n, r in rows351.values()), fit351[:8] or rows351)
+                  "values in each row of tiles on one baseline", not fit351 and all(n > 0 and (r > 0 or k == "costs-summary 320") for k, (n, r) in rows351.items())
+                  and rows351["costs-summary 320"][0] == 4, fit351[:8] or rows351)   # (#1163: the Summary's four tiles one under another at 320 px, no row to line up)
             # #722, #753: with text at 200%, at 320 to 1400 px and on a phone held sideways (TILE_SIZES753), every word of
             # every tile and figure on the records tabs inside its tile (TILE_TEXT722_JS), and none overlapping another
             # (TILE_FIT_JS): the Overview's key labs, Readings and insurance figures, Body and activity's, and Costs' with
@@ -19486,6 +19487,8 @@ def main():
             settle()
             js("applyPreset('all')")
             settle(200)
+            page.click("#costView button:text-is('Claims')")   # (#1163: Costs opens on its Summary)
+            settle(200)
             rows = js("[...document.querySelectorAll('#costTable tbody tr')].map(tr => [...tr.cells].map(td => td.textContent))")
             day = {js("d => fmtD(dayTs(d))", d): d for d in ("2026-10-07", "2026-06-24", "2026-02-03")}   # in their date format (#248)
             by = {(day.get(r[0], r[0]), r[2]): r for r in rows}
@@ -20069,11 +20072,20 @@ def main():
             settle(300)
             y1127 = js("DATA.oop.years[0]")
             cal1127 = js("[...document.querySelectorAll('#planCard h3.sub')].map(h => h.textContent)")
-            # (#1163) the demo's medical claims say what went to the deductible, as an EOB file does
+            # (#1163) this profile's claims (UHC's, BCBS's and the spreadsheet's) say nothing of the deductible: that's said,
+            # not "$0 toward the deductible"; with them saying (as the server would count them), the part toward it; and
+            # the demo's medical claims (profile 1's) say it, as an EOB file does
+            plan_text = page.inner_text("#planCard")
+            told1127 = js("""(() => { const y = DATA.oop.years[0], had = [y.noSplit, y.towardDeductible]; y.noSplit = 0; y.towardDeductible = 420; renderCosts();
+                const t = document.getElementById('planCard').innerText; [y.noSplit, y.towardDeductible] = had; renderCosts(); return t; })()""")
+            demo1127 = js("api('profiles/1/data').then(r => r.json()).then(d => d.oop.years[0])")
             check("Costs sums each calendar year's claims toward the deductible and out of pocket, with no plan year typed (#1127)",
-                  bool(cal1127) and cal1127[0] == y1127["start"][:4] and y1127["noSplit"] == 0 and y1127["towardDeductible"] > 0
-                  and js("v => `${usd(v[0])} toward the deductible · ${usd(v[1])} your share of claims`", [y1127["towardDeductible"], y1127["share"]]) in page.inner_text("#planCard"),
-                  [cal1127, y1127])
+                  bool(cal1127) and cal1127[0] == y1127["start"][:4] and y1127["noSplit"] == len(y1127["claims"]) > 0
+                  and js("v => `${usd(v)} your share of claims`", y1127["share"]) in plan_text
+                  and "Your claims don't say how much went to the deductible." in plan_text and "toward the deductible ·" not in plan_text
+                  and js("v => `${usd(420)} toward the deductible · ${usd(v)} your share of claims`", y1127["share"]) in told1127
+                  and not re.search(r"\bnull\b", told1127)   # (each claim saying: no hint under it, not a stray "null")
+                  and demo1127["towardDeductible"] > 0 and demo1127["noSplit"] < len(demo1127["claims"]), [cal1127, y1127, told1127, demo1127])
             page.click("#planAdd")
             page.wait_for_selector("#planEdit", timeout=5000)
             focus1127 = js("document.activeElement.id")
@@ -20093,19 +20105,19 @@ def main():
             ROWS1127 = "[...document.querySelectorAll('#planCard .ov-row')].map(r => [r.querySelector('.n').textContent, r.querySelector('.v').textContent, r.querySelector('.cost-bar-run')?.getAttribute('aria-hidden') ?? null, r.querySelector('.cost-bar-note')?.textContent ?? ''])"
             rows1127 = js(ROWS1127)
             yp1127 = js("DATA.oop.years.find(y => y.plan != null)")
-            # (#1163) and with claims that say nothing of the deductible (as UHC's, as the server would count them): no
-            # meter at $0, that's said; with some saying, how many don't is said under the meter
-            UNSAID1163 = f"""n => {{ const y = DATA.oop.years.find(y => y.plan != null), had = y.noSplit;
-                y.noSplit = n === 'all' ? y.claims.length : n; keepFocus(renderCosts); const out = {ROWS1127}; y.noSplit = had; keepFocus(renderCosts); return out; }}"""
-            none1163, some1163 = js(UNSAID1163, "all"), js(UNSAID1163, 1)
+            # (#1163) this profile's claims say nothing of the deductible: no meter at $0, that's said; with some saying
+            # (one year's, as the server would count them), the meters, and how many claims don't say under the deductible's
+            some1163 = js(f"""(() => {{ const y = DATA.oop.years.find(y => y.plan != null), had = [y.noSplit, y.towardDeductible];
+                y.noSplit = 1; y.towardDeductible = 420; keepFocus(renderCosts); const out = {ROWS1127}; [y.noSplit, y.towardDeductible] = had; keepFocus(renderCosts); return out; }})()""")
             check("…a plan year typed in: its deductible, out-of-pocket max and family deductible met so far as text, each bar hidden from screen readers (#1127)",
-                  [r[0] for r in rows1127] == ["Deductible", "Out-of-pocket max", "Family deductible"]
-                  and rows1127[0][1] == js("v => usd(v) + ' of $3,000'", yp1127["towardDeductible"]) and rows1127[2][1] == js("v => usd(v) + ' of $6,000'", yp1127["towardDeductible"])
-                  and rows1127[1][1] == js("v => usd(v) + ' of $7,500'", yp1127["share"]) and all(r[2] == "true" for r in rows1127), rows1127)
+                  [r[0] for r in rows1127] == ["Deductible", "Out-of-pocket max", "Family deductible"] and yp1127["noSplit"] == len(yp1127["claims"])
+                  and some1163[0][1] == "$420 of $3,000" and some1163[2][1] == "$420 of $6,000"
+                  and rows1127[1][1] == js("v => usd(v) + ' of $7,500'", yp1127["share"]) and all(r[2] == "true" for r in some1163) and rows1127[1][2] == "true",
+                  [rows1127, some1163])
             check("…claims that say nothing of the deductible: “Not said” and “Your claims don't say how much went to the deductible”, no bar; "
                   "some not saying, the meter with how many under it (#1163)",
-                  none1163[0][1:] == ["Not said", None, "Your claims don't say how much went to the deductible"] and none1163[2][1] == "Not said"
-                  and some1163[0][1] == rows1127[0][1] and some1163[0][2] == "true" and some1163[0][3].endswith("claims don't say how much went to the deductible"), [none1163, some1163])
+                  rows1127[0][1:] == ["Not said", None, "Your claims don't say how much went to the deductible"] and rows1127[2][1] == "Not said"
+                  and some1163[0][3].endswith("claims don't say how much went to the deductible"), [rows1127, some1163])
             check("…an out-of-pocket max under the deductible refused, said beside the form; Add a plan year focused the form, and has focus back after the save",
                   "at least the deductible" in said1127 and focus1127 == "plan-start" and js("document.activeElement.id") == "planAdd",
                   [said1127, focus1127, js("document.activeElement.id")])
@@ -20224,7 +20236,9 @@ def main():
                                document.querySelector('#billEdit button.btn:not(.primary)').click(); out.push(document.activeElement.id);
                                [DATA.costs, DATA.outOfPocket, DATA.oop] = had; billState.first = false; renderCosts(); return out; })()""")
             check("…the empty Costs page offers Add a bill beside the uploads and Type in a claim or a payment (#1163); it opens the bill's form, and Cancel comes back to it",
-                  empty1146 == ["Upload claims files · Upload a payments file · Type in a claim · Type in a payment · Add a bill", "Add a bill", "bill-service", True, "billFirst"], empty1146)
+                  # (and Connect your health plan: connected sources are on in this run, off by default, the fresh install's check)
+                  empty1146 == ["Upload claims files · Upload a payments file · Type in a claim · Type in a payment · Add a bill · Connect your health plan",
+                                "Add a bill", "bill-service", True, "billFirst"] and js("sgConnected(ME)"), empty1146)
             js("costState.view = 'claims'; renderCosts()")
 
             # ---- readings typed in at home (#224): blood pressure, glucose, temperature and blood oxygen typed on Sources
@@ -23542,7 +23556,7 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
             js("window._was353 = [state.tab, state.preset, state.from, state.to]; setPeriod('all')")
             for t in ("health", "costs"):
-                js("t => switchTab(t)", t)
+                js("t => { if (t === 'costs') costState.view = 'claims'; switchTab(t); }", t)   # (Costs' Denied only: its Claims', #1163)
                 settle(300)
                 c353[t] = js(CONTROLS353_JS)
                 bad353 += [f"{t}: a bare checkbox “{x}”" for x in c353[t]["bare"]]
@@ -25862,6 +25876,7 @@ def main():
             za.wait_for_selector("#dbody dl.kv", timeout=5000)
             stay_btns = za.evaluate(btns_js)
             za.evaluate("closeDrawer(); applyPreset('all'); switchTab('costs')")
+            za.click("#costView button:text-is('Claims')")   # (#1163: Costs opens on its Summary)
             za.wait_for_selector("#costTable tbody tr td", timeout=10000)
             claim_days = za.evaluate("[...document.querySelectorAll('#costTable tbody tr')].slice(0, 5).map(r => r.cells[0].textContent)")
             check("…a result's Collected and Resulted, a claim's services and the Costs claims table too (#248)",
