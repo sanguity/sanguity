@@ -944,6 +944,18 @@ define("person.bloodType", "person", "Blood type", "", _person_check(_person.che
        help="As typed, for the emergency card; a blood type lab result in the records is used instead (#1126).")
 define("person.contacts", "person", "Emergency contacts", [], _person_check(_person.check_contacts), kind="contacts", screen=False,
        help="Name, relationship and phone of each, in order, for the emergency card (#1126).")
+from . import ecard as _ecard   # #1162: the emergency card as the person made it
+
+
+def _ecard_check(v):
+    try:
+        return _ecard.check(v)
+    except ValueError as e:
+        raise SettingError(str(e)) from None
+
+
+define("emergency.card", "person", "Emergency card", _ecard.empty(), _ecard_check, kind="emergencycard", screen=False,
+       help="What's on the emergency card, as added in its editor (Sharing → Emergency card), and where (#1162).")
 from . import targets as _targets   # #234: targets of your own for home readings, as the care team gave them
 
 

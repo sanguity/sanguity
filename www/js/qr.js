@@ -1,14 +1,16 @@
 /* Sanguity · QR codes (#284), our own small encoder: no library (#243). Byte mode (the text's UTF-8), error correction
    level M (about 15% of a damaged code can be read back), versions 1 to 10 (up to 213 bytes, a share link or a phone's
-   upload address with room to spare), the smallest that fits, and the mask with the lowest penalty. ISO/IEC 18004:
+   upload address with room to spare) unless the caller allows more (most: up to 40, 2331 bytes; the emergency card's
+   text, #1162, allows 23: 857 bytes, kept small enough to scan at wallet size), the smallest that fits, and the mask
+   with the lowest penalty. ISO/IEC 18004:
    the data in codewords with Reed-Solomon error correction (GF(256), x^8+x^4+x^3+x^2+1), interleaved by block, placed
    in the zigzag around the finder, timing and alignment patterns; each of the eight masks scored (runs of a colour,
    2×2 blocks, finder-like patterns, the share of dark modules) on the symbol before its format and version
    information are drawn in. tests/test_qr.py holds it to known vectors and reads its codes back.
 
-   qrCode(text, {mask}) -> {version, mask, size, modules: rows of 0 (light) and 1 (dark)}, or null when the text is too
-                           long; text a string or a Uint8Array
-   qrSvg(text, {label})  -> an <svg class="qr" role="img"> of it with its 4-module quiet zone (app.css .qr: dark on
+   qrCode(text, {mask, most}) -> {version, mask, size, modules: rows of 0 (light) and 1 (dark)}, or null when the text
+                           is too long for version most (10 unless said); text a string or a Uint8Array
+   qrSvg(text, {label, most}) -> an <svg class="qr" role="img"> of it with its 4-module quiet zone (app.css .qr: dark on
                            light in both themes, kept so in forced colours), or null when too long
    qrShow(text, {what, caption, shown}) -> {btn, fig}: the one way a page shows one (#495: share links, Phone setup,
                            the calendar feed, two-factor sign-in), below */
@@ -16,8 +18,20 @@
 const qrCode = (() => {
   // level M per version: the error correction codewords of each block, then [blocks, data codewords in each] per group
   const M = [null, [10, [1, 16]], [16, [1, 28]], [26, [1, 44]], [18, [2, 32]], [24, [2, 43]], [16, [4, 27]], [18, [4, 31]],
-    [22, [2, 38], [2, 39]], [22, [3, 36], [2, 37]], [26, [4, 43], [1, 44]]];
-  const ALIGN = [null, [], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50]];
+    [22, [2, 38], [2, 39]], [22, [3, 36], [2, 37]], [26, [4, 43], [1, 44]], [30, [1, 50], [4, 51]], [22, [6, 36], [2, 37]],
+    [22, [8, 37], [1, 38]], [24, [4, 40], [5, 41]], [24, [5, 41], [5, 42]], [28, [7, 45], [3, 46]], [28, [10, 46], [1, 47]],
+    [26, [9, 43], [4, 44]], [26, [3, 44], [11, 45]], [26, [3, 41], [13, 42]], [26, [17, 42]], [28, [17, 46]],
+    [28, [4, 47], [14, 48]], [28, [6, 45], [14, 46]], [28, [8, 47], [13, 48]], [28, [19, 46], [4, 47]], [28, [22, 45], [3, 46]],
+    [28, [3, 45], [23, 46]], [28, [21, 45], [7, 46]], [28, [19, 47], [10, 48]], [28, [2, 46], [29, 47]], [28, [10, 46], [23, 47]],
+    [28, [14, 46], [21, 47]], [28, [14, 46], [23, 47]], [28, [12, 47], [26, 48]], [28, [6, 47], [34, 48]], [28, [29, 46], [14, 47]],
+    [28, [13, 46], [32, 47]], [28, [40, 47], [7, 48]], [28, [18, 47], [31, 48]]];
+  /* the alignment patterns' rows and columns: 6, then evenly spaced up to the size less 7 (version 32's step is 26) */
+  const ALIGN = v => {
+    if (v === 1) return [];
+    const n = Math.floor(v / 7) + 2, step = v === 32 ? 26 : Math.floor((v * 4 + n * 2 + 1) / (n * 2 - 2)) * 2, out = [];
+    for (let i = 0, at = 17 + 4 * v - 7; i < n - 1; i++, at -= step) out.unshift(at);
+    return [6, ...out];
+  };
   const MASKS = [(r, c) => (r + c) % 2 === 0, r => r % 2 === 0, (r, c) => c % 3 === 0, (r, c) => (r + c) % 3 === 0,
     (r, c) => ((r >> 1) + Math.floor(c / 3)) % 2 === 0, (r, c) => r * c % 2 + r * c % 3 === 0,
     (r, c) => (r * c % 2 + r * c % 3) % 2 === 0, (r, c) => ((r + c) % 2 + r * c % 3) % 2 === 0];
@@ -93,11 +107,12 @@ const qrCode = (() => {
     return score + 10 * Math.floor(Math.abs(dark / (n * n) * 100 - 50) / 5);
   }
 
-  return Object.assign(function qrCode(text, {mask} = {}) {
+  return Object.assign(function qrCode(text, {mask, most = 10} = {}) {
     const bytes = typeof text === "string" ? new TextEncoder().encode(text) : text;
     let v = 1;
-    while (v <= 10 && 4 + (v < 10 ? 8 : 16) + 8 * bytes.length > dataCap(v) * 8) v++;
-    if (v > 10) return null;
+    most = Math.min(most, 40);
+    while (v <= most && 4 + (v < 10 ? 8 : 16) + 8 * bytes.length > dataCap(v) * 8) v++;
+    if (v > most) return null;
     const n = 17 + 4 * v, m = [...Array(n)].map(() => new Array(n).fill(0)), fn = [...Array(n)].map(() => new Array(n).fill(false));
     const set = (r, c, on) => { m[r][c] = on ? 1 : 0; fn[r][c] = true; };
     for (const [r0, c0] of [[0, 0], [0, n - 7], [n - 7, 0]])   // the finders, each in its light separator
@@ -106,7 +121,7 @@ const qrCode = (() => {
         if (r0 + r >= 0 && r0 + r < n && c0 + c >= 0 && c0 + c < n) set(r0 + r, c0 + c, d !== 2 && d !== 4);
       }
     for (let i = 8; i < n - 8; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }   // timing
-    const a = ALIGN[v], last = a.at(-1);
+    const a = ALIGN(v), last = a.at(-1);
     for (const r of a) for (const c of a) {
       if (r === 6 && (c === 6 || c === last) || c === 6 && r === last) continue;   // not over a finder
       for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) set(r + dr, c + dc, Math.max(Math.abs(dr), Math.abs(dc)) !== 1);
@@ -143,11 +158,11 @@ const qrCode = (() => {
       for (let i = 0; i < 18; i++) out[n - 11 + i % 3][Math.floor(i / 3)] = out[Math.floor(i / 3)][n - 11 + i % 3] = bit(vb, i);
     }
     return {version: v, mask: best, size: n, modules: out};
-  }, {ecc, formatBits, versionBits, penalty});
+  }, {ecc, formatBits, versionBits, penalty, ALIGN, bytesIn: v => dataCap(v) - (v < 10 ? 2 : 3)});
 })();
 
-function qrSvg(text, {label = "QR code"} = {}) {
-  const q = qrCode(text);
+function qrSvg(text, {label = "QR code", most} = {}) {
+  const q = qrCode(text, {most});
   if (!q) return null;
   const d = q.modules.flatMap((row, r) => [...row.join("").matchAll(/1+/g)].map(x => `M${x.index + 4} ${r + 4}h${x[0].length}v1h-${x[0].length}z`)).join("");
   return el("svg:svg", {class: "qr", viewBox: `0 0 ${q.size + 8} ${q.size + 8}`, role: "img", "aria-label": label, "shape-rendering": "crispEdges"},

@@ -168,6 +168,7 @@ Everything on `main` so far; it becomes the first tagged release.
 - CI upgrades the previous release's data to the current code on every pull request.
 
 ### Changed
+- The emergency card is your own (#1162): nothing goes on it by itself; its editor suggests from the records (allergies, medications with their dose, conditions, blood type, care team, insurance, key documents) and you add, reword, reorder and remove lines, with critical alerts in bold at the top, a full legal name and personal details, each section placed on the printed card (a full page or a folding wallet card), the lock screen or both, a note when the records have new suggestions, and an optional offline QR code of the card's text.
 - The static files' budget (stylesheets, fonts and icons as sent) is 320 KB, up from 310 KB, to give 0.2.0's new features room for their styles.
 - A new top bar on every page: the records' tabs, an **Add** menu (import records, connect a source, type records
   in, a journal entry) and your own menu (visit summary, share links, settings, account, light or dark, log out),
