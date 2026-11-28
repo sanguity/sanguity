@@ -488,6 +488,36 @@ class View(unittest.TestCase):
         self.assertEqual(re.findall(r'\bcall\(\s*"([^"]+)"', js), ["settings/install/about"])
         self.assertIn('href: a.releases, target: "_blank", rel: "noopener noreferrer"', js)
 
+    def test_sign_in_provider_contacts_nobody_until_set_up_then_its_hosts_alone(self):   # #1109
+        """Before a sign-in provider is set up nothing is contacted for it, the sign-in page's question included; once
+        it is, a sign-in's start reaches its issuer's host alone (here also its token endpoint's and JWKS's), each
+        contact recorded and listed for admins, never for members."""
+        from server import oidc
+        from tests.fakeoidc import FakeOIDC
+        netguard.take()
+        before = self.view(self.robin)
+        self.assertEqual(client().get("/api/login/oidc").json()["label"], None)
+        self.assertEqual(client().post("/api/login/oidc/start", headers=H).status_code, 404)
+        self.assertEqual((netguard.take(), self.view(self.robin)), ([], before))
+        self.assertNotIn("sign_in", before)
+        with FakeOIDC() as idp:
+            try:
+                r = self.robin.put("/api/settings/install/oidc", json={"issuer": idp.issuer, "client_id": idp.client_id}, headers=H)
+                self.assertEqual(r.status_code, 200, r.text)
+                self.assertEqual(netguard.take(), [], "saving it contacts nobody")
+                self.assertEqual(client().post("/api/login/oidc/start", headers=H).status_code, 200)
+                v = self.view(self.robin)
+                host = f"127.0.0.1:{idp._httpd.server_address[1]}"
+                self.assertEqual(v["sign_in"]["hosts"], [host])
+                self.assertIn(host, v["may_contact"])
+                self.assertEqual([(c["host"], c["purpose"]) for c in v["sign_in"]["contacts"]], [(host, oidc.PURPOSE)])
+                self.assertNotIn("sign_in", self.view(self.kim))
+            finally:
+                db = dbm.connect()
+                db.execute("DELETE FROM meta WHERE k='oidc'")
+                db.close()
+                oidc._cache.clear()
+
     def test_signed_out_gets_nothing(self):
         self.assertEqual(client().get("/api/outside").status_code, 401)
 

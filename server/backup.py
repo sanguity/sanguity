@@ -709,12 +709,14 @@ def _stage_watch(archive, manifest, stamp):
 # accounts kept (user_id). A new table of access state (who may get in, or how) belongs here; a new column of users
 # (as totp_fails, #928) is today's with the rest of the row (_merge). labmaps, a profile's own lab-name matches since
 # #927, are records: what an import of the profile chose, forgotten with its Undo, so the backup's.
-ACCESS_TABLES = ("devices", "recovery_codes", "passkeys", "signin_failures", "memberships", "share_links", "calendar_feeds")
+ACCESS_TABLES = ("devices", "recovery_codes", "passkeys", "signin_failures", "memberships", "share_links", "calendar_feeds",
+                 "oidc_identities")   # (#1109) the identities linked at the sign-in provider, as passkeys are
 PULLED = ("cursor", "pending_cursor", "first_job", "last_sync", "report", "attach_bytes")   # a connection's place in what
 # it pulled, which goes with the records: the backup's, so it pulls again what came since
 CYCLE = "_cycle"   # a profile's cycle tracking (cycle_tracking.KEY, #964)
 ACCESS_SETTINGS = ("_watch.receiver", CYCLE)   # a profile's phone upload secret (watch_keys.KEY), its cycle tracking
-ACCESS_META = ("require_2fa", "setup_code")   # the install's two-factor rule; first-time setup's code, while there's no account
+ACCESS_META = ("require_2fa", "setup_code",   # the install's two-factor rule; first-time setup's code, while there's no account
+               "oidc", "oidc.secret")   # (#1109) the sign-in provider and its client secret: how people get in
 # (#1005, as #917 keeps today's access) the install's own settings are today's too: every value saved for the whole
 # install (settings.INSTALL_ROWS: General's, the sync defaults, any install setting the registry gets later, whatever
 # its key) and the backup schedule and how many it keeps (backup_jobs.schedule, kept in meta). Disaster recovery (no

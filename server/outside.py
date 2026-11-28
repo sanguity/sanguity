@@ -14,6 +14,10 @@ way out, under a permit made here from what the install was told to contact:
         a SMART Health Link someone pasted and confirmed (shl.py): its host (a pasted Health Card's issuer), and also
         the hosts the link itself names (file locations, Health Card issuers) that the page named and they confirmed
         (#919): one it names beyond those is asked about before it's contacted, never contacted unconfirmed.
+  oidc.client(db, who, ip)   (#1109, oidc.py)
+        the install's sign-in provider an admin set up: its issuer's host, and the token endpoint's and the JWKS's
+        as its own discovery document names them, for a sign-in, a link or an admin's Test connection; none while
+        no provider is set up.
   for_directory(db, who, ip, actor=None)
         the provider directory's two published lists (#992; directory/update.py): the hosts directory/build.py names
         for them, only when an admin presses Add the lists or Update now, or once a week after an admin turned that
@@ -177,9 +181,12 @@ def view(db, s):
     for c in live:   # a connection whose source an admin has since removed: its issuer only
         if c["client_id"] is None:
             sources.append(entry(c["source"], None, c["issuer"], {}, {smart.host_of(c["issuer"])}, None, None, [c], None))
-    allowed = sorted({h for x in sources for h in x["may_contact"]})
+    from . import oidc
+    signin = oidc.hosts(db) if admin else []   # (#1109) the sign-in provider's: an admin's to see, as the directory's
+    allowed = sorted({h for x in sources for h in x["may_contact"]} | set(signin))
     pick = lambda *ps: [c for c in contacts if c["purpose"] in ps]
     return {"nothing_else": NOTHING_ELSE, "admin": admin, "connected_sources": on, "may_contact": allowed, "sources": sources,
             "health_links": pick(LINK, LINK_FILE), "card_keys": pick(CARD_KEYS),
             **({"directory": {"hosts": sorted(directory_hosts()), "contacts": pick(DIRECTORY)}} if admin and on else {}),
+            **({"sign_in": {"hosts": signin, "contacts": pick(oidc.PURPOSE)}} if signin else {}),
             "earlier": [c for c in contacts if c["purpose"].startswith(SOURCE) and c["host"] not in allowed]}
