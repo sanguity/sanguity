@@ -83,6 +83,9 @@ ICONS = [
     "send", "scroll-text",   # Sharing: Share links (and New share link), Activity
     "user-cog", "logs", "app-window",  # Admin: Accounts, Install activity, Connected-source apps (Lab name matches'
                              # arrow-right-left went with its page, #1114)
+    "list-todo",             # Add's Follow-up (#1138)
+    "wallet-cards",          # Settings: Insurance cards (#1137)
+    "bell",                  # Settings: Notifications (#1130)
 ]
 
 

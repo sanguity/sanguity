@@ -31,7 +31,7 @@ const SG_ICON = {
   overview: "layout-grid", health: "heart-pulse", medications: "pill-bottle", timeline: "chart-gantt", labs: "test-tube-diagonal", costs: "banknote",
   more: "ellipsis",
   search: "search", add: "plus", you: "circle-user", guide: "compass", theme: "sun-moon", logout: "log-out",
-  dose: "pill", medadd: "clipboard", journal: "notebook", reading: "gauge", fuadd: "check", rqadd: "mail",   // Add's Today (#1092: Add a medication its own)
+  dose: "pill", medadd: "clipboard", journal: "notebook", reading: "gauge", fuadd: "list-todo", rqadd: "mail",   // Add's Today (#1092: Add a medication its own; #1138: a follow-up its own, check is a menu's tick)
   family: "users",   // the palette's Family history and Add a relative (#1134)
   "settings/sec-tabs": "pencil",   // Edit tabs… (the profile menu, More) and the palette's Tabs
   "sharing/newProfile": "user-plus",   // New profile
@@ -85,7 +85,7 @@ const SG_PAGES = {
        ["Lab charts", "sec-trends", "labs selected at first saved views add view no default"]]},
     {id: "about", title: "About this person", icon: "user", part: "This person", has: ["about", "targets"],   // #194, #234; on Sharing before #267
      finds: [["Birth date, sex and height", "about", "age birthday date of birth dob born child baby due date growth tall cm inches maximum heart rate measured bpm early add blood type group abo rh emergency contacts ice phone"], ["Targets of your own", "targets", "goals"]]},
-    {id: "insurance", title: "Insurance cards", icon: "clipboard", part: "This person", has: ["insurance"],   // #1137
+    {id: "insurance", title: "Insurance cards", icon: "wallet-cards", part: "This person", has: ["insurance"],   // #1137
      words: "health plan insurer member id group number card photo front back phone add change remove"},
     {id: "labs", title: "Labs and ranges", icon: "ruler", part: "This person", has: ["sec-names", "labmatches", "sec-ranges"], words: "reference ranges normal high low add",
      finds: [["Names", "sec-names", "nicknames rename lab names result sources records shown"],
@@ -105,7 +105,7 @@ const SG_PAGES = {
      has: ["installApp", "offlineRecords"],
      finds: [["Install on this device", "installApp", "app home screen"], ["Offline records on this device", "offlineRecords", "offline without a connection"]]},
     // (#1130) shown once the server has a notification server: this person's, per profile they can see
-    {id: "notifications", title: "Notifications", icon: "send", part: "You", hint: "new results and dose reminders, sent to this server's own notification server.",
+    {id: "notifications", title: "Notifications", icon: "bell", part: "You", hint: "new results and dose reminders, sent to this server's own notification server.",
      has: ["notify"], words: "notify push ntfy alert new results dose reminders medication turn on off topic subscribe make a new test"},
     {id: "display", title: "Display", icon: "monitor", part: "You", has: ["sec-appearance", "sec-dates", "sec-units"],
       finds: [["Appearance", "sec-appearance", "default use browser in range results grey gray green"],   // (not "theme": the theme is your menu's Dark or Light mode, #410; In-range results, #1108)
