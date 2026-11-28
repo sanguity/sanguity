@@ -128,6 +128,23 @@ class Insurers(Written):
         out = claims_bcbs.parse(fixture("bcbs", "member-export"), insurer="BCBS Nebraska")
         self.assertEqual({c["ins"] for c in out["data"]["costs"]}, {"BCBS Nebraska"})
 
+    def test_deductible_where_the_file_gives_it(self):
+        """#1163: UHC's balance or its lines' adjudication, BCBS's claim or its lines: the part toward the deductible
+        is the Costs row's ded; a claim that says none has none (not 0)"""
+        with open(fixture("uhc", "member-export")["claims.json"], encoding="utf-8") as f:
+            uhc = json.load(f)
+        uhc["list"][0]["balance"]["deductible"] = {"value": "25.00"}
+        out = claims_uhc.parse(self.write("claims.json", uhc))["data"]["costs"]
+        self.assertEqual(out[0].get("ded"), 25.0)
+        self.assertTrue(all("ded" not in c for c in out[1:]), "no deductible part said, none kept")
+        with open(fixture("bcbs", "member-export")["claims.json"], encoding="utf-8") as f:
+            bcbs = json.load(f)
+        first = next(iter(bcbs["details"].values()))
+        for ln in first["serviceLines"]:
+            ln["deductibleAmount"] = 10.0
+        out = claims_bcbs.parse(self.write("claims.json", bcbs))["data"]["costs"]
+        self.assertEqual(sorted(c.get("ded") for c in out if "ded" in c), [round(10.0 * len(first["serviceLines"]), 2)])
+
     def test_no_date_and_repeats_warn(self):
         files = self.write("claims.json", {"details": {
             "a": {"claimId": "X1", "serviceFromDate": "2026-01-02", "billedChargeAmount": 1, "memberPayableAmount": 1},
@@ -239,6 +256,16 @@ class Spreadsheet(Written):
         self.assertEqual(len(out["data"]["events"]), 1)
         self.assertEqual(out["warnings"], ["Left out 1 claim listed twice (same date, provider and amounts)."])
         self.assertEqual(reg.check(out, files), [])
+
+    def test_deductible_column(self):
+        """#1163: an EOB spreadsheet's deductible column: a claim's lines add up; a row left empty says none"""
+        files = self.write("eob.csv", "Service date,Provider,Service,Billed,Plan paid,You owe,Applied to deductible,Claim number\n"
+                           "2026-05-01,Dr. Rowan Pike,Office visit,120,80,40,30,C-1\n2026-05-01,Dr. Rowan Pike,Lab draw,60,40,20,$5.00,C-1\n"
+                           "2026-06-02,Dr. Rowan Pike,Office visit,120,80,40,,C-2\n")
+        costs = {c["d"]: c for c in claims_csv.parse(files)["data"]["costs"]}
+        self.assertEqual((costs["2026-05-01"]["ded"], costs["2026-05-01"]["owe"]), (35.0, 60.0))
+        self.assertNotIn("ded", costs["2026-06-02"])
+        self.assertEqual(reg.check(claims_csv.parse(files), files), [])
 
     def test_template(self):
         files = self.write("template.csv", claims_csv.TEMPLATE)
