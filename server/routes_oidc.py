@@ -11,7 +11,7 @@
                                           fresh check instead, main._password)
   POST   /api/me/reauth/oidc/start        settled: {"url"}, the fresh check at the provider (signed in again there now)
   DELETE /api/me/oidc/{iid}               settled, after the fresh check: unlink one (signs out every other sign-in)
-  GET    /api/settings/install/oidc       admin: General → Sign-in provider, its client secret only as where it's from
+  GET    /api/settings/install/oidc       admin: Accounts and sign-in → Sign-in provider, its client secret only as where it's from
   PUT    /api/settings/install/oidc       admin, after the fresh check: a change (each logged; the secret by name only)
   POST   /api/settings/install/oidc/test  admin: Test connection, the discovery document and the JWKS read again
   POST   /api/users/{uid}/oidc            admin, after the fresh check: link an identity to an account by its subject
@@ -217,7 +217,7 @@ def unlink(iid: int, request: Request, s=Depends(settled), db=Depends(get_db)):
     return {"ok": True, "signed_out_elsewhere": n}
 
 
-# ---------------------------------------------------------------- General → Sign-in provider (admins)
+# ---------------------------------------------------------------- Accounts and sign-in → Sign-in provider (admins)
 
 def _install(db, request):
     cfg = oidc.load(db)

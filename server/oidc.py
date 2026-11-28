@@ -537,7 +537,7 @@ def _exchange(db, c, conf, cfg, code, entry):
         err = str(data.get("error") or "")[:60]
         if err == "invalid_client" or r.status == 401:
             raise OidcError("The sign-in provider refused Sanguity's client ID or secret. Check Settings → Install → "
-                            "General → Sign-in provider.", 502)
+                            "Accounts and sign-in → Sign-in provider.", 502)
         raise OidcError("The sign-in provider didn't finish the sign-in" + (f" ({err})" if err else f" (it answered {r.status})")
                         + ". Start again.", 401)
     return data["id_token"]

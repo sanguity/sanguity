@@ -1,4 +1,4 @@
-/* Sanguity · Settings → Install → General → Security (#1001): how people sign in to this server, and for how long.
+/* Sanguity · Settings → Install → Accounts and sign-in → Sign-in rules (#1001): how people sign in to this server, and for how long.
    Requiring two-factor sign-in for everyone (Accounts' before #1001, which links here), as it's switched; who may
    create profiles, as it's picked; the numbers (a sign-in's lengths and idle sign-out, the shortest passwords, a
    one-time password's days, the fresh check's minutes, sign-in's free tries) kept as typed, marked "not saved" and
@@ -55,7 +55,7 @@ function gsDraw(d, note, typed = {}) {
   if (back && !body.contains(document.activeElement)) document.getElementById(back)?.focus({preventScroll: true});
 }
 function gsCount() {
-  const n = gsTyped().length, card = $("#gen-security");
+  const n = gsTyped().length, card = $("#signin-rules");
   if (n) card.setAttribute("data-dirty", n); else card.removeAttribute("data-dirty");
 }
 /* one setting to the server, with the fresh check when it's asked; one that would end sign-ins says how many and is

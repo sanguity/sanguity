@@ -477,7 +477,7 @@ PLAIN_SETTINGS = {"sync.attachAuto", "sync.attachMaxMB", "sync.attachTypes", "sy
                   "host.publicOrigins",   # General → Host (#1000): addresses the app gives out anyway, never health information
                   "phone.uploadUrl",   # General → Phone receiver (#1003): the same
                   "notify.url",   # General → Notifications (#1130): the install's own server's address (its token is apart, sealed)
-                  # General → Security (#1001): how people sign in, numbers and a choice, none about anyone
+                  # Sign-in rules (#1001): how people sign in, numbers and a choice, none about anyone
                   "security.sessionDays", "security.sessionHours", "security.idleMinutes", "security.profiles", "security.passwordMin",
                   "security.passwordMin2fa", "security.tempPasswordDays", "security.reauthMinutes", "security.triesHere",
                   "security.triesAddress", "security.triesAccount",

@@ -557,7 +557,7 @@ function labDayTitle(e, title = e.title) {
 }
 
 /* how long a sign-in lasts, as this server is set up (t: the server's {days, hours_without_2fa, idle_minutes}, set in
-   Settings → Install → General → Security or SESSION_* in .env, #1001), said after lead: the sign-in page's note and
+   Settings → Install → Accounts and sign-in → Sign-in rules or SESSION_* in .env, #1001), said after lead: the sign-in page's note and
    You → Sign-in and security's */
 function signInLasts(t, lead) {
   const n = (v, unit) => `${v} ${unit}${v === 1 ? "" : "s"}`;

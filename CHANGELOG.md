@@ -4046,6 +4046,12 @@ Everything on `main` so far; it becomes the first tagged release.
   checks at once are Needs a restart's), whose limits point there and are tagged where the environment set them; Security and
   the Sign-in provider say what applies at once and what waits for Save; and Host's Passkey names shows each name and
   its count again (it showed "[object HTMLParagraphElement]").
+- **Accounts and sign-in** (#1119, the owner's decision): Settings → Install → Accounts is Accounts and sign-in: People
+  (the accounts list), then Sign-in rules (General → Security before: requiring two-factor sign-in, a sign-in's
+  lengths, wrong tries, who may create profiles, password lengths, a one-time password's days, the fresh check) and
+  Sign-in provider (OIDC, General's before). General keeps Host, Backups and logging, Phone receiver, Needs a restart,
+  Experimental, Demo profile and About. The old addresses (#gen-security, #gen-signin) open them there, and the
+  palette finds them by the same words.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

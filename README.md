@@ -649,10 +649,10 @@ too. With none set, every name works, as before.
   a second factor and 12 hours on one without (`SESSION_DAYS`, `SESSION_HOURS_WITHOUT_2FA`); optionally
   sign people out after a period of inactivity too (`SESSION_IDLE_MINUTES`). Admins can shorten these, raise the
   shortest password, shorten the fresh check and a one-time password's days, lower the sign-in throttle's free tries,
-  and let only admins create profiles, under **Settings → Install → General → Security**: never more lenient than
+  and let only admins create profiles, under **Settings → Install → Accounts and sign-in → Sign-in rules**: never more lenient than
   these defaults, and a change that would end sign-ins says how many first.
 - **Two-factor sign-in** with an authenticator app (codes that can't be reused) and one-time recovery codes, under
-  **Settings → You → Sign-in and security**; admins can require it for everyone (**Settings → Install → General → Security**). With it on, a password may be as short as 8 characters.
+  **Settings → You → Sign-in and security**; admins can require it for everyone (**Settings → Install → Accounts and sign-in → Sign-in rules**). With it on, a password may be as short as 8 characters.
 - **Passkeys** (Face ID, Touch ID, Windows Hello, a phone or a security key), under **Settings → You → Sign-in and security**: sign in with one on
   its own, or use it as the step after the password. They need HTTPS; see [Passkeys](#passkeys).
 - **Sign in with OIDC** (Authentik, Keycloak, Authelia, Google…): one provider for the install, each person linking
@@ -796,13 +796,13 @@ who lost the phone holding them.
 
 ### Sign in with OIDC
 
-An install can have one OpenID Connect provider, set up by an admin under **Settings → Install → General → Sign-in
+An install can have one OpenID Connect provider, set up by an admin under **Settings → Install → Accounts and sign-in → Sign-in
 provider**; the sign-in page then offers **Sign in with** it (the button's name is yours to choose). Nobody is
 contacted until it's set up.
 
 1. At the provider, make an app (a client) for Sanguity: OpenID Connect, the authorization code flow, confidential
    (with a client secret) or public (PKCE alone; Sanguity always uses PKCE with S256), ID tokens signed with RS256 or
-   ES256. Its **redirect URI** is your Sanguity's sign-in page, exactly as General → Sign-in provider shows it:
+   ES256. Its **redirect URI** is your Sanguity's sign-in page, exactly as Accounts and sign-in → Sign-in provider shows it:
    `https://health.example.com/login.html` (made from the first address under General → Host, `PUBLIC_ORIGINS`).
 2. In Sanguity, give the **issuer** (exactly as the provider shows it), the **client ID** and the **client secret**,
    and press **Test connection**. The secret is kept encrypted and never shown again; or set `OIDC_CLIENT_SECRET` in

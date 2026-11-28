@@ -164,7 +164,7 @@ function menuSheet(m, title, ...extra) {
   return m;
 }
 /* New profile is offered only to someone who may create one on this server (#1001, the owner's decision): /api/me's
-   may_create_profiles (Settings → Install → General → Security: admins only, or everyone signed in). The profile
+   may_create_profiles (Settings → Install → Accounts and sign-in → Sign-in rules: admins only, or everyone signed in). The profile
    menu's (and so the palette's), the records page's empty state (app.js) and each [data-np] of a page: "offer" shown
    to who may, "ask" (ask an admin) to who may not. The server refuses the rest (403). Only once /api/me says so: the
    profile menu's is hidden until then (#1050: it showed to a member while /api/me was slow) */
