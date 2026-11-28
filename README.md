@@ -51,12 +51,12 @@ on the **Settings** page, appear on every chart and as "since" periods.
 **Getting records in**
 
 - **Upload** a portal's or app's export under **Sources** (a zip, a folder or single files): Epic MyChart,
-  C-CDA, FHIR (Apple Health, Blue Button, portals), lab spreadsheets and Quest or Labcorp PDFs, insurers' claims, and
+  C-CDA, FHIR (Apple Health, Blue Button, portals), lab spreadsheets and Quest or Labcorp PDFs (experimental), insurers' claims, and
   more ([sources below](#supported-sources-today)). Each import is previewed before it's saved, can be undone from
   the import history, and records the same result from two sources once.
 - **Connect** a patient portal (SMART on FHIR, Epic first) or a health plan's patient-access API once; new records
   then come in on a schedule. Experimental and off by default ([Connected sources](#connected-sources)).
-- **Type records in** by hand, paste a SMART Health Link, and **correct** anything an import got wrong; corrections
+- **Type records in** by hand, paste a SMART Health Link (experimental), and **correct** anything an import got wrong; corrections
   survive re-imports.
 - **Phones:** watch and smart-scale data from Android (Health Connect, via Life Dashboard, formerly Life Dashboard
   Companion) or iPhone (Apple Health, via Health Auto Export), which covers Garmin, Fitbit, Withings and most others
@@ -324,8 +324,8 @@ start deletes too).
 | C-CDA health summaries (XML), from most portals' "download my record" | Labs, visits, problems, medications, allergies (with their reactions and severity), immunizations, vitals, documents |
 | FHIR R4 (bundles and Blue Button / patient-access NDJSON), from portals, Apple Health's clinical records or insurers | Labs and vitals, visits and stays, upcoming appointments, conditions, allergies, immunizations, procedures, medications and pharmacy fills, reports and imaging studies, documents; claims as CARIN Blue Button ExplanationOfBenefit |
 | Connected sources: a portal's SMART on FHIR API (Epic first) or a health plan's patient-access API | The same FHIR records, pulled on a schedule after you sign in once |
-| SMART Health Links and Cards (pasted under Sources → Paste a Health Link) | The FHIR records the link holds, read as above: a vaccination card's immunizations, for one |
-| Lab results spreadsheets (CSV) and Quest or Labcorp lab report PDFs | Lab results with units, ranges and flags |
+| SMART Health Links and Cards (pasted under Sources → Paste a Health Link). Experimental: few providers issue them yet, and fetching one contacts its host | The FHIR records the link holds, read as above: a vaccination card's immunizations, for one |
+| Lab results spreadsheets (CSV) and Quest or Labcorp lab report PDFs (PDFs experimental: check each value against the PDF before adding) | Lab results with units, ranges and flags |
 | Insurance claims exports (`uhc`, `bcbs` formats, or an EOB spreadsheet (CSV)) | Claims, billed / paid / your share, denials |
 | Payments export (`payments.json`) | Out-of-pocket payments and premiums |
 | Health Connect, via the Life Dashboard phone app | Steps, heart rate, HRV, sleep stages, workouts, weight and body composition, blood pressure (each reading, with its pulse when the cuff gives one), body temperature, blood oxygen, respiratory rate, cardio fitness (VO2 max), blood glucose (meter and CGM) |
@@ -624,7 +624,7 @@ too. With none set, every name works, as before.
 - **Self-hosted only.** Your data stays on your server; Sanguity makes no outside requests and has no telemetry.
   (A "What is this test?" link beside a lab is opened by your browser, in a new tab, only when you follow it, and is
   the page's own address alone: nothing about the result or the person goes with it.)
-  Outside contact happens only when you ask for it: importing a pasted SMART Health Link fetches it from its host
+  Outside contact happens only when you ask for it: importing a pasted SMART Health Link (experimental) fetches it from its host
   (and, for a Health Card, the issuer's public keys) after you confirm, HTTPS only, and any other server the link
   names (its files elsewhere, a card's issuer) only once the page has named it and you've confirmed that too (#919);
   and once you connect a source

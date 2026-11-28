@@ -446,7 +446,7 @@ const SgNav = (() => {
       link(src + "#upload", "sources/upload", "Upload files", {id: "importLink", "data-needs": "import"}),
       link(src + "#portals", "sources/portals", "Connect a source", {id: "connectLink", "data-needs": "import", "data-none": ""}),   // (#1096: while connected sources are on, below)
       link(src + "#manual", "sources/manual", "Type records in", {"data-needs": "import"}),
-      link(src + "#link", "sources/link", "Paste a Health Link", {"data-needs": "import"}),
+      link(src + "#link", "sources/link", "Paste a Health Link (experimental)", {"data-needs": "import"}),   // (#1122)
       link(rec + "#records-request", "rqadd", "Records request", {id: "rqAddLink", "data-needs": "import"})),   // (#1133, requests.js)
   ]);
   /* the person's own menu (#264): what's theirs whichever profile is shown. Settings (#991: Account, Display and Admin

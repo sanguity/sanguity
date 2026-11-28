@@ -54,7 +54,7 @@
         "is checked against its issuer's keys elsewhere, Sanguity names each and asks you first. " +
         "Each contact is noted in the profile's activity log.";
     shlWho(d.expired ? "This link has expired, so it can't be fetched. Ask whoever shared it for a new one."
-           : !d.https ? "This link's address isn't HTTPS, so Sanguity won't fetch it." : who, d.expired || !d.https);
+           : !d.https ? "This link's address isn't HTTPS, so Sanguity won't fetch it." : "Experimental: " + who, d.expired || !d.https);   // (#1122)
     go.textContent = "Fetch and preview";
     go.disabled = busy || d.expired || !d.https;
     tell(goMsg, "");
@@ -92,7 +92,7 @@
       const title = seen.label || "A Health Link";
       text.value = ""; clear();
       const hook = window.sanguityImport && window.sanguityImport.uploaded;
-      if (typeof hook === "function") await hook({profileId: pid(), uploadId: r.upload, importer: "fhir", title});
+      if (typeof hook === "function") await hook({profileId: pid(), uploadId: r.upload, importer: "fhir", title, size: "Experimental"});   // (#1122: beside its title)
       tell(goMsg, "");
     } catch (e) {
       if (e.status === 409 && e.detail && Array.isArray(e.detail.hosts)) {   // (#919) other hosts it names: asked first

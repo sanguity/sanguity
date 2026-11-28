@@ -4037,6 +4037,10 @@ Everything on `main` so far; it becomes the first tagged release.
   records". Open ones are a line each on the Overview's Follow-ups card, the response date is in the calendar feed as
   "Sanguity records request" unless you choose to show who it went to, and requests are encrypted (schema version 57),
   in backups and Export everything, and put back from an export. Add → Records request starts one.
+- **PDF lab reports and Health Links are labelled experimental** (#1122), as connected sources are: Add's Paste a
+  Health Link (experimental), Sources' Health Link card, its line on the Overview, a link's preview and its import's
+  card, and Upload's words on Quest and Labcorp PDFs; a PDF's review says "Experimental: check each value against the
+  PDF before adding."
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 
