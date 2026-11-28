@@ -22,6 +22,7 @@ const WHAT = {
   reload: () => "loaded the latest records",
   export: d => (d.format === "tax" ? `downloaded Costs' tax-year report for ${d.year}` : d.format === "fhir" ? "exported as FHIR" : "exported everything") + (d.cycle ? ", with the cycle records" : ""),   // #183, #205, #1136
   summary: d => `made a visit summary${d.for ? ` for the appointment on ${recordDate(d.for)}` : ""}${(d.sections || []).includes("cycle") ? ", with the cycle records" : ""}`,
+  emergency: d => d.file === "png" ? "made an emergency card lock-screen image" : `made an emergency card PDF${d.paper === "a4" ? " (A4)" : ""}`,   // #1126
   cycle: d => ({on: "turned cycle tracking on", off: "turned cycle tracking off, deleting what was kept", delete: "deleted the cycle records kept"}[d.change] || "changed cycle tracking"),   // #183
   upload: d => d.source === "smart-health-link" ? `imported a SMART Health Link from ${d.host}` : `uploaded ${d.files} file${d.files === 1 ? "" : "s"} to import`,
   outside: d => `had Sanguity contact ${d.host} (${d.purpose})`,
@@ -115,7 +116,7 @@ const FILTERS = [["", "Everything"], ["view", "Opened the records"], ["document"
   ["share", "Sharing"], ["unshare", "Removed access"], ["rename", "Renames"], ["import", "Imports"], ["reload", "Reloads"],
   ["export", "Exports"], ["upload", "Uploads"], ["discard", "Cancelled imports"], ["undo", "Undone imports"], ["edit", "Edits"],
   ["outside", "Outside connections"], ["settings", "Settings"], ["connect", "Connected sources"], ["calendar", "Calendar feeds"],
-  ["journal", "Journal"], ["summary", "Visit summaries"], ["source", "Renamed imports"], ["link", "Share links"]];
+  ["journal", "Journal"], ["summary", "Visit summaries"], ["emergency", "Emergency cards"], ["source", "Renamed imports"], ["link", "Share links"]];
 const describe = e => (WHAT[e.action] || (() => e.action))(e.detail || {}, e);
 function activityRows(list) {
   return list.map(e => el("tr", {},

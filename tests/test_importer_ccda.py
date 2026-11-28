@@ -440,6 +440,27 @@ class Immunizations(unittest.TestCase):
                              "ver": {"source": "Harbor View Clinic"}})
 
 
+    def test_no_known_allergies_kept(self):
+        """#1126: a "no known allergies" statement (negationInd, no substance) is kept, said as its kind of allergy
+        says it, as the FHIR importer keeps one; one naming a substance (not allergic to it) is neither"""
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(self.HV, encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn('<code code="7980" codeSystem="2.16.840.1.113883.6.88" displayName="Penicillin G"/>', text)
+        got = {}
+        for name, change in (("none", lambda t: t.replace('<code code="7980" codeSystem="2.16.840.1.113883.6.88" displayName="Penicillin G"/>', '<code nullFlavor="NA"/>')),
+                             ("named", lambda t: t)):
+            allergy = '<observation classCode="OBS" moodCode="EVN">\n                  <templateId root="2.16.840.1.113883.10.20.22.4.7"'
+            self.assertIn(allergy, text, "the allergy observation found")
+            x = change(text).replace(allergy, allergy.replace('moodCode="EVN">', 'moodCode="EVN" negationInd="true">'), 1)
+            p = os.path.join(tmp, f"{name}.xml")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(x)
+            got[name] = [(a["name"], a["substance"], a["date"]) for a in ccda.parse({f"{name}.xml": p})["data"]["problems"]]
+        self.assertEqual(got, {"none": [("Allergy: No known drug allergies", "No known drug allergies", "2010-01-01")], "named": []})
+
+
 class Contract(unittest.TestCase):
     def test_output_passes_the_registry_check(self):   # the shape the app stores (server/importers/__init__.py)
         from server import importers as registry
