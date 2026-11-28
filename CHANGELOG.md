@@ -3957,6 +3957,11 @@ Everything on `main` so far; it becomes the first tagged release.
   (the default, as before) or Green for the Labs heatmap's in-range cells, from the page's first frame; green means only
   inside the range the report gave, out of range stays red with ▲/▼, and forced colours are unchanged.
 - **A document's PDF on Android no longer opens a tab on its own** (#1113): a Chromium browser on an Android tablet (Vivaldi) that says it can show a PDF in a page handed the drawer's PDF to a new tab unasked and left the drawer blank. On Android the drawer now always shows the PDF's name and size with **Open the PDF**, which opens it only when pressed; desktop browsers keep it in the drawer.
+- **One spot over time** (#1139): a journal photo can be tagged with a named spot ("Left forearm mole"), an earlier
+  one or new, in its entry's form; a spot's panel shows its photos oldest first, any two side by side or one over the
+  other with a slider (arrow keys, touch, said with both photos' dates and notes), each with its date and its entry's
+  note, and nothing said about the pictures. Spots can be renamed and merged, and a photo taken off one; they're in
+  backups and "Export everything" (schema version 56).
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 
