@@ -65,8 +65,8 @@ BUDGETS = {
     "phone_pan_frame_ms": 250,          # again for the moved window, to the frame after; on a phone as above (CI's runner
                                         # is about 2.2 times slower; the heatmap's pixel columns one path a colour, #300)
     "share_page_px": 20_000,            # a share link's page with every section, of any date, at 1400 px (#491)
-    "static_bytes": 310_000,           # www/'s stylesheets, fonts and SVG icons as nginx sends them, whatever the records
-                                        # (#253; compressed as sent since Redesign 4, the owner's choice): room for R4–R7
+    "static_bytes": 320_000,           # www/'s stylesheets, fonts and SVG icons as nginx sends them, whatever the records
+                                        # (#253; compressed as sent since Redesign 4; 320 KB for 0.2.0's features: the owner's choices)
 }
 RUNS = 3
 
