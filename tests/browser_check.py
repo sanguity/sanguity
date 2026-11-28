@@ -4233,7 +4233,7 @@ def main():
         # the Sharing page (#168): its sidebar, each part drawn by its own script
         strict.goto(base + "/sharing.html#summary")   # the visit summary (#48)
         strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
-        check("under the CSP: summary.js runs", strict.evaluate("document.querySelectorAll('#sections input:checked').length") == 5)   # #225: measures unticked
+        check("under the CSP: summary.js runs", strict.evaluate("document.querySelectorAll('#sections input:checked').length") == 6)   # #225: measures unticked (family history since #1134)
         # #299: the preview's trends draw the kit's one sparkline (chartkit.js, loaded here too), scaled to each result's
         # own range: a trend of fewer than three results no line, only its latest's mark against its band; and this
         # visit's date among the appointments in ink, as the others' (it was the out-of-range red)
@@ -22804,7 +22804,7 @@ def main():
             check("the old visit summary address opens Sharing → Visit summary, on that profile",
                   js("document.getElementById('profile').value") == "2" and js("document.querySelector('#shrNav [aria-current=page]').textContent") == "Visit summary")
             check("the summary page offers every section", js("[...document.querySelectorAll('#sections input')].map(i => i.value)") ==
-                  ["out_of_range", "trends", "medications", "appointments", "questions"])
+                  ["out_of_range", "trends", "medications", "family", "appointments", "questions"])   # (family history, #1134)
             check("…the last visit is the default since point", js("document.querySelector('#since option').textContent.startsWith('The last visit (')"))
             page.uncheck("#sections input[value=appointments]")
             page.fill("#labIn", "Ferritin")
@@ -22834,7 +22834,7 @@ def main():
                   and js("document.querySelector('#sgToasts .sg-toast:last-child .sg-toast-text').textContent") == "Saved your questions.", q_bar)
             page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)   # drawn as the choices change (#288)
             heads = js("[...document.querySelectorAll('#preview h3')].map(h => h.textContent.replace(/ \\(\\d+\\)$/, ''))")
-            check("…the preview shows the ticked sections", len(heads) == 4 and heads[0].startswith("Out of range since") and heads[-1] == "My questions", heads)
+            check("…the preview shows the ticked sections", len(heads) == 5 and heads[0].startswith("Out of range since") and heads[-1] == "My questions", heads)
             check("…with the questions and the notice", "Should the next draw be fasting?" in js("document.getElementById('preview').textContent")
                   and "isn't medical advice" in js("document.getElementById('preview').textContent"))
             check("…and Ferritin among the trends", "Ferritin" in js("document.getElementById('preview').textContent"))
@@ -22856,7 +22856,7 @@ def main():
             page.fill("#questions", "Is the ferritin result worth rechecking?\nShould the next draw be fasting?\nA third question, typed?")
             page.wait_for_selector("#preview:not([aria-busy]) li:has-text('A third question, typed?')", timeout=10000)
             check("…an option changed draws the preview again by itself, marked busy meanwhile: a section unticked leaves it, a question typed is in it (#288)",
-                  busy288 == "true" and "Current medications" not in heads288 and len(heads288) == 3, [busy288, heads288])
+                  busy288 == "true" and "Current medications" not in heads288 and len(heads288) == 4, [busy288, heads288])
             page.check("#sections input[value=medications]")
             page.fill("#questions", "Is the ferritin result worth rechecking?\nShould the next draw be fasting?")
             page.wait_for_selector("#preview:not([aria-busy]) h3:has-text('Current medications')", timeout=10000)
