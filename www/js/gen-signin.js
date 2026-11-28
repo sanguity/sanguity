@@ -66,8 +66,9 @@ function drawSignin(d, note) {
     "If the provider stops working, python -m server.manage oidc-only off turns this back.";
   card.replaceChildren(...present(
     el("div", {class: "set-hd"}, el("h2", {id: "gen-signin-hd", tabindex: -1, text: "Sign-in provider"})),
-    el("p", {class: "hint", text: "One OpenID Connect provider, like Authentik, Keycloak, Authelia or Google: Sign in with it on the sign-in page, " +
-      "for each person who links their identity there. Nobody is contacted until it's set up. Each change applies at once."}),
+    // (its first line the hint, the rest behind the heading's ⓘ: one line at 1400 px, as every card's)
+    helpNodes("One OpenID Connect provider, to sign in with on the sign-in page.\nLike Authentik, Keycloak, Authelia or Google: " +
+      "each person who links their identity there signs in with it. Nobody is contacted until it's set up. Each change applies at once."),
     msg, signinReauth(), ...rows,
     ro("Redirect URI", d.from_public_address ? "Register exactly this with the provider, as the app's redirect URI (or callback URL). It's made from the address the app gives out, under Host."
       : "Register exactly this with the provider, as the app's redirect URI (or callback URL). It's this page's address: set a public address under Host so it stays the same.",
