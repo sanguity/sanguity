@@ -29,6 +29,8 @@ Profile events (profile_id set), readable by the profile's owners:
                 feed of the profile (calendar.py, #51); username when an owner revoked someone else's. Fetches aren't logged
   journal       {"action", "kind"}: a journal entry added, changed or deleted (journal.py; action is "add", "change"
                 or "delete", kind "note", "symptom", "side_effect" or "mood" (#161); never what it says)
+                {"action"}: a spot renamed, merged into another or taken off a photo (#1139; "spot.rename", "spot.merge",
+                "spot.untag"; never its name)
   summary       {"sections", "since", "for", "pages", "questions"}: made a visit summary PDF (summary.py, #48; the
                 sections and dates only, never the questions or any result)
   watch.secret  {"ended", "maker"} (actor ACCESS_ENDED): the secret its maker made went with their access (#929)

@@ -161,7 +161,10 @@ group it was logged with (the groups themselves are the sealed profile setting `
 **journal_photos** (schema version 32, `server/journal_photos.py`) has one row a photo, pointing at its entry (NULL
 while the entry isn't saved yet), with only its random file name in `profiles/<id>/journal/`, its type and size; the
 picture is sealed there with its metadata (GPS location, camera, time taken) taken out, and what it shows is in the
-entry's encrypted body. Deleting the entry deletes its photos; an export carries them in `journal/photos/`. The medication
+entry's encrypted body. Deleting the entry deletes its photos; an export carries them in `journal/photos/`. Since #1139 a
+photo can be of a named spot (a mole, a rash, a wound, looked at over time): **journal_spots** (schema version 50) has
+the profile's spots, each name encrypted, and `journal_photos.spot_id` says which one a photo is of; a spot no photo is
+of goes, and an export carries each photo's spot by name. The medication
 timeline (#50, `server/medications.py`) is worked out from the `med` and `rx` events each time the records are put
 together and listed as `medications`; it has no table and is never stored from an import. **med_reminders** (schema
 version 33, #162, `server/med_reminders.py`) are the lines of a medication's schedule (#1094; version 47 made each
@@ -200,6 +203,8 @@ erDiagram
     results }o..o{ same_results : "matched by point key"
     profiles ||--o{ journal : "has"
     journal ||--o{ journal_photos : "shows"
+    profiles ||--o{ journal_spots : "has"
+    journal_spots ||--o{ journal_photos : "of"
     profiles ||--o{ med_reminders : "has"
     profiles ||--o{ med_doses : "has"
     profiles ||--o{ med_entries : "has"
@@ -338,6 +343,14 @@ erDiagram
         text file "random name of the sealed picture in profiles/<id>/journal/"
         text type "jpeg | png | webp"
         int bytes
+        int created
+        int created_by FK
+        int spot_id FK "the spot it's of, or NULL"
+    }
+    journal_spots {
+        int id PK
+        int profile_id FK
+        text name "encrypted"
         int created
         int created_by FK
     }
@@ -930,6 +943,7 @@ heart rate is the profile setting `person.maxHr` (above), sealed like the other 
 | `edits` | `target_key`, `other_key`, `value` |
 | `same_results` | `a_key`, `b_key`, `value` |
 | `journal` | `body` |
+| `journal_spots` | `name` |
 | `med_reminders` | `body` |
 | `med_doses` | `body` |
 | `med_entries` | `body` |

@@ -10453,6 +10453,112 @@ def main():
             check("…its panel passes axe at 1400 and 375 px, light and dark, and fits a phone", not dbad, dbad)
             page.keyboard.press("Escape")
 
+            # ---- one spot over time (#1139): a journal photo tagged with a named spot in its entry's form (an earlier
+            # spot's name offered, or a new one); the spot's panel shows its photos oldest first, any two side by side
+            # or one over the other with a slider (arrow keys, a pointer, said with both photos' dates and notes); at
+            # 320 px, in forced colours, light and dark; renamed, a photo taken off it; never a word about the pictures
+            spot1139 = "Left forearm mole (browser check)"
+            ids1139 = js("""async name => { const ids = [];
+                for (const [i, col] of ['#d9b49a', '#cfa184'].entries()) {
+                  const c = document.createElement('canvas'); c.width = 160; c.height = 120; const x = c.getContext('2d');
+                  x.fillStyle = col; x.fillRect(0, 0, 160, 120); x.fillStyle = '#5b3a2e'; x.beginPath(); x.arc(80, 60, 10 + i * 4, 0, 7); x.fill();
+                  const blob = await new Promise(ok => c.toBlob(ok, 'image/jpeg', .8));
+                  const ph = await (await api(`profiles/${PROFILE.id}/journal/photos`, {method: 'PUT', body: blob, headers: {'Content-Type': 'image/jpeg'}})).json();
+                  const r = await api(`profiles/${PROFILE.id}/journal`, {method: 'POST', body: JSON.stringify({kind: 'note', t: isoDay(Date.now() - (60 - i * 30) * DAY),
+                    note: `Look ${i + 1} at the forearm (browser check)`, photos: [{id: ph.id, alt: '', spot: name}]})});
+                  const j = await r.json(); storePut('journal', j); ids.push(j.id);
+                }
+                return ids; }""", spot1139)
+            js("closeDrawer(); journalNew()")
+            settle(200)
+            page.click("#dbody .jkinds [data-kind=note]")
+            page.fill("#dbody .jform textarea", "Look 3 at the forearm (browser check)")
+            page.set_input_files("#dbody .jphoto-in", files=[{"name": "mole.jpg", "mimeType": "image/jpeg", "buffer": jpeg}])
+            page.wait_for_selector("#dbody .jpics-edit .jpic img", timeout=10000)
+            offered = js("[...document.querySelectorAll('#dbody .jphotos datalist option')].map(o => o.value)")
+            field = js("""(() => { const i = document.querySelector('#dbody .jpics-edit input[list]'); return i && {list: i.list?.id, label: i.labels[0]?.textContent}; })()""")
+            page.fill("#dbody .jpics-edit input[list]", "  left FOREARM mole (browser check) ")
+            page.set_viewport_size({"width": 320, "height": 720})
+            settle(150)
+            tbad = axe_check(page, "entry form with a photo's spot, 320 px")[0] + phone_fits(page, "entry form with a photo's spot, 320 px")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.click("#dbody .jform button[type=submit]")
+            page.wait_for_function("document.getElementById('dtitle').textContent.startsWith('Look 3')", timeout=20000)
+            ids1139.append(js("-EV.find(e => e.k === 'journal' && e.j.note === 'Look 3 at the forearm (browser check)').id"))
+            tag = js("(() => { const b = document.querySelector('#dbody .jpic figcaption button'); return b && b.textContent; })()")
+            card = js("[...document.querySelectorAll('#journalHome .jspots button')].map(b => b.textContent)")
+            check("a journal photo is tagged with a spot in its entry's form (axe-clean, fits 320 px), the earlier spots offered (any letter case is the same "
+                  "spot); its panel names it, and the journal's card lists the spots",
+                  spot1139 in offered and field and field["list"] and "spot" in field["label"].lower() and tag == f"Spot: {spot1139}"
+                  and f"{spot1139} (3)" in card and not tbad, [offered, field, tag, card, tbad])
+            page.click("#dbody .jpic figcaption button")
+            settle(300)
+            sp = js("""(() => { const d = document.getElementById('dbody'), sel = [...d.querySelectorAll('.jspot-cmp select')];
+                return {title: document.getElementById('dtitle').textContent, sub: document.getElementById('dsub').textContent,
+                  picks: sel.map(s => [s.labels[0]?.textContent, s.selectedIndex, s.options.length]),
+                  side: [...d.querySelectorAll('.jspot-cmp img')].length, caps: [...d.querySelectorAll('.jspot-cmp figcaption')].map(c => c.textContent),
+                  list: [...d.querySelectorAll('[role=list] > .jpic figcaption b')].map(b => b.textContent), text: d.innerText}; })()""")
+            check("…the spot's panel: its photos oldest first, the first and the latest side by side, each with its date and its entry's note",
+                  sp["title"] == spot1139 and sp["sub"].startswith("Spot · 3 photos") and sp["picks"] == [["First photo", 0, 3], ["Second photo", 2, 3]]
+                  and sp["side"] == 2 and "Look 1 at the forearm" in sp["caps"][0] and "Look 3 at the forearm" in sp["caps"][1]
+                  and len(sp["list"]) == 3 and js("[...document.querySelectorAll('#dbody [role=list] > .jpic')].map(f => f.textContent.includes('Look 1')).indexOf(true)") == 0, sp)
+            words = re.findall(r"(?i)\b(grow\w*|chang\w*|improv\w*|wors\w*|better|bigger|smaller|shrink\w*|normal|larger|spread\w*)\b", sp["text"])
+            check("…no word about the pictures: nothing measured, nothing said to have grown or changed", not words, words)
+            page.select_option("#dbody .jspot-cmp select >> nth=0", index=1)
+            page.click("#dbody .jspot-cmp .seg button:text-is('Slider')")
+            settle(200)
+            rng = "#dbody .jspot-cmp input[type=range]"
+            sl = js("""(() => { const r = document.querySelector('#dbody .jspot-cmp input[type=range]'), top = r.previousElementSibling.querySelectorAll('img')[1];
+                return {label: r.getAttribute('aria-label'), said: (r.getAttribute('aria-describedby') || '').split(' ').map(i => document.getElementById(i)?.textContent),
+                  text: r.getAttribute('aria-valuetext'), clip: top.style.clipPath, v: r.value}; })()""")
+            page.focus(rng)
+            page.keyboard.press("ArrowLeft")
+            page.keyboard.press("ArrowLeft")
+            k = js(f"(r => [r.value, r.getAttribute('aria-valuetext'), r.previousElementSibling.querySelectorAll('img')[1].style.clipPath])(document.querySelector('{rng}'))")
+            page.keyboard.press("End")
+            end = js(f"document.querySelector('{rng}').value")
+            box = page.locator(rng).bounding_box()
+            page.mouse.click(box["x"] + box["width"] * .25, box["y"] + box["height"] / 2)
+            dragged = js(f"+document.querySelector('{rng}').value")
+            d1, d2 = sp["list"][1], sp["list"][2]
+            check("…the slider: one photo over the other, a real range input named with both dates, each photo's date and note said; arrow keys, End and a pointer move it",
+                  sl["v"] == "50" and d1 in sl["label"] and d2 in sl["label"] and "Look 2" in sl["said"][0] and "Look 3" in sl["said"][1]
+                  and sl["clip"] == "inset(0px 50% 0px 0px)" and k[0] == "40" and k[1].startswith(f"{d1} on the left 40%") and k[2] == "inset(0px 60% 0px 0px)"
+                  and end == "100" and 15 <= dragged <= 35, [sl, k, end, dragged])
+            fbad = []
+            for width in (1400, 320):
+                page.set_viewport_size({"width": width, "height": 900 if width > 400 else 720})
+                for view in ("Side by side", "Slider"):
+                    page.click(f"#dbody .jspot-cmp .seg button:text-is('{view}')")
+                    for theme in ("light", "dark"):
+                        js("t => { document.documentElement.dataset.theme = t; }", theme)
+                        settle(150)
+                        fbad += axe_check(page, f"spot panel, {view}, {width} px, {theme}")[0] + (phone_fits(page, f"spot panel, {view}, {theme}") if width < 400 else [])
+                        if shots and theme == "light":
+                            page.screenshot(path=os.path.join(shots, f"1139-spot-{view.split()[0].lower()}-{width}.png"))
+            js("delete document.documentElement.dataset.theme")
+            page.emulate_media(forced_colors="active")
+            settle(150)
+            fc = js(f"""(r => {{ const line = r.previousElementSibling.querySelector('span'), s = getComputedStyle(line);
+                return {{w: r.getBoundingClientRect().width, line: s.borderLeftStyle, color: s.borderLeftColor, imgs: r.previousElementSibling.querySelectorAll('img').length}}; }})(document.querySelector('{rng}'))""")
+            fbad += phone_fits(page, "spot panel, slider, forced colours")   # (axe reads forced colours' system colours wrongly)
+            page.emulate_media(forced_colors="none")
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("…the panel passes axe and fits 320 px in both views, light and dark; in forced colours the slider and its line are drawn",
+                  not fbad and fc["w"] > 200 and fc["line"] == "solid" and fc["color"] not in ("transparent", "rgba(0, 0, 0, 0)") and fc["imgs"] == 2, [fbad, fc])
+            # renamed from its ⋯ menu, a photo taken off it (the photo stays with its entry)
+            page.click("#dmoreBtn")
+            page.click("#dmoreList button:text-is('Rename')")
+            page.fill("dialog.sg-ask input", "Forearm mole (browser check)")
+            page.click("dialog.sg-ask button[value=yes]")
+            page.wait_for_function("document.getElementById('dtitle').textContent === 'Forearm mole (browser check)'", timeout=10000)
+            page.click("#dbody [role=list] > .jpic:first-child button:text-is('Take off this spot')")
+            page.wait_for_function("document.getElementById('dsub').textContent.startsWith('Spot · 2 photos')", timeout=10000)
+            left = js("""ids => ids.map(i => byId.get(-i)?.j.photos?.map(p => p.spot?.name || null))""", ids1139)
+            check("…renamed from its ⋯ menu, and a photo taken off it stays with its entry", left == [[None], ["Forearm mole (browser check)"], ["Forearm mole (browser check)"]], left)
+            js("""async ids => { for (const id of ids) storePut('journal', await (await api(`profiles/${PROFILE.id}/journal/${id}`, {method: 'DELETE'})).json()); closeDrawer(); }""", ids1139)
+            settle(200)
+
             # where symptoms have been: the body map with counts, its places buttons; its table (#60)
             js("closeDrawer(); switchTab('timeline', 'journal'); setRange(Date.now() - 20 * DAY, Date.now() + 5 * DAY)")
             settle()

@@ -17,7 +17,8 @@ And with #161, optionally:
                are the person's own named sets of symptoms ("Migraine day": headache, nausea...), the profile setting
                journal.groups (check_groups); an entry keeps the name it was logged with when the group changes
   photos       on a note, symptom or side effect: [{"id", "alt"}], pictures sent first and kept by journal_photos.py,
-               each with what it shows in the person's words (alt)
+               each with what it shows in the person's words (alt), and (#1139) the spot it's of, if any ("spot": its
+               name, sent; {"id", "name"} listed), kept with the photo rather than in the entry's body
 
 An entry is written by a person, not imported: it belongs to the profile, so undoing or replacing an import leaves
 it, and it goes with the profile when the profile is deleted. Everything an entry says is encrypted in body
@@ -226,12 +227,17 @@ def check_groups(v):
     return out
 
 
+def _body(entry):
+    """What an entry's body keeps: its photos without their spots (#1139), which are the photos' own (journal_photos)."""
+    return {**entry, "photos": photos_store.kept(entry["photos"])} if entry.get("photos") else entry
+
+
 def add(db, pid, who, entry):
     """Store a checked entry (check()). who: the signed-in account. Call inside a transaction. Returns its id."""
     from . import db as dbm, records
     jid = db.execute("INSERT INTO journal(profile_id, body, created_by, created_name, created) VALUES(?, ?, ?, ?, ?)",
-                     (pid, _enc(entry), who["id"], who["username"], dbm.now())).lastrowid
-    photos_store.attach(db, pid, jid, entry.get("photos") or [])
+                     (pid, _enc(_body(entry)), who["id"], who["username"], dbm.now())).lastrowid
+    photos_store.attach(db, pid, jid, entry.get("photos") or [], who["id"])
     records._bump(db, pid)
     return jid
 
@@ -248,8 +254,8 @@ def change(db, pid, jid, who, entry):
     if was is None:
         return None
     db.execute("UPDATE journal SET body=?, changed_by=?, changed_name=?, changed=? WHERE id=? AND profile_id=?",
-               (_enc(entry), who["id"], who["username"], dbm.now(), jid, pid))
-    photos_store.attach(db, pid, jid, entry.get("photos") or [])
+               (_enc(_body(entry)), who["id"], who["username"], dbm.now(), jid, pid))
+    photos_store.attach(db, pid, jid, entry.get("photos") or [], who["id"])
     records._bump(db, pid)
     return was
 
@@ -267,7 +273,7 @@ def remove(db, pid, jid):
 
 def listing(db, pid, ids=None):
     """The profile's entries, oldest first: {id, kind, t, title, severity, note, med, by, at, changed, changed_by}, and
-    (#161) where, group, photos [{id, alt, type, bytes}], mood and energy when they have them. ids: only those entries
+    (#161) where, group, photos [{id, alt, type, bytes, spot?}], mood and energy when they have them. ids: only those entries
     (a change's reply carries the entries it changed, #271)."""
     out, pics = [], None
     only = "" if ids is None else f" AND id IN ({','.join('?' * len(ids))})"
