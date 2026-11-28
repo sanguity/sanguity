@@ -27,7 +27,7 @@ let SET_NAV = null;   // the sidebar (sideNav), for account.js's and admin.js's 
   const GROUPS = SG_PAGES.settings.groups;   // groups.js: one list, which the command palette searches too (#273)
   /* whose settings each group holds: the registry's sections say it by their settings' scope (data-scope); a group
      missing here goes by that */
-  const WHO = {dashboard: "profile", about: "profile", labs: "profile", milestones: "profile", activity: "profile", profile: "profile",
+  const WHO = {dashboard: "profile", about: "profile", insurance: "profile", labs: "profile", milestones: "profile", activity: "profile", profile: "profile",
     security: "you", device: "you", display: "you"};
   const SAY = {
     profile: ["This profile", ", for everyone it's shared with."],
