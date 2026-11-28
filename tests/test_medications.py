@@ -438,7 +438,7 @@ class InTheRecords(unittest.TestCase):
     def test_stopped_taking_kept_in_the_history(self):   # #1161
         """Stopped taking: one of your own and one of the records' marked stopped on a day with a reason or none, out of
         Current with their dates and reason, the schedule ended there (the calendar feed, the doses a day gives), not on
-        the visit summary or the emergency card, the FHIR export saying stopped with the end date; kept through a
+        the visit summary or the emergency card's suggestions, the FHIR export saying stopped with the end date; kept through a
         re-import of the records; Undo puts each back; Started again a span after the time before, current again, and
         stopped again; what can't be (stopped already, a day before it started) refused; a viewer can do none of it.
         Records that later give an end date show as stopped the same way."""
@@ -475,10 +475,10 @@ class InTheRecords(unittest.TestCase):
             self.assertEqual(r.status_code, 200, r.text)
             db = dbm.connect()
             try:
-                card = emergency.card(db, pid, uid, "x")
+                card = [s["text"] for s in emergency.suggestions(db, pid, uid) if s["section"] == "medications"]
             finally:
                 db.close()
-            return [n for n in ("Calmora", "Fictorin", "Placebex") if n in json.dumps(r.json())], [m["name"].split()[0] for m in card["medications"]]
+            return [n for n in ("Calmora", "Fictorin", "Placebex") if n in json.dumps(r.json())], [t.split(":")[0].split()[0] for t in card]
 
         def fhir():
             r = self.c.get(p + "/export?format=fhir")
