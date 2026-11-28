@@ -1,12 +1,14 @@
 """Out-of-pocket costs (#55): where each amount came from, HSA/FSA tags, payments matched to claims, and nothing
 counted twice. records._assemble calls annotate() last, and the Costs tab reads what it adds as data["oop"].
 
-A profile's out-of-pocket amounts arrive three ways:
+A profile's out-of-pocket amounts arrive four ways:
 
   typed     payments typed in on the Import page (manual_items.py, kind "payment"), maybe with a receipt (a
             "document" event of the same import) and an HSA/FSA tag
+  file      payments from a payments spreadsheet uploaded (importers/payments_csv.py, #1163): their source keys say
+            so ("payments-csv:"), loaded back in from a Sanguity export too
   records   payments imported with other records (a Sanguity data.json loaded back in, build.py's payments.json):
-            any outOfPocket.payments entry an import other than hand entry brought
+            any other outOfPocket.payments entry an import other than hand entry brought
   claim     a claim's patient responsibility (its Costs row's "owe"), as the insurer reported it
 
 Each is said one way wherever it's shown (SRC_LABELS: the Costs tab says the same, costs.js OOP_SRC, and the tax-year
@@ -58,7 +60,7 @@ from . import costplan, crypto, db as dbm, edits, security as sec
 DUP_DAYS = 3
 MATCH_BEFORE, MATCH_AFTER = 3, 180
 HSA_TAGS = ("HSA", "FSA")
-SRC_LABELS = {"typed": "Typed in by you", "records": "Imported with your records"}
+SRC_LABELS = {"typed": "Typed in by you", "file": "From a payments file you uploaded", "records": "Imported with your records"}
 PREMIUM = re.compile(r"premium", re.I)
 _WORDS_IGNORED = {"the", "and", "inc", "llc", "pllc", "ltd", "corp", "dba", "of", "for", "fictional", "payment", "pmt",
                   "bill", "medical", "health", "center", "services", "group", "associates", "hospital", "clinic", "dr"}
@@ -78,6 +80,13 @@ def payment_key(p):
     amount = p.get("amount")
     return "pay:h:" + _h(p.get("d"), p.get("payee"), f"{amount:.2f}" if isinstance(amount, (int, float)) else amount,
                          p.get("account"), p.get("memo"))
+
+
+def source(fmt, key):
+    """Where a payment came from (SRC_LABELS' key): typed in, a payments file uploaded, or other records."""
+    if fmt == "manual" or str(key).startswith("manual:"):   # typed in here, or loaded back in from an export of it
+        return "typed"
+    return "file" if fmt == "payments-csv" or str(key).startswith("payments-csv:") else "records"
 
 
 def target_hash(key):
@@ -180,7 +189,7 @@ def annotate(db, pid, data, imps=()):
             hsa = _account_tag(p.get("account"))
             src_tag = "account" if hsa else None
         receipt = by_key.get(p.get("receipt")) if p.get("receipt") else None
-        out_p.append({"i": i, "key": key, "src": "typed" if fmt == "manual" else "records", "imp": imp,
+        out_p.append({"i": i, "key": key, "src": source(fmt, key), "imp": imp,
                       "hsa": hsa, "hsaFrom": src_tag, "premium": bool(PREMIUM.search(str(p.get("group") or ""))),
                       "claim": None, "match": None, "dup": None,
                       "receipt": receipt["id"] if receipt else None, "marked": bool(m),

@@ -1,0 +1,8 @@
+Exported from a budgeting app (fictional)
+Date,Payee,Category,Amount,Account,Memo
+03/02/2026,Lakeside Clinic (fictional),Doctor,-40.00,HSA debit card,Office visit copay
+03/02/2026,Lakeside Clinic (fictional),Doctor,-40.00,HSA debit card,Office visit copay
+03/09/2026,Corner Pharmacy (fictional),Pharmacy,-12.50,Visa card,
+04/03/2026,Example Health Plan (fictional),Insurance,-186.00,Checking,Monthly premium
+04/15/2026,Bright Smile Dental (fictional),Dentist,"-1,240.00",Checking,Crown
+,Nobody (fictional),Doctor,-5.00,Checking,no date

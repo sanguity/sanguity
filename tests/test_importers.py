@@ -322,6 +322,8 @@ class Common(unittest.TestCase):
         ("importers/claims_csv.py", "parse", "\\d,\\d"): "whether a claims file writes decimal commas (\"12,50\"): no number read",
         ("importers/claims_csv.py", "parse", "\\d\\."): "whether a claims file writes decimal points (\"12.50\"): no number read",
         ("importers/claims_csv.py", "_money", "float(x)"): "an amount number_text read, as a float",
+        ("importers/payments_csv.py", "parse", "\\d,\\d"): "whether a payments file writes decimal commas (\"12,50\"): no number read",
+        ("importers/payments_csv.py", "parse", "\\d\\."): "whether a payments file writes decimal points (\"12.50\"): no number read",
         ("importers/_claims.py", "money", "float(n)"): "an amount number_text read (or a JSON number), as a float",
         ("importers/__init__.py", "scores", "float(m.detect(files) or 0.0)"): "an importer's detect() score, a number",
         ("importers/apple_health.py", "record", 'float(el.get("value"))'): "HealthKit's own numbers in export.xml",

@@ -7,7 +7,7 @@ and "oop" never stored from an import. Fictional data only.
 
   python3 tests/test_costs.py
 """
-import json, os, shutil, sys, tempfile, unittest
+import json, os, shutil, sys, tempfile, time, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-costs-test-")
@@ -271,6 +271,54 @@ class Costs(unittest.TestCase):
         self.assertEqual([p["claim"] for p in out["payments"]], [None, None, None, 1], "only the one to the same provider, after it")
         self.assertEqual({c["id"]: c["counted"] for c in out["claims"]}, {1: 0.0, 2: 25.0})
         self.assertEqual(oop.words("Lakeside Clinic (fictional)"), {"lakeside"})
+
+    def job(self, up):
+        """An upload read into its preview, as the page's import does: the job's id and what it says."""
+        r = self.robin.post(f"/api/profiles/{self.pid}/uploads/{up}/import", json={}, headers=H)
+        self.assertEqual(r.status_code, 202, r.text)
+        jid = r.json()["id"]
+        for _ in range(600):
+            j = self.robin.get(f"/api/profiles/{self.pid}/jobs/{jid}").json()
+            if j["state"] in ("preview", "done", "failed", "cancelled"):
+                return jid, j
+            time.sleep(0.05)
+        self.fail("the job didn't finish")
+
+    def saved(self, jid):
+        self.assertEqual(self.robin.post(f"/api/profiles/{self.pid}/jobs/{jid}/confirm", json={"keep": []}, headers=H).status_code, 202)
+        for _ in range(600):
+            j = self.robin.get(f"/api/profiles/{self.pid}/jobs/{jid}").json()
+            if j["state"] in ("done", "failed"):
+                self.assertEqual(j["state"], "done", j)
+                return j
+            time.sleep(0.05)
+        self.fail("the save didn't finish")
+
+    def test_9_a_payments_spreadsheet(self):
+        """#1163: a payments CSV uploaded: its columns matched, a preview of its payments, saved as "From a payments
+        file you uploaded" (an HSA card tags HSA, a premium kept apart), the same file again adding only what's new,
+        and undone like any import"""
+        rows = ("Date,Paid to,Amount,Paid with,Memo\n2026-09-02,Harbor Physical Therapy (fictional),35.00,HSA card,Copay\n"
+                "2026-09-03,Example Health (fictional),186.00,Checking,Monthly premium\n")
+        jid, j = self.job(self.upload("payments.csv", rows.encode()))
+        self.assertEqual((j["state"], j["importer"], j["counts"]["payments"]), ("preview", "payments-csv", 2), j)
+        self.assertEqual([s["title"] for s in j["samples"]["payments"]], ["Example Health (fictional) · $186.00", "Harbor Physical Therapy (fictional) · $35.00"])
+        first = self.saved(jid)
+        d, pays, _ = self.oop()
+        mine = [p for p in pays.values() if p["src"] == "file"]
+        self.assertEqual(sorted((d["outOfPocket"]["payments"][p["i"]]["payee"], p["hsa"], p["premium"]) for p in mine),
+                         [("Example Health (fictional)", None, True), ("Harbor Physical Therapy (fictional)", "HSA", False)])
+        # the same export again with a later row: only that one is new, the two already here said as duplicates
+        jid, j = self.job(self.upload("payments-later.csv", (rows + "2026-10-01,Corner Pharmacy (fictional),9.99,Visa,\n").encode()))
+        self.assertEqual((j["counts"]["payments"], j["duplicates"]["other"]), (1, 2), j)
+        self.assertEqual(sorted(i["title"] for i in j["duplicates"]["items"]),
+                         ["Example Health (fictional) · $186.00", "Harbor Physical Therapy (fictional) · $35.00"])
+        second = self.saved(jid)
+        self.assertEqual(sum(1 for p in self.oop()[1].values() if p["src"] == "file"), 3)
+        for done in (second, first):
+            r = self.robin.post(f"/api/profiles/{self.pid}/imports/{done['import_id']}/undo", headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+        self.assertFalse([p for p in self.oop()[1].values() if p["src"] == "file"], "undone, its payments are gone")
 
 
 if __name__ == "__main__":
