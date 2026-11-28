@@ -148,6 +148,9 @@ ROUTES = {
     ("PUT", "/api/profiles/{pid}/medications/own/{eid}"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/medications/own/{eid}"): (USER, "editor"),
     ("PUT", "/api/profiles/{pid}/medications/listed"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/medications/hidden"): (USER, "editor"),
+    ("POST", "/api/profiles/{pid}/family/own"): (USER, "editor"),             # family history of your own (#1134)
+    ("PUT", "/api/profiles/{pid}/family/own/{eid}"): (USER, "editor"),
+    ("DELETE", "/api/profiles/{pid}/family/own/{eid}"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/family/hidden"): (USER, "editor"),
     ("PUT", "/api/profiles/{pid}/person"): (USER, "editor"), ("POST", "/api/profiles/{pid}/person/heights"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/person/heights/{day}"): (USER, "editor"),
     ("GET", "/api/profiles/{pid}/watch/receiver"): (USER, "editor"),
@@ -417,6 +420,7 @@ PLAIN = {
     "journal": {"created_name", "changed_name"}, "journal_photos": {"file", "type"}, "med_reminders": {"created_name", "changed_name"},
     "med_doses": {"created_name", "changed_name"},   # #161: a random file name, jpeg/png/webp
     "med_entries": {"created_name", "changed_name"},   # #1091
+    "family_entries": {"created_name", "changed_name"},   # #1134
     "labmaps": {"lookup", "importer", "created_name", "changed_name"},
     "memberships": {"role"}, "meta": {"k", "v"}, "outside_contacts": {"purpose"},
     "passkeys": {"credential_id", "public_key", "rp_id", "name", "transports"},

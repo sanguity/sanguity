@@ -1089,6 +1089,131 @@ IN_SIGHT = """(a => a && a !== document.body && a.checkVisibility() && (r => r.b
     ? [a.tagName, a.id, a.dataset.id || '', a.textContent.trim().slice(0, 40)] : null)(document.activeElement)"""
 
 
+def family_check(browser, base, cookies, check):
+    """Family history (#1134, family.js), as an owner whose sign-in cookies are given, on profile 1 (the demo's two
+    relatives from the records): the Overview's Health record lists each relative, its conditions under it; Add a
+    relative opens the form in the drawer (focus in Relative, every field labelled, Add another condition focusing the
+    new one), saved as your own entry; Edit changes it; Remove deletes it with an Undo; one of the records' has Hide and
+    no Edit, hidden with an Undo, Hidden listing it with Show again, focus back on its row. The card and the form at
+    320-1400 px and 200% text, light and dark, forced colours: fits, axe-core. Leaves profile 1 as it found it. Returns
+    the page's script errors."""
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)   # (its waits are evaluated)
+    ctx.add_cookies(cookies)
+    pg, errs = ctx.new_page(), []
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    js, settle = pg.evaluate, (lambda ms=400: pg.wait_for_timeout(ms))
+    try:
+        pg.goto(base + "/#overview")
+        pg.wait_for_function("typeof booted !== 'undefined' && booted && !!document.getElementById('ovFamily')", timeout=20000)
+        rows = lambda: js("[...document.querySelectorAll('#ovFamily .ov-row')].map(r => [...r.children].map(c => c.textContent))")  # noqa: E731
+        check("Family history on the Overview's Health record (#1134): each relative from the records, its conditions under it",
+              rows() == [["Mother", "Living", "Hypothyroidism (onset age 45)"],
+                         ["Maternal grandfather", "Deceased, age 71", "Non-Hodgkin lymphoma (onset age 68) (contributed to death)"]]
+              and js("document.querySelector('#ovFamily h3').textContent") == "Family history (2)", rows())
+        pg.click("#ovFamily button:text-is('Add a relative')")
+        settle()
+        form = js("""[document.getElementById('dtitle').textContent, document.activeElement.id.startsWith('fam-relation'),
+            [...document.querySelectorAll('#dbody form label')].map(l => l.textContent),
+            [...document.querySelectorAll('#dbody form input, #dbody form select, #dbody form textarea')].every(i => i.labels.length === 1)]""")
+        check("…Add a relative opens the form in the drawer, focus in Relative, every field labelled",
+              form[0] == "Add a relative" and form[1] and form[2][:4] == ["Relative", "Name (optional)", "Condition 1", "Onset age (optional)"] and form[3], form)
+        pg.keyboard.type("Sister")
+        pg.fill("#dbody input[id^=fam-name]", "Jo")
+        pg.fill("#dbody input[id^=fam-c1]", "Migraine")
+        pg.fill("#dbody input[id^=fam-o1]", "16")
+        pg.click("#dbody button:text-is('Add another condition')")
+        check("…Add another condition: a second, focused", js("document.activeElement.id.startsWith('fam-c2') && document.activeElement.labels[0].textContent === 'Condition 2'"))
+        pg.keyboard.type("Asthma")
+        pg.select_option("#dbody select[id^=fam-status]", "living")
+        pg.click("#dbody button[type=submit]")
+        pg.wait_for_function("(DATA.familyHistory || []).some(x => x.own && x.relation === 'Sister')", timeout=20000)
+        settle()
+        own = js("""[document.getElementById('dtitle').textContent, document.getElementById('dbody').textContent.includes('Your own entry'),
+            document.getElementById('dbody').textContent.includes('Migraine (onset age 16); Asthma'), document.getElementById('sgStatus').textContent.includes('Sister (Jo) added.'),
+            [...document.querySelectorAll('#ovFamily .ov-row .n')].map(n => n.textContent)]""")
+        check("…saved: its drawer says it's your own entry with its conditions, said, and it's on the card",
+              own == ["Sister (Jo)", True, True, True, ["Mother", "Maternal grandfather", "Sister (Jo)"]], own)
+        pg.click("#dbody .btns button:text-is('Edit')")
+        settle()
+        pg.select_option("#dbody select[id^=fam-status]", "deceased")
+        pg.fill("#dbody input[id^=fam-deathAge]", "40")
+        pg.click("#dbody button[type=submit]")
+        pg.wait_for_function("(DATA.familyHistory || []).some(x => x.own && x.deathAge === '40')", timeout=20000)
+        settle()
+        check("…Edit changes it", js("document.getElementById('dsub').textContent") == "Family history · Deceased, age 40", js("document.getElementById('dsub').textContent"))
+        # the 320-1400 px, 200% text, themes and forced colours sweep: the card and the form
+        bad, axes, theme = [], [], js("document.documentElement.dataset.theme || null")
+        for width in (1400, 412, 320):
+            pg.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+            for th in ("light", "dark"):
+                js("t => { document.documentElement.dataset.theme = t; }", th)
+                pg.keyboard.press("Escape")
+                settle(250)
+                js("document.getElementById('ovFamily').scrollIntoView()")
+                if width < 1000:
+                    bad += phone_fits(pg, f"Family history card, {width} px ({th})")
+                axes += axe_check(pg, f"Family history card, {width} px, {th}")[0]
+                js("() => famEditForm(DATA.familyHistory.find(x => x.own))")
+                settle(300)
+                if width < 1000:
+                    bad += phone_fits(pg, f"Family history form, {width} px ({th})")
+                axes += axe_check(pg, f"Family history form, {width} px, {th}")[0]
+        js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme)
+        pg.set_viewport_size({"width": 412, "height": 900})
+        js("document.documentElement.style.fontSize = '200%'")
+        pg.keyboard.press("Escape")
+        settle(300)
+        js("document.getElementById('ovFamily').scrollIntoView()")
+        bad += phone_fits(pg, "Family history card, 412 px at 200%")
+        js("() => famEditForm(DATA.familyHistory.find(x => x.own))")
+        settle(300)
+        bad += phone_fits(pg, "Family history form, 412 px at 200%")
+        js("document.documentElement.style.fontSize = ''")
+        pg.set_viewport_size({"width": 1400, "height": 900})
+        pg.emulate_media(forced_colors="active")
+        settle(300)
+        axes += axe_check(pg, "Family history form, forced colours")[0]
+        pg.emulate_media(forced_colors="none")
+        check("…the card and the form fit 320-1400 px and 200% text, and pass axe-core's WCAG A and AA rules, light, dark and forced colours",
+              not bad and not axes, bad + axes)
+        js("() => openFamily(famOf(DATA.familyHistory.find(x => x.own)))")
+        settle()
+        pg.click("#dbody .btns button:text-is('Remove')")
+        pg.wait_for_function("!(DATA.familyHistory || []).some(x => x.own)", timeout=20000)
+        settle()
+        gone = js("""[drawer.classList.contains('open'), [...document.querySelectorAll('#sgToasts .sg-toast-text')].at(-1)?.textContent,
+            document.activeElement.textContent === 'Undo']""")
+        check("…Remove: deleted, the drawer closed, a toast with an Undo, focus on it", gone == [False, "Removed Sister (Jo).", True], gone)
+        pg.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+        pg.wait_for_function("(DATA.familyHistory || []).some(x => x.own && x.deathAge === '40')", timeout=20000)
+        settle()
+        check("…Undo puts it back as it was, its drawer open", js("[document.getElementById('dtitle').textContent, drawer.classList.contains('open')]") == ["Sister (Jo)", True])
+        # one from the records: Hide, never Edit; hidden with an Undo; Hidden lists it, Show again
+        pg.keyboard.press("Escape")
+        settle(250)
+        pg.click("#ovFamily .ov-row:has(.n:text-is('Mother'))")
+        settle()
+        btns = js("[...document.querySelectorAll('#dbody .btns button')].map(b => b.textContent)")
+        check("…one from the records: Hide, no Edit, its source said", btns == ["Hide"] and js("document.getElementById('dbody').textContent.includes('From Lakeside Family Medicine')"), btns)
+        pg.click("#dbody .btns button:text-is('Hide')")
+        pg.wait_for_function("(DATA.hiddenFamily || []).length === 1", timeout=20000)
+        settle()
+        hid = js("""[[...document.querySelectorAll('#ovFamily .ov-row .n')].map(n => n.textContent), document.querySelector('#ovFamily details summary')?.textContent,
+            document.activeElement.textContent === 'Undo']""")
+        check("…hidden: off the card, Hidden (1) under it, a toast with an Undo focused", hid == [["Maternal grandfather", "Sister (Jo)"], "Hidden (1)", True], hid)
+        pg.click("#ovFamily details summary")
+        pg.click("#ovFamily button:text-is('Show again')")
+        pg.wait_for_function("!(DATA.hiddenFamily || []).length", timeout=20000)
+        settle()
+        check("…Show again: back on the card, focus on its row, said",
+              js("[document.activeElement.dataset.fam, document.getElementById('sgStatus').textContent.includes('Mother is shown again.')]") == ["mother|", True])
+        js("async () => { const x = DATA.familyHistory.find(x => x.own); if (x) await famSend('DELETE', `own/${x.own.id}`); }")
+        settle(300)
+    finally:
+        ctx.close()
+    return errs
+
+
 def lab_matches_check(browser, base, cookies, check):
     """Settings → This person → Labs and ranges → Lab name matches (#1097), as an owner whose sign-in cookies are given,
     on profile 1: Keep separate left beside a test a review offered is saved like a match and listed here; Add a match
@@ -11823,6 +11948,9 @@ def main():
                 check("…Show again: back under Current, focus on its row, said", shown1093 == [cur["key"], False, True], shown1093)
                 js("async () => { const m = MEDS.find(m => m.own); if (m) await mmSend('DELETE', `own/${m.own.id}`); }")
                 settle(300)
+                # ---- #1134: family history on the Overview, added, changed, removed and hidden (family_check)
+                errs1134 = family_check(browser, base, [c for c in page.context.cookies() if c["name"] == "sg_session"], check)
+                check("…no script errors on the family history page", not errs1134, errs1134)
                 # (#1091, #1092) a new profile, nothing imported: Add → Add a medication opens the form, and saved, its first
                 # records are that medication, the tabs drawn on Medications with it under Current and in Today; again
                 # it opens there

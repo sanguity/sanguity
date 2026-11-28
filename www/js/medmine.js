@@ -22,12 +22,13 @@ const mmChanged = m => m.change ? MM_FIELDS.filter(([k]) => k in m.change) : [];
 const mmFields = m => m.own ? Object.fromEntries(MM_FIELDS.map(([k]) => [k, m.own[k] || ""]))
   : {...mmListed(m), ...Object.fromEntries(mmChanged(m).map(([k]) => [k, m.change[k]]))};
 const mmSays = (k, v) => !v ? "None" : k === "start" || k === "stop" ? fmtD(dayTs(v)) : v;
-/* a change sent; its reply's records put in place -> the reply, or null (said in msg, or announced) */
-async function mmSend(method, path, body, msg) {
+/* a change sent; its reply's records put in place -> the reply, or null (said in msg, or announced). base: the API's
+   part (family history's too, family.js) */
+async function mmSend(method, path, body, msg, base = "medications") {
   const say = (t, bad) => msg ? sayIn(msg, t, bad) : announce(t);
   if (msg) sayIn(msg, "Saving…");
   let r, j;
-  try { r = await api(`profiles/${PROFILE.id}/medications/${path}`, {method, body: JSON.stringify(body)}); j = await r.json().catch(() => ({})); }
+  try { r = await api(`profiles/${PROFILE.id}/${base}/${path}`, {method, body: JSON.stringify(body)}); j = await r.json().catch(() => ({})); }
   catch (err) { say("Couldn't reach the server: " + err.message, true); return null; }
   if (!r.ok) { say(typeof j.detail === "string" ? j.detail : `Couldn't save it (${r.status}).`, true); return null; }
   if (!j.records) location.reload();

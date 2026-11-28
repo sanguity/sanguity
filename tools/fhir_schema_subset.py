@@ -19,7 +19,7 @@ OUT = os.path.join(ROOT, "tests", "fixtures", "fhir-r4", "fhir.schema.subset.jso
 TYPES = ["Bundle", "Patient", "Observation", "DiagnosticReport", "Encounter", "Appointment", "Condition", "AllergyIntolerance",
          "MedicationStatement", "MedicationRequest", "MedicationDispense", "Immunization", "Procedure", "ImagingStudy",
          "DocumentReference", "Communication", "ExplanationOfBenefit", "Coverage", "Practitioner", "Organization", "Location",
-         "Device"]
+         "Device", "FamilyMemberHistory"]
 
 
 def refs(x):

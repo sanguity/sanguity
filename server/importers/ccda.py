@@ -1,9 +1,11 @@
 """C-CDA importer: the HL7 "download my record" XML most US patient portals offer.
 
-Reads the header encounter and the Results, Vital Signs, Medications, Problems, Allergies, Immunizations and Encounters
-sections of one or more C-CDA documents (CCD summaries or per-visit records) into the data.json shape build.py writes.
+Reads the header encounter and the Results, Vital Signs, Medications, Problems, Allergies, Immunizations, Encounters and
+Family History sections of one or more C-CDA documents (CCD summaries or per-visit records) into the data.json shape build.py writes.
 Allergies and immunizations take the shape common.allergy and common.immunization give them, which the FHIR importer
-and hand entry share (#179).
+and hand entry share (#179); family history (#1134) common.family_member's, one entry of `familyHistory` per Family
+History Organizer: the relative (its RoleCode in plain words, and a name where given), each Family History Observation
+with its Age At Onset, and whether they have died (sdtc:deceasedInd, or a Family History Death Observation).
 
 Lab series take their canonical names from lab-aliases.json (by LOINC code, then name or alias), so the same test
 from different sources lines up; names it doesn't know stay as reported, for the mapping step (#23).
@@ -38,6 +40,7 @@ SECTIONS = {
     "allergies": ({"2.16.840.1.113883.10.20.22.2.6.1", "2.16.840.1.113883.10.20.22.2.6"}, {"48765-2"}),
     "encounters": ({"2.16.840.1.113883.10.20.22.2.22.1", "2.16.840.1.113883.10.20.22.2.22"}, {"46240-8"}),
     "immunizations": ({"2.16.840.1.113883.10.20.22.2.2.1", "2.16.840.1.113883.10.20.22.2.2"}, {"11369-6"}),   # #179
+    "family": ({"2.16.840.1.113883.10.20.22.2.15"}, {"10157-6"}),   # #1134
 }
 CODE_SYSTEMS = {"2.16.840.1.113883.6.1": "LOINC", "2.16.840.1.113883.6.96": "SNOMED CT", "2.16.840.1.113883.6.90": "ICD-10-CM",
                 "2.16.840.1.113883.6.103": "ICD-9-CM", "2.16.840.1.113883.6.88": "RxNorm", "2.16.840.1.113883.6.12": "CPT",
@@ -245,7 +248,7 @@ class _Out:
         self.labs, self.panel_votes = {}, collections.defaultdict(collections.Counter)
         self.problems, self.weights, self.warnings = [], {}, []
         self.seen_visits, self.seen_meds, self.seen_problems, self.seen_results = set(), set(), set(), set()
-        self.seen_immunizations = set()
+        self.seen_immunizations, self.seen_family, self.family = set(), set(), []
         self.keys = set()
 
     def unique(self, key, *fields):
@@ -610,6 +613,47 @@ def _immunizations(doc, out):
                     key=_idkey(sa) or _hkey(t[:10], "immunization", (cvx.get("code") if cvx is not None else None) or name))
 
 
+SDTC = "{urn:hl7-org:sdtc}"
+FAMILY_DEATH, AGE_OBS = "2.16.840.1.113883.10.20.22.4.47", "2.16.840.1.113883.10.20.22.4.31"
+
+
+def _family(doc, out):
+    """#1134: each Family History Organizer (one relative) as an entry of `familyHistory` (common.family_member)."""
+    for sec in doc.sections("family"):
+        for org in _all(sec, "h:entry/h:organizer"):
+            rs = _f(org, "h:subject/h:relatedSubject")
+            rc = _f(rs, "h:code")
+            code = rc.get("code") or "" if rc is not None and rc.get("codeSystem") in (None, common.ROLE_OID) else ""
+            person = _f(rs, "h:subject")
+            dead = person.find(SDTC + "deceasedInd") if person is not None else None
+            deceased = {"true": True, "false": False}.get((dead.get("value") or "") if dead is not None else "")
+            conds = []
+            for obs in _all(org, "h:component/h:observation"):
+                if obs.get("negationInd") == "true":
+                    continue
+                v = _f(obs, "h:value")
+                name = (doc.name(v) or v.get("code") or "") if v is not None else ""
+                if not name:
+                    continue
+                inner = _all(obs, "h:entryRelationship/h:observation")
+                age = next((common.age_text(a.get("value"), a.get("unit") or "") for o in inner if _has_template(o, AGE_OBS)
+                            for a in [_f(o, "h:value")] if a is not None and a.get("value")), "")
+                died = any(_has_template(o, FAMILY_DEATH) for o in inner)
+                deceased = True if died else deceased
+                conds.append({"name": name, "onset": age, "death": died, "code": v.get("code"),
+                              "system": CODE_SYSTEMS.get(v.get("codeSystem"), v.get("codeSystem"))})
+            if not conds and deceased is None:
+                continue
+            rel = common.relation_word(code, doc.name(rc))
+            f = common.family_member(rel, conds, name=_person(person) if _f(person, "h:name") is not None else "",
+                                     deceased=deceased, src=doc.src, code=code)
+            key = _idkey(org) or _hkey("family", code or rel, *sorted(c.get("code") or c["name"] for c in f["conditions"]))
+            if key in out.seen_family:   # the same relative's history in two documents
+                continue
+            out.seen_family.add(key)
+            out.family.append({**f, "key": out.unique(key, "family", code or rel)})
+
+
 def _visit(doc, out, enc):
     """One visit (and, for an admission, a hospital stay) from an encompassingEncounter or an encounter entry."""
     t, end = _when(enc, "low"), _when(enc, "high")
@@ -682,10 +726,12 @@ def parse(files):
         _problems(doc, out)
         _allergies(doc, out)
         _immunizations(doc, out)
+        fam = len(out.family)
+        _family(doc, out)
         # (#968) each record named by its own id says whose it is, where the document says it: its custodian (else its
         # author's organisation), so another clinic's with the same id is told apart (server/preview.py _own_keys), a
         # lab event (an organizer) among them (#970: preview._same_records)
-        for x in out.events[had[0]:] + out.problems[had[1]:]:
+        for x in out.events[had[0]:] + out.problems[had[1]:] + out.family[fam:]:
             if doc.org and x.get("k") != "lab" and str(x.get("key") or "").startswith("ccda:") and ":h:" not in x["key"]:
                 x["ver"] = {"source": doc.org}
     series = []
@@ -712,9 +758,11 @@ def parse(files):
             s["key"] += f"|{s['name']}"
     series.sort(key=lambda s: (-s["n"], s["name"]))
     out.events.sort(key=lambda e: e["t"])
-    if not (out.events or series or out.problems or out.weights):
-        out.warnings.append("The C-CDA document was read but held no visits, results, vitals, medications, problems or "
-                            "immunizations.")
+    if not (out.events or series or out.problems or out.weights or out.family):
+        out.warnings.append("The C-CDA document was read but held no visits, results, vitals, medications, problems, "
+                            "immunizations or family history.")
     data = {"events": out.events, "details": out.details, "labs": series, "costs": [], "problems": out.problems,
             "clinicWeights": sorted(out.weights.values())}
+    if out.family:
+        data["familyHistory"] = out.family
     return {"data": data, "warnings": out.warnings}

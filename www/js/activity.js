@@ -26,6 +26,9 @@ const WHAT = {
   upload: d => d.source === "smart-health-link" ? `imported a SMART Health Link from ${d.host}` : `uploaded ${d.files} file${d.files === 1 ? "" : "s"} to import`,
   outside: d => `had Sanguity contact ${d.host} (${d.purpose})`,
   discard: () => "cancelled an import at its preview",
+  // family history (#1134), never who or what
+  family: d => ({add: "added a family history entry", back: "put back a family history entry", change: "changed a family history entry",
+    delete: "removed a family history entry", hide: "hid a family history entry of the records", show: "showed a family history entry of the records again"}[d.change] || "changed the family history"),
   // a lab name match of the profile's own (#1097), never its names
   labmap: d => ({add: "matched a lab name to a test", keep: "kept a lab name as its own test", change: "changed a lab name match", check: "kept a lab name match to check",
     remove: "removed a lab name match", undo: "undid a change to a lab name match"}[d.change] || "changed a lab name match") + (d.moved ? `, moving ${d.moved} saved result${d.moved === 1 ? "" : "s"}` : ""),

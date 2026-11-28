@@ -65,6 +65,7 @@ Patient needs an identifier from a health system and an administrative gender, w
 | Upcoming visit | `Appointment` (`booked`) |
 | Condition | `Condition` (problem list, or health concern), its clinical status coded and as written |
 | Allergy | `AllergyIntolerance`: substance and its code, reactions, severity, criticality, status |
+| Family history | `FamilyMemberHistory` per relative's entry (#1134): relationship (its v3 RoleCode where the words are one), name, each condition with its code, onset age and contributed to death, deceased and the age at death, the note |
 | Medication | `MedicationStatement`, based on a contained `MedicationRequest` that names the prescriber when the record does; RxNorm code, instructions, start and end |
 | Pharmacy fill | `MedicationDispense`: pharmacy, days' supply, quantity, prescriber |
 | Immunization | `Immunization`: CVX code, dose number, amount, route, site, lot, manufacturer, who gave it and where |

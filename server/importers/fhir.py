@@ -34,6 +34,9 @@ What becomes what:
     ExplanationOfBenefit           a `claim` event (pharmacy: `rx`) with its claim detail and a `costs` row, as the
                                    claims importers make them (CARIN Blue Button; see _fhir_claims.py)
     Coverage                       read for the insurer's and plan's names on those claims
+    FamilyMemberHistory            an entry of `familyHistory` (#1134, common.family_member): the relative (relationship,
+                                   its v3 RoleCode in plain words, and name), each condition with its onset age, whether
+                                   they have died and at what age, and the notes
     Communication                  a `message` event per conversation (#205): the messages that answer one another
                                    (inResponseTo), each with who sent it and when
     Observation, at home           (#205) one the Patient measured (the Patient its performer) of blood pressure, body
@@ -81,7 +84,7 @@ SUPPORTING = {"Patient", "Practitioner", "PractitionerRole", "Organization", "Lo
               "Provenance", "RelatedPerson", "Coverage", "Device"}   # Device: what took a home reading (#205)
 IMPORTED = {"Observation", "DiagnosticReport", "Condition", "MedicationRequest", "MedicationStatement", "MedicationOrder",
             "Encounter", "DocumentReference", "ExplanationOfBenefit", "AllergyIntolerance", "Immunization", "Procedure",
-            "MedicationDispense", "Appointment", "ImagingStudy", "Communication"}
+            "MedicationDispense", "Appointment", "ImagingStudy", "Communication", "FamilyMemberHistory"}
 KNOWN = SUPPORTING | IMPORTED | {
     "Bundle", "AllergyIntolerance", "Immunization", "Procedure", "CarePlan", "CareTeam", "Goal", "Device", "Claim",
     "ExplanationOfBenefit", "Coverage", "ImagingStudy", "MedicationAdministration", "MedicationDispense", "ServiceRequest",
@@ -90,7 +93,7 @@ KNOWN = SUPPORTING | IMPORTED | {
 # not here keeps its FHIR name
 PLAIN_KINDS = {"CarePlan": "care plans", "CareTeam": "care teams", "Goal": "goals", "Claim": "claims",
                "MedicationAdministration": "medicines given", "ServiceRequest": "orders", "Composition": "summary documents",
-               "QuestionnaireResponse": "questionnaire answers", "FamilyMemberHistory": "family history", "List": "lists",
+               "QuestionnaireResponse": "questionnaire answers", "List": "lists",
                "Binary": "loose files"}
 PLAIN_OBS = {"social-history": "social history notes (such as smoking)", "survey": "questionnaire answers",
              "exam": "exam findings", "imaging": "imaging measurements", "procedure": "procedure measurements",
@@ -304,6 +307,24 @@ def text_of(cc):
         if c.get("display"):
             return c["display"]
     return next((c.get("code") for c in cc.get("coding") or [] if c.get("code")), "")
+
+
+def _age(q):
+    """(#1134) A FHIR Age (a Quantity) as text: "52" in years, "18 months"."""
+    return common.age_text(num(q.get("value")), q.get("code") or q.get("unit") or "") if isinstance(q, dict) else ""
+
+
+def _age_range(r):
+    """(#1134) A Range of ages as text: "40–45", "from 40", "to 45"."""
+    if not isinstance(r, dict):
+        return ""
+    lo, hi = _age(r.get("low")), _age(r.get("high"))
+    return f"{lo}–{hi}" if lo and hi else f"from {lo}" if lo else f"to {hi}" if hi else ""
+
+
+def _notes(notes):
+    """A resource's Annotations' text, one paragraph each."""
+    return "\n\n".join(n["text"].strip() for n in notes or [] if isinstance(n, dict) and isinstance(n.get("text"), str) and n["text"].strip())
 
 
 def codes(cc, system=None):
@@ -719,7 +740,7 @@ def parse(files):
         return resource_key(r, mixed)
     b = Builder()
     labs = {}                               # series name -> {unit, loinc, pts, txt, panels}
-    problems, upcoming, weights = [], [], []
+    problems, upcoming, weights, family = [], [], [], []
     lab_days = defaultdict(list)            # day -> [labitem ids]
     lab_day_meta = defaultdict(lambda: {"t": None, "abn": 0, "n": 0, "orders": set()})
     used_obs = set()
@@ -1186,6 +1207,25 @@ def parse(files):
                          if isinstance(c, dict) and c.get("system") == KIND and c.get("code") in DOC_KINDS), "document")
             for i, c in enumerate(r.get("content") or [], 1):   # first plain, the others #content/<position>
                 document(rkey(r) + (f"#content/{i}" if i > 1 else ""), t, title, c.get("attachment"), r, rel, org, kind)
+        elif rt == "FamilyMemberHistory":   # #1134
+            if r.get("status") == "entered-in-error":
+                continue
+            rel = r.get("relationship") or {}
+            code = next(iter(codes(rel, common.ROLE_CODE) or codes(rel)), "")
+            conds = [{"name": text_of(c.get("code")), **dict(zip(("code", "system"), _code_of(c.get("code"), "http://snomed.info/sct"))),
+                      "onset": _age(c.get("onsetAge")) or _age_range(c.get("onsetRange")) or c.get("onsetString") or "",
+                      "death": c.get("contributedToDeath") is True, "note": _notes(c.get("note"))}
+                     for c in r.get("condition") or [] if isinstance(c, dict)]
+            dead = r.get("deceasedBoolean")
+            if dead is None and any(k in r for k in ("deceasedAge", "deceasedRange", "deceasedDate", "deceasedString")):
+                dead = True
+            f = common.family_member(common.relation_word(code, text_of(rel)), conds, name=r.get("name") or "",
+                                     deceased=dead if isinstance(dead, bool) else None,
+                                     death_age=_age(r.get("deceasedAge")) or _age_range(r.get("deceasedRange")),
+                                     note=_notes(r.get("note")), date=(iso(r.get("date")) or "")[:10] or None,
+                                     src=org_of(r) or who_of(r), code=code)
+            if f["conditions"] or "deceased" in f or f.get("note"):
+                family.append({**f, "key": rkey(r)})
         elif rt == "Communication":   # #205: put together into conversations below
             if r.get("status") not in ("entered-in-error", "not-done"):
                 comms.append(r)
@@ -1263,7 +1303,7 @@ def parse(files):
     series.sort(key=lambda s: (-s["n"], s["name"]))
     # (#955) each record of one resource says which version of it this is: its server, its lastUpdated, its bundle's date
     vers = {rkey(r): v for r, _ in resources if (v := _ver(r))}
-    for x in [e for e in b.events if e.get("k") not in ("lab", "labitem")] + problems + upcoming:
+    for x in [e for e in b.events if e.get("k") not in ("lab", "labitem")] + problems + upcoming + family:
         if isinstance(x.get("key"), str) and (v := vers.get(x["key"].split("#", 1)[0])):
             x["ver"] = v
     # (#970) a lab event says its server alone (its report's, else its rows' Observations'), each row being its own
@@ -1281,10 +1321,12 @@ def parse(files):
     data = {"source": "FHIR import",
             "events": b.events, "details": b.details, "labs": series, "upcoming": upcoming, "problems": problems,
             "costs": costs, "outOfPocket": {"payments": []}, "milestones": [], "clinicWeights": sorted(weights)}
+    if family:
+        data["familyHistory"] = family
     watch = home.summary()
     if watch:
         data["watch"] = watch
-    if not (b.events or series or problems or upcoming or weights or watch):
+    if not (b.events or series or problems or upcoming or weights or watch or family):
         kinds = Counter(r["resourceType"] for r, _ in resources)
         raise ValueError("This FHIR export has no records Sanguity can show yet (it holds "
                          + ", ".join(f"{k} ({n})" for k, n in kinds.most_common()) + ").")
