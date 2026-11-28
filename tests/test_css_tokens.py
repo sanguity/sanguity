@@ -106,9 +106,8 @@ ALLOWED = {
     "www/js/app.js": {"script styles": 1},
     "www/js/chartkit.js": {"script styles": 1},   # a legend key's colour (ckLegend, #291): Labs' and Body and activity's four, as one
     "www/js/core.js": {"script styles": 7},
-    # its spacing and weights are on lines #333 left alone: margins of 8 and 12 px (on the scale, written out) and the
-    # running totals' end labels' and the bar lists' weights (600, 500)
-    "www/js/costs.js": {"script styles": 19, "px spacing": 1, "font weights": 2},
+    # its spacing is on lines #333 left alone: margins of 8 and 12 px (on the scale, written out)
+    "www/js/costs.js": {"script styles": 16, "px spacing": 1},
     "www/js/cycle.js": {"script styles": 1},
     # the colour and the spacing are a record's own frame (srcdoc), which doesn't load the tokens: its text, its margin
     # and its table cells' padding
@@ -117,6 +116,7 @@ ALLOWED = {
     "www/js/health.js": {"script styles": 13},
     "www/js/heatmap.js": {"script styles": 5},
     "www/js/journal.js": {"script styles": 2},
+    "www/js/journal-spots.js": {"script styles": 1},   # the slider's place between two photos of a spot (--at, #1139), as it moves
     "www/js/medlog.js": {"script styles": 1},
     "www/js/meds.js": {"script styles": 6},
     "www/js/nav.js": {"script styles": 1},

@@ -11260,11 +11260,11 @@ def main():
             rng = "#dbody .jspot-cmp input[type=range]"
             sl = js("""(() => { const r = document.querySelector('#dbody .jspot-cmp input[type=range]'), top = r.previousElementSibling.querySelectorAll('img')[1];
                 return {label: r.getAttribute('aria-label'), said: (r.getAttribute('aria-describedby') || '').split(' ').map(i => document.getElementById(i)?.textContent),
-                  text: r.getAttribute('aria-valuetext'), clip: top.style.clipPath, v: r.value}; })()""")
+                  text: r.getAttribute('aria-valuetext'), clip: getComputedStyle(top).clipPath, v: r.value}; })()""")
             page.focus(rng)
             page.keyboard.press("ArrowLeft")
             page.keyboard.press("ArrowLeft")
-            k = js(f"(r => [r.value, r.getAttribute('aria-valuetext'), r.previousElementSibling.querySelectorAll('img')[1].style.clipPath])(document.querySelector('{rng}'))")
+            k = js(f"(r => [r.value, r.getAttribute('aria-valuetext'), getComputedStyle(r.previousElementSibling.querySelectorAll('img')[1]).clipPath])(document.querySelector('{rng}'))")
             page.keyboard.press("End")
             end = js(f"document.querySelector('{rng}').value")
             box = page.locator(rng).bounding_box()

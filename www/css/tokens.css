@@ -36,6 +36,8 @@
      a dialog */
   --page:light-dark(#f6f5f1,#121110); --surface:light-dark(#ffffff,#1a1917); --raised:light-dark(#ffffff,#22211e);
   --hover:light-dark(#eeece6,rgb(238 236 230 / .07)); --paper:#ffffff; --scrim:rgb(0 0 0 / .45);
+  /* the emergency card's lock-screen image (emergency.js): white on black in both themes, as a lock screen is */
+  --lock-bg:#000000; --lock-ink:#ffffff;
   /* text: ink, secondary, muted (4.5:1 or more on each surface above) */
   --ink:light-dark(#1a1915,#eeece6); --ink2:light-dark(#4a4740,#c4c0b6); --muted:light-dark(#6b675e,#9d998f);
   /* lines: a divider or a chart's grid, a card's or a button's edge, a chart's axis; a field's edge is 3:1 (#202) */
