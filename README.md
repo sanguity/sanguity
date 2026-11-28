@@ -251,7 +251,7 @@ changes them on Settings → Install → General → Needs a restart: each is ch
 still wins where it sets one.
 
 A new value never leaves the server unable to start: it's tried at the next start and kept once the server has
-answered its health check for 30 seconds. If the server stops before that, or isn't healthy within 3 minutes (then it
+been up and serving for 30 seconds. If the server stops before that, or isn't healthy within 3 minutes (then it
 stops itself), the next start goes back to the last values that worked, drops the new ones, and General says why.
 `docker compose exec app python -m server.manage config show` lists them too (with the value after a restart), and
 `config reset NAME` (or `--all`) puts the default back for the next start: then `docker compose restart app`.

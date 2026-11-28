@@ -9,9 +9,9 @@ A bad value must never leave the server unable to start, so a change is never pu
 
   saved        it's written as "pending" (General says Restart needed); what runs is unchanged
   next start   start() tries the pending values, first writing "trying" into the file
-  healthy      once the server has answered /api/healthz for PROMOTE_SECONDS (watch(), from python -m server),
+  healthy      once the server has been up and serving for PROMOTE_SECONDS (watch(), from python -m server),
                promote() makes them the "good" ones and takes "trying" away
-  not healthy  the server stops before that (a value it can't start with, a crash), or hasn't answered within
+  not healthy  the server stops before that (a value it can't start with, a crash), or isn't up within
                GIVE_UP_SECONDS (then watch() stops it): the next start finds "trying" still there, falls back to the
                good values, drops the pending ones and records why ("fell_back"), which General shows
 
@@ -24,7 +24,7 @@ config reset (manage.py) show these and put them back to their defaults from the
 
 Only the standard library and config: security.py reads HASH_PARALLEL as it's imported, so start() runs before it
 (server/__main__.py), and nothing here may import it first."""
-import ipaddress, json, os, re, signal, tempfile, threading, time, urllib.request
+import ipaddress, json, os, re, signal, tempfile, threading, time
 
 from . import config
 
@@ -384,38 +384,33 @@ def give_up(why, say=_say):
         say(f"[settings] {why}")
 
 
-def _healthy(url):
-    try:
-        with urllib.request.urlopen(url, timeout=3) as r:
-            return 200 <= r.status < 300
-    except Exception:
-        return False
-
-
 POLL = 2   # seconds between its health checks
 
 
-def watch(host, port, stop=None):
-    """While new values are being tried: promote them once the server has answered /api/healthz for PROMOTE_SECONDS
-    in a row; stop the server (SIGTERM, the way Docker stops it) if it hasn't by GIVE_UP_SECONDS, so the next start
-    falls back. stop: what stops it (the tests')."""
+def watch(healthy, stop=None):
+    """While new values are being tried: promote them once the server has been healthy (healthy(): python -m server's
+    uvicorn has started, the app's start-up done, and isn't stopping; asked in-process, so nothing here opens a
+    connection: only server/net.py does) for PROMOTE_SECONDS in a row; stop the server (SIGTERM, the way Docker stops
+    it) if it hasn't been by GIVE_UP_SECONDS, so the next start falls back. stop: what stops it (the tests')."""
     if not _state["tried"]:
         return None
-    host = "127.0.0.1" if host in ("", "0.0.0.0", "::") else host
-    url = f"http://{'[' + host + ']' if ':' in host else host}:{port}/api/healthz"
 
     def run():
         began, first = time.monotonic(), None
         while True:
             time.sleep(POLL)
-            ok, at = _healthy(url), time.monotonic()
+            try:
+                ok = bool(healthy())
+            except Exception:
+                ok = False
+            at = time.monotonic()
             first = (first or at) if ok else None
             if first is not None and at - first >= PROMOTE_SECONDS:
                 with _quiet():
                     promote()
                 return
             if at - began >= GIVE_UP_SECONDS:
-                give_up(f"The server didn't answer its health check for {PROMOTE_SECONDS} seconds within "
+                give_up(f"The server wasn't up and serving for {PROMOTE_SECONDS} seconds within "
                         f"{GIVE_UP_SECONDS} seconds of starting with them, so it was stopped and started again with "
                         "the last values that worked.")
                 (stop or stop_now)()

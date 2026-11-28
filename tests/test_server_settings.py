@@ -197,24 +197,24 @@ class RestartSettings(unittest.TestCase):
     def test_f_watch_promotes_or_gives_up(self):
         """python -m server's watch: healthy for PROMOTE_SECONDS, the values tried are kept; not healthy within
         GIVE_UP_SECONDS, the server is stopped and the next start falls back, saying why."""
-        with mock.patch.multiple(ss, POLL=0.01, PROMOTE_SECONDS=0, GIVE_UP_SECONDS=5), mock.patch.object(ss, "_healthy", lambda url: True):
+        with mock.patch.multiple(ss, POLL=0.01, PROMOTE_SECONDS=0, GIVE_UP_SECONDS=5):
             self.put({"SHL_TIMEOUT": 30})
             restart()
-            ss.watch("0.0.0.0", 8000).join(5)
+            ss.watch(lambda: True).join(5)
         self.assertFalse(self.state()["trying"])
         restart()
         self.assertEqual(ss.lookup("SHL_TIMEOUT"), ("file", 30))
         stopped = []
-        with mock.patch.multiple(ss, POLL=0.01, GIVE_UP_SECONDS=0), mock.patch.object(ss, "_healthy", lambda url: False):
+        with mock.patch.multiple(ss, POLL=0.01, GIVE_UP_SECONDS=0):
             self.put({"SHL_TIMEOUT": 50})
             restart()
             with contextlib.redirect_stdout(io.StringIO()):
-                ss.watch("0.0.0.0", 8000, stop=lambda: stopped.append(1)).join(5)
+                ss.watch(lambda: False, stop=lambda: stopped.append(1)).join(5)
         self.assertEqual(stopped, [1])
         restart()
         self.assertEqual(ss.lookup("SHL_TIMEOUT"), ("file", 30))
-        self.assertIn("didn't answer its health check", self.state()["fell_back"]["why"])
-        self.assertIsNone(ss.watch("0.0.0.0", 8000), "nothing to watch while nothing is tried")
+        self.assertIn("wasn't up and serving", self.state()["fell_back"]["why"])
+        self.assertIsNone(ss.watch(lambda: True), "nothing to watch while nothing is tried")
 
     def test_g_the_file(self):
         """Mode 0600, written whole; one that can't be read leaves the defaults in force, and says so, and a start
