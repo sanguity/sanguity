@@ -82,6 +82,7 @@ let booted = false;
 addEventListener("hashchange", () => {
   // Add → Add a medication (medmine.js, #1092): on a profile with nothing imported too, its first medication of its own
   if (location.hash === "#add-medication" && (booted || PROFILE && !DATA)) return medAddResume();
+  if (/^#(family-history|add-relative)$/.test(location.hash) && (booted || PROFILE && !DATA)) return famResume();   // (#1134)
   if (!booted) return;
   if (location.hash === "#log-dose") return logDose();
   const t = tabOfHash(), drug = t?.[0] === "costs" && medCostsArrive();   // #costs?drug=… (#452)
@@ -273,7 +274,7 @@ async function settingsLoad() {
     if (r.status === 204) {   // no records yet (#199): the getting-started guide, opened by itself the first time
       if (PROFILE.role === "owner" && !PROFILE.demo && ME.profiles.filter(p => !p.demo).length === 1) {   // your own profile, and your only one (the demo beside it doesn't count, #1101)
         const u = await api("settings/user").then(x => x.ok ? x.json() : {}).catch(() => ({}));
-        if (u.guide === "" && !/^#(new-journal-entry|log-dose|add-medication)$/.test(location.hash)) { location.replace(`guide.html?profile=${PROFILE.id}`); return; }   // not finished or skipped yet; not when Add sent them to do something here (#479)
+        if (u.guide === "" && !/^#(new-journal-entry|log-dose|add-medication|add-relative)$/.test(location.hash)) { location.replace(`guide.html?profile=${PROFILE.id}`); return; }   // not finished or skipped yet; not when Add sent them to do something here (#479)
       }
       await settingsLoad();
       applyTabs(CFG.tabs);   // its tabs as it has them, as the other pages show them (#425)
@@ -281,7 +282,7 @@ async function settingsLoad() {
       emptyProfile();
       // arriving from Add on another page (#401): a journal entry can be the first record; a dose can't, and says why
       await dates;
-      if (location.hash === "#log-dose") logDose(); else if (canImport(PROFILE)) { journalResume(); medAddResume(); }
+      if (location.hash === "#log-dose") logDose(); else if (canImport(PROFILE)) { journalResume(); medAddResume(); famResume(); }
       return;
     }
     if (!r.ok) throw new Error(r.status + " " + r.statusText);
@@ -295,6 +296,7 @@ async function settingsLoad() {
   SgPalette.resume();   // a lab or an event chosen in the command palette on another page (palette.js, #273)
   if (location.hash === "#log-dose") logDose();   // arriving from Add on another page (nav.js)
   medAddResume();   // Add → Add a medication, from here or another page (medmine.js, #1092)
+  famResume();   // the palette's Family history or Add a relative, from here or another page (family.js, #1134)
 })();
 /* the records drawn: as the page loads, or an empty profile's first (recordsFirst) */
 async function recordsDraw(data) {

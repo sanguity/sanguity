@@ -179,6 +179,18 @@ const SgPalette = (() => {
     const np = document.getElementById("newProfileLink");
     if (np && !np.hidden && !document.getElementById("barSearch").hidden) out.push({icon: sgIcon("sharing/newProfile"), title: "New profile", ctx: "Profile menu", words: "create add child family someone else another",   // (#524: not "person": “add person” is Sharing's)
       server: true, go: () => { location.href = np.href; }});
+    // (#1134) family history: the Overview's card, and its Add a relative for owners and editors (family.js famResume)
+    const fam = hash => () => {
+      if (!onRecords) location.href = "./" + (pid() ? `?profile=${pid()}` : "") + hash;
+      else if (location.hash === hash) famResume();
+      else location.hash = hash;   // (app.js's hashchange: famResume)
+    };
+    if (profile() && !document.getElementById("barSearch").hidden) {
+      out.push({icon: sgIcon("family"), title: "Family history", ctx: "Overview › Health record", words: "relatives relative parents conditions hereditary genetic",
+        server: !onRecords, go: fam("#family-history")});
+      if (RANK[profile().role] >= RANK.editor) out.push({icon: sgIcon("family"), title: "Add a relative", ctx: "Family history",
+        words: "family history relative mother father sister brother grandparent conditions", server: !onRecords, go: fam("#add-relative")});
+    }
     const th = document.getElementById("theme");
     if (th && !th.hidden) out.push({icon: sgIcon("theme"), title: th.textContent.trim(), ctx: "Your menu", words: "theme dark light", go: () => th.click()});
     return out;

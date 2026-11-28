@@ -582,6 +582,10 @@ What each added, and how it keeps to the rules above. Each file named has its ow
   medication or the note. A phone's doses arrive with the watch data (Health Auto Export, sealed like the rest of it).
 - Your own medications and your changes to the records' (#1091, `med_entries`): the same again, the body (the
   medication's key and every field) encrypted; the activity log says only what was done.
+- Family history of your own, and your hiding of the records' (#1134, `family_entries`): the same again, the body (the
+  relative, their conditions, ages and note, or the hidden entry's key) encrypted; changed by owners and editors only
+  (`POST …/family/own`, `PUT`/`DELETE …/family/own/{eid}`, `PUT …/family/hidden`); the activity log says only what was
+  done ("family"), never the relative or a condition.
 
 ### About this person (#194)
 - Birth date, sex used for reference ranges and height history are three profile settings (`person.*`), sealed like
