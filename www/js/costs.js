@@ -592,9 +592,10 @@ function billCard() {
   const card = el("div", {class: "card", id: "billCard"}, el("div", {class: "list-hd"}, el("h2", {tabindex: -1, text: "Bills"}), el("span", {class: "spacer"}),
     canEdit() ? el("button", {class: "btn needs-server", type: "button", id: "billAdd", "aria-expanded": billState.edit === "new", text: "Add a bill",
       onclick: () => { billState.edit = billState.edit === "new" ? null : "new"; keepFocus(renderCosts); $("#bill-service")?.focus(); }}) : null),
-    el("p", {class: "hint", text: "A provider's bill beside what your plan says you owe for it, from the claim with the same provider and date of service."}));
+    el("p", {class: "hint", text: "A provider's bill beside what your plan says you owe for it."}),
+    aboutWords("Each bill is lined up with the claim of the same provider and date of service, and what that claim says you owe."));
   if (billState.edit === "new") card.append(billForm(null));
-  if (!list.length) card.append(el("p", {class: "hint", text: all.length ? "No bill in this period." : "No bills typed in yet."}));
+  if (!list.length) card.append(emptyState(all.length ? "No bill in this period." : "No bills typed in yet.", null, {cls: ""}));   // (#494)
   for (const b of list) {
     const c = b.claim != null ? byId.get(b.claim) : null, msg = el("p", {class: "hint"});
     const lines = [billFacts(b)];
@@ -658,7 +659,9 @@ function taxCard() {
     } catch (x) { sayIn(msg, "Couldn't save it: " + x.message, true); }
   }}, ...MONTH_NAMES.map((n, i) => el("option", {value: String(i + 1), selected: i + 1 === m || null, text: n}))) : null;
   const card = el("div", {class: "card", id: "taxCard"}, el("h2", {tabindex: -1, text: "Tax-year report"}),
-    el("p", {class: "hint", text: "One zip of a tax year's payments: a printable summary, a spreadsheet (CSV) of every payment and the receipts on file, each named by its row. It says what was paid, when and to whom; what counts for taxes, check with a tax adviser."}),
+    el("p", {class: "hint", text: "One zip of a tax year's payments, to keep or to give your tax adviser."}),
+    aboutWords("The zip holds a printable summary, a spreadsheet (CSV) of every payment and the receipts on file, each named by its row.",
+      "It says what was paid, when and to whom; what counts for taxes, check with a tax adviser."),
     el("div", {class: "oop-form"}, el("label", {for: "taxYear"}, el("span", {text: "Tax year"}), year),
       month ? el("label", {for: "taxMonth"}, el("span", {text: "Tax year starts in"}), month) : el("p", {class: "hint", text: `The tax year starts in ${MONTH_NAMES[m - 1]}.`}),
       el("a", {class: "btn primary needs-server", id: "taxGet", href: `api/profiles/${PROFILE.id}/costs/tax-report?year=${y}`, download: "", text: "Download the zip"})),

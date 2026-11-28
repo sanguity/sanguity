@@ -41,7 +41,7 @@ function drawGenOcr(d) {
     setRow([el("p", {class: "set-row-name", text: "Reading documents"})], el("p", {id: "ocrPass", text: ocrProgress(d)})),
     setRow([el("p", {class: "set-row-name", id: "ocrUseLbl", text: "Languages in use"}),
       el("p", {class: "hint", text: "Each language a document may be in. More of them make reading slower. A change applies to documents read from then on."})],
-      el("div", {role: "group", "aria-labelledby": "ocrUseLbl"}, ...langs)),
+      el("div", {class: "ocr-langs", role: "group", "aria-labelledby": "ocrUseLbl"}, ...langs)),
     setRow([el("p", {class: "set-row-name", id: "ocrFileLbl", text: "Import a language file"}),
       el("p", {class: "hint", id: "ocrFileH", text: `A Tesseract .traineddata file named for its language (deu.traineddata), at most ${d.max_mb} MB: from the tesseract-ocr project's tessdata_fast, tessdata or tessdata_best on GitHub. It's tried once before it's kept.`})],
       el("label", {class: "btn pick"}, "Choose a file…", file)),   // the app's file picker (#353)
