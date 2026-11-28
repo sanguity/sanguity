@@ -64,7 +64,7 @@ const SgOffline = (() => {
   }
   /* and back: the person's own of nested settings (a copy's, or a profile's as a save answers them), flat, as GET
      settings/user has them (#428). They're the settings of scope "user" in server/settings.py, the same on every profile */
-  const MINE = ["theme", "guide", "dates.timeZone", "dates.format", "units"];
+  const MINE = ["theme", "inRange", "guide", "dates.timeZone", "dates.format", "units"];
   function mine(s) {
     const flat = {};
     for (const k of MINE) {
