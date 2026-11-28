@@ -544,9 +544,14 @@ def cookie_goes(db, before, after, request, s):
     """(#1158) The Secure cookie away from automatic, asked first (routes_settings._confirmed): Always over a page that
     came over plain HTTP signs everyone out here for good (the browser keeps no Secure cookie over HTTP); Never lets the
     sign-in cookie travel unencrypted."""
-    if after == before or after == "auto":
-        return None
     https = request is not None and request.url.scheme == "https"
+    if after == before or after == "auto" and (before != "always" or https):
+        return None
+    if after == "auto":   # (#1158's review) from Always, over a page that came over plain HTTP (a change or a reset)
+        return {"count": 1, "type": "automatic", "title": "Mark the sign-in cookie Secure only over HTTPS?", "action": "Automatic",
+                "message": "This page came over plain HTTP as the server sees it (a reverse proxy that doesn't say HTTPS looks "
+                           "the same): with Automatic, the sign-in cookie of a request like this one is no longer marked "
+                           "Secure, so a browser may send it unencrypted."}
     if after == "always":
         if https:
             return None
