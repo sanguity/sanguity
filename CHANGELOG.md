@@ -127,6 +127,9 @@ Everything on `main` so far; it becomes the first tagged release.
   problems, blood type and emergency contacts, and a short lock-screen image (PNG) of the name, allergies, blood type
   and contacts; files you carry, never a link. Blood type (from a lab result when there is one) and emergency
   contacts are new fields under This person → About.
+- Key documents (#1135): a document's drawer marks it as an advance directive, a power of attorney, a POLST, a DNR
+  order or organ donation, with where it's kept; the Overview lists them a tap away, the palette finds them by kind,
+  and the emergency card says each is on file and where.
 - Install as a phone app: a web app manifest and home-screen icons, and a service worker that keeps the app's
   pages so it opens offline. Offline records are opt-in per device (Account), read-only, and deleted on sign-out,
   when the sign-in ends, or when turned off (#56). Needs HTTPS (or localhost).

@@ -514,6 +514,18 @@ async function sendEdit(path, opts, msg, reopen) {
   if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save the edit (${r.status}).`, true); return; }
   afterEdit(reopen, j);
 }
+/* key documents (#1135): which records can be one (server/keydocs.py DOC_KINDS: a document, a letter or a report,
+   whatever it's filed under), and a mark sent, its reply's records put in place as an edit's are */
+const KEYDOC_KINDS = new Set(["document", "letter", "imaging", "study", "procedure", "visit", "contact", "message"]);
+const keyDocPath = e => KEYDOC_KINDS.has(e.k) && (e.k === "document" || e.k === "letter" || e.keyDoc || DATA.details[e.id]?.file);
+async function keyDocSend(path, opts, msg, e) {
+  sayIn(msg, "Saving…");
+  let r, j;
+  try { r = await api(`profiles/${PROFILE.id}/keydocs${path}`, opts); j = await r.json().catch(() => ({})); }
+  catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); return; }
+  if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save it (${r.status}).`, true); return; }
+  afterEdit({event: e.id}, j);
+}
 function undoButton(x, msg, reopen) {
   const n = batchOf(x);   // made at once to similar entries (#237): undone together
   // what "all" is, in its name and its tip (a title was on no screen, #371); a lone Undo beside its edit says it all
@@ -559,7 +571,13 @@ function editPanel(e) {
   if (mine.length) box.append(el("div", {class: "edited"}, el("b", {text: "Edited"}),
     ...mine.map(x => el("div", {class: "edit-line"}, el("span", {text: describeEdit(x) + (x.by ? ` · by ${x.by}` : "")}),
       canEdit() ? undoButton(x, msg, {event: e.id}) : null))));
-  if (!canEdit()) return mine.length ? box : null;
+  // a key document (#1135): its kind and where it's kept, with Unmark for those who can change the records
+  const keyPath = keyDocPath(e);
+  if (e.keyDoc) box.append(el("div", {class: "edited", id: "dKeyDoc"}, el("b", {text: "Key document"}),
+    el("div", {class: "edit-line"}, el("span", {text: KEYDOC[e.keyDoc.kind] + (e.keyDoc.kept ? ` · kept at ${e.keyDoc.kept}` : "")}),
+      canEdit() ? el("button", {class: "btn small", type: "button", text: "Unmark", "aria-label": "Unmark as a key document",
+        onclick: () => keyDocSend(`/${e.id}`, {method: "DELETE"}, msg, e)}) : null)));
+  if (!canEdit()) return mine.length || e.keyDoc ? box : null;
   const forms = el("div", {class: "edit-form"});
   const post = (body, reopen = {event: e.id}) => sendEdit("", {method: "POST", body: JSON.stringify({event: e.id, ...body})}, msg, reopen);
   const form = (label, input, onsave, ...extra) => {
@@ -571,6 +589,13 @@ function editPanel(e) {
   // a lab draw's or report's Hide says its results stay in Labs (#950: on no lab day, server/edits.py)
   const draw = e.k === "lab" ? "this lab draw and its reports out of the Timeline" : e.k === "labitem" ? "this report out of its lab draw" : null;
   drawerMenu([
+    keyPath ? {text: e.keyDoc ? "Change key document…" : "Mark as a key document…", run: () => {   // #1135
+      const sel = el("select", {id: "keyDocKind", "aria-label": "Kind of key document"}, ...Object.entries(KEYDOC).map(([v, t]) => el("option", {value: v, text: t})));
+      if (e.keyDoc) sel.value = e.keyDoc.kind;
+      const kept = el("input", {type: "text", id: "keyDocKept", maxlength: 200, value: e.keyDoc?.kept || "", placeholder: "Original in the hall desk; copy with Dr Lee"});
+      form("Kind of key document", sel, () => keyDocSend("", {method: "PUT", body: JSON.stringify({event: e.id, kind: sel.value, kept: kept.value})}, msg, e),
+        el("label", {}, el("span", {text: "Kept at (optional)"}), kept));
+    }} : null,
     {text: draw ? "Hide (results stay in Labs)" : "Hide", run: () => post({action: "hide"}, {edits: true}),
       tip: draw ? `Leave ${draw}; its results stay in Labs, its charts, share links and the visit summary` : "Leave this event out of the records"},
     {text: "Rename", run: () => {

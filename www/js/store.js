@@ -109,7 +109,7 @@ function storeRecords(data) {
   DATA = data; byId = new Map();
   for (const e of DATA.events) {
     e.ts = zParse(e.t); e.te = e.end ? zParse(e.end) : e.ts;
-    e._q = e._q0 = (e.title + " " + (e.sub || "") + " " + (KIND_LABEL[e.k] || "")).toLowerCase();   // (_q0: before labDayWords)
+    e._q = e._q0 = (e.title + " " + (e.sub || "") + " " + (KIND_LABEL[e.k] || "") + " " + keyDocWords(e)).toLowerCase();   // (_q0: before labDayWords; a key document's kind, #1135)
     byId.set(e.id, e);
     if (e.k === "lab") { const d = DATA.details[e.id]; e.n = d ? d.ids.length : 1; }
   }

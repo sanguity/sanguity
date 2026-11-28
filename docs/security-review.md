@@ -84,6 +84,7 @@ check changes without updating the list, and it exercises this table against a l
 | The visit summary PDF and its questions draft | Yes | Yes | Yes | No | No | No |
 | The emergency card (#1126): its preview, PDF and lock-screen image (`/api/profiles/{pid}/emergency`), files the person keeps | Yes | Yes | Yes | No (404) | No | No |
 | Blood type and emergency contacts under About this person (#1126) | Read | Read and change | Read and change | No (404) | No (not in "About this person") | No |
+| Key documents (#1135): a document marked as an advance directive, a power of attorney, a POLST..., with where it's kept (`/api/profiles/{pid}/keydocs`) | Read | Read and mark | Read and mark | No (404) | No | No |
 | Settings: read; their own settings | Yes | Yes | Yes | Their own only | No | No |
 | Settings: the profile's (tabs, ranges, milestones, ...), and starting them from a condition's preset (#186, `GET /api/profiles/{pid}/condition-presets`) | No | Yes | Yes | No | No | No |
 | A calendar feed of the profile for themself | Yes | Yes | Yes | No | No | No |
