@@ -8923,6 +8923,48 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             js("state.tables.clear(); [state.preset, state.from, state.to] = window._was180; state.sel = new Set(window._was60[0]); switchTab(window._was180[3]); save()")
 
+            # ---- the newest reading drawn (#1155): blood pressure, temperature, oxygen and glucose typed in minutes ago,
+            # after the phone's last day: they were after every period's end, their marks not drawn, their tooltips found at
+            # the edge. Then typed in on the latest Monday gone by, its week's average on a Thursday still to come (past a long
+            # period's end), and a week alone (its line of one point drew nothing). Then on a Saturday, a long period starting
+            # 2 hours before it: its week's Thursday was before the start, the first week dropped too. At 1400 and 412 px: each
+            # Body and activity chart's point its tooltip finds at the reading, or else at the plot's right edge, is in its
+            # window and inside the plot; the readings' cards have a mark there (both pressures); the period, which Labs,
+            # Costs and Medications chart too, ends after the reading
+            js("window._was1155 = [state.preset, state.from, state.to, state.tab, JSON.stringify(WATCH)]; state.tables.clear()")
+            drawn1155, bad1155 = {}, []
+            for when in ("minutes ago", "Monday", "Saturday"):
+                js("""day => { WATCH = JSON.parse(window._was1155[4]);
+                    let t = Date.now() - 5 * 60000; if (day) { t = hMonday(Date.now()) + (day - 1) * DAY; if (t > Date.now()) t -= 7 * DAY; }
+                    window._t1155 = t; t = new Date(t).toISOString();
+                    WATCH.bp_readings = [...WATCH.bp_readings || [], [t, 131, 83, 66, "", "Typed in"]];
+                    WATCH.temp_readings = [...WATCH.temp_readings || [], [t, 37.1, "", "Typed in"]];
+                    WATCH.spo2_readings = [...WATCH.spo2_readings || [], [t, 97, "", "Typed in"]];
+                    WATCH.glucose_readings = [...WATCH.glucose_readings || [], [t, 104, "", "Typed in", "before"]];
+                    storeSpan(); H = null; G = undefined; }""", {"Monday": 1, "Saturday": 6}.get(when, 0))
+                for width in (1400, 412):
+                    page.set_viewport_size({"width": width, "height": 900})
+                    for preset in ("30d", "90d", "1y", "all") if when != "Saturday" else ("first week",):   # (a custom long period from 2 hours before it)
+                        js("p => { if (p === 'first week') setRange(window._t1155 - 2 * 3600e3, window._t1155 + 200 * DAY); else setPeriod(p); switchTab('health'); }", preset)
+                        settle(500)
+                        drawn1155[f"{when} {width} {preset}"] = got = js("""(() => { const [a, b] = hRange(), out = {ends: state.to >= window._t1155};
+                            for (const svg of document.querySelectorAll('#view-health svg.ck')) { if (!svg._hover || !svg._geom) continue;
+                              const {L, R, T, B} = svg._geom, n = svg._hover(window._t1155) || svg._hover(b); svg._hover(null); if (!n) continue;
+                              const at = t => L + (t - a) / (b - a) * (R - L), x = at(n.t), id = svg.closest('.card')?.id || '?';   // (glucose's tip is its day's, the mark the reading's)
+                              const marks = [...svg.querySelectorAll('circle, path.abn')].map(m => m.getBBox()).filter(r => r.width > 0
+                                && [x, at(window._t1155)].some(x => Math.abs(r.x + r.width / 2 - x) < 1.5) && r.y + r.height / 2 >= T && r.y + r.height / 2 <= B).length;
+                              out[id] = [n.t >= a && n.t <= b && x >= L && x <= R, marks]; }
+                            return out; })()""")
+                        want = {"h-bp": 2, "h-temp": 1, "h-oxygen": 1, "h-glucose": 1}
+                        if not got["ends"] or any(k not in got or got[k][1] < n for k, n in want.items()) or not all(v[0] for k, v in got.items() if k != "ends"):
+                            bad1155.append([when, width, preset, got])
+            check("the newest reading drawn (#1155): typed in minutes ago or on the latest Monday on 30 days to All, or on a Saturday at a long period's start, at 1400 and 412 px, each chart's point "
+                  "its tooltip finds there or at the right edge is in the plot, with a mark on blood pressure (both pressures), temperature, oxygen and "
+                  "glucose; the period ends after it", not bad1155 and len(drawn1155) == 18, bad1155[:3] or drawn1155)
+            js("""(() => { const w = window._was1155; WATCH = JSON.parse(w[4]); storeSpan(); H = null; G = undefined;
+                [state.preset, state.from, state.to] = w; switchTab(w[3]); })()""")
+            page.set_viewport_size({"width": 1400, "height": 900})
+
             # ---- body temperature and blood oxygen in full (#184): the receiver folded a thermometer's readings from both
             # apps (Health Auto Export's in °F, sent twice; Life Dashboard's in °C) and a watch's blood oxygen into the
             # summary; Body and activity has a small card for each beside the visits' readings (a temperature in °F, one
