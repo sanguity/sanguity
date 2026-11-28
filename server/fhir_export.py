@@ -754,15 +754,16 @@ def _family(b, data):
 def _med_said(s):
     """(#1091) a listing's details as the medications the page shows say its span (medications.py: your changes made)."""
     return {"instructions": s.get("dose"), "status": s.get("status"), "prescriber": s.get("prescriber"),
-            "end": s.get("to") if s.get("stopped") else None}
+            "end": s.get("to") if s.get("stopped") else None, "reason": s.get("reason") if s.get("stopped") else None}
 
 
 def _meds(b, data):
     details = data.get("details") or {}
     costs = {c.get("id") for c in data.get("costs") or [] if isinstance(c, dict)}
-    # (#1091) the listings of a medication you changed say what its latest span says now; your own medications follow
-    changed = {i: m["spans"][-1] for m in data.get("medications") or [] if m.get("change") and m.get("spans")
-               for i in m["spans"][-1].get("ids") or []}
+    # (#1091) the listings of a medication you changed say what its latest listed span says now (#1161: stopped by you, its
+    # status and end); your own medications, and the times one was started again, follow
+    changed = {i: s for m in data.get("medications") or [] if m.get("change")
+               for s in [x for x in m.get("spans") or [] if x.get("ids")][-1:] for i in s["ids"]}
     for e in data.get("events") or []:
         d = details.get(str(e.get("id")))
         d = d if isinstance(d, dict) else {}
@@ -783,7 +784,8 @@ def _meds(b, data):
                 based.append({"reference": "#rx"})
             yield _clean({"resourceType": "MedicationStatement", "id": b.rid("MedicationStatement", b.keyed(e)), "contained": contained,
                           "basedOn": based, "status": MED_STATUS.get(str(d.get("status") or "").lower(), "active" if not end else "completed"),
-                          "statusReason": [cc(d.get("status"))] if str(d.get("status") or "").lower() not in MED_STATUS and _text(d.get("status")) else [],
+                          "statusReason": [cc(d.get("status"))] if str(d.get("status") or "").lower() not in MED_STATUS and _text(d.get("status"))
+                          else [cc(d["reason"])] if _text(d.get("reason")) else [],
                           "medicationCodeableConcept": med, "subject": b.subject(),
                           "effectivePeriod": {"start": t, "end": end if end and end > t else None},
                           "informationSource": _performer(b, d.get("src")), "dosage": [{"text": d.get("instructions")}] if _text(d.get("instructions")) else []})
@@ -808,27 +810,37 @@ def _meds(b, data):
                           "daysSupply": {"value": supply, "unit": "days", "system": UCUM, "code": "d"} if supply is not None else None,
                           "dosageInstruction": [{"text": d.get("instructions")}] if _text(d.get("instructions")) else []})
     for m in data.get("medications") or []:   # (#1091) your own, as a typed-in listing goes, its source the person
-        own, s = m.get("own"), (m.get("spans") or [None])[-1]
-        t = b.t(s.get("from")) if own and s else None
-        if not t:
-            continue
+        own = m.get("own") or {}
+        for n, s in enumerate(m.get("spans") or []):
+            # (#1161) your own entry's span, and each time one was started again (its own statement after it)
+            if (own and n == 0) or s.get("again"):
+                yield from _med_own(b, m, own, s, n)
+
+
+def _med_own(b, m, own, s, n):
+    """(#1091, #1161) a MedicationStatement of a span the person gave: their own entry's, or a time they started one
+    again; stopped, its status stopped and its end date."""
+    t = b.t(s.get("from"))
+    if t:
         end = b.t(s["to"]) if s.get("stopped") and s.get("to") else None
         med = cc(s.get("title") or m.get("name") or "Medication")
         contained, based = [], []
-        if _text(own.get("prescriber")):
+        if _text(s.get("prescriber")):
             contained.append(_clean({"resourceType": "MedicationRequest", "id": "rx", "status": "active" if not end else "completed",
                                      "intent": "order", "medicationCodeableConcept": med, "subject": b.subject(), "authoredOn": t,
-                                     "requester": b.party("Practitioner", own.get("prescriber"))}))
+                                     "requester": b.party("Practitioner", s.get("prescriber"))}))
             based.append({"reference": "#rx"})
-        status = str(own.get("status") or "").lower()
-        yield _clean({"resourceType": "MedicationStatement", "id": b.rid("MedicationStatement", m["key"]), "contained": contained,
+        status = str(s.get("status") or "").lower()
+        reason = s.get("reason") if s.get("stopped") else None
+        yield _clean({"resourceType": "MedicationStatement", "id": b.rid("MedicationStatement", m["key"], *([s["from"]] if n else [])),
+                      "contained": contained,
                       "basedOn": based, "status": MED_STATUS.get(status, "completed" if s.get("stopped") else "active"),
-                      "statusReason": [cc(own.get("status"))] if status not in MED_STATUS and _text(own.get("status")) else [],
+                      "statusReason": [cc(s.get("status"))] if status not in MED_STATUS and _text(s.get("status")) else [cc(reason)] if _text(reason) else [],
                       "medicationCodeableConcept": med, "subject": b.subject(), "informationSource": b.subject(),
                       "effectivePeriod": {"start": t, "end": end if end and end > t else None},
-                      "note": [{"text": own["note"]}] if _text(own.get("note")) else [],
-                      "dosage": [_clean({"text": own.get("dose") or None, "route": cc(own.get("route")) if _text(own.get("route")) else None})]
-                      if _text(own.get("dose")) or _text(own.get("route")) else []})
+                      "note": [{"text": own["note"]}] if own and _text(own.get("note")) else [],
+                      "dosage": [_clean({"text": s.get("dose") or None, "route": cc(own.get("route")) if _text(own.get("route")) else None})]
+                      if _text(s.get("dose")) or _text(own.get("route")) else []})
 
 
 def _immunizations(b, data):

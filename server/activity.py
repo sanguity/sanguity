@@ -47,9 +47,11 @@ Profile events (profile_id set), readable by the profile's owners:
                 a medication reminder set, changed, turned on or off, paused or resumed, or removed (med_reminders.py,
                 #162; never which medication); {"change": "dose.add" | "dose.change" | "dose.delete", "status"}: a dose logged, corrected
                 or removed (med_log.py, #235; never the medication or the note); {"change": "own.add" | "own.back" |
-                "own.change" | "own.delete" | "listed.change" | "listed.back" | "listed.hide" | "listed.show"}: a
-                medication of the profile's own added, put back, changed or deleted, or one of the records' changed,
-                put back as listed, hidden or shown again (medications.py, #1091; never which medication)
+                "own.change" | "own.delete" | "listed.change" | "listed.back" | "listed.hide" | "listed.show" |
+                "taking.stop" | "taking.again" | "taking.back"}: a medication of the profile's own added, put back,
+                changed or deleted, or one of the records' changed, put back as listed, hidden or shown again
+                (medications.py, #1091; never which medication); either marked stopped, started again, or that undone
+                (#1161)
   family        {"change": "add" | "back" | "change" | "delete" | "hide" | "show"}: a family history entry of the
                 profile's own added, put back, changed or deleted, or one of the records' hidden or shown again
                 (family.py, #1134; never the relative or a condition)

@@ -172,6 +172,7 @@ function openMedication(m) {
   // its key facts, as every record's (#406): what the head says (when it started, that the records give no end) isn't
   // said again
   body.append(...present(drawerFacts([["Started", m.spans.length ? fmtD(m.spans[0].ts) : ""], ["Stopped", m.stop ? fmtD(dayTs(m.stop)) : ""],
+    ["Why it stopped", m.stop && last.reason || ""],
     ["Dose changes", m.changes.length ? String(m.changes.length) : ""], ["Pharmacy fills", m.fills.length ? String(m.fills.length) : ""],
     ["RxNorm", (m.rxnorm || []).join(", ")]], "facts")));
   body.append(...medMineSection(m));   // your own entry, or your change beside the records', and Edit (medmine.js, #1092)
@@ -271,7 +272,7 @@ const mrTogether = as => as.length > 1 && as.every(a => a === as[0]) ? `${as.len
 const mrSays = r => `${mrWhat(r)}, from ${fmtD(dayTs(r.from))}` + (r.until ? ` until ${fmtD(dayTs(r.until))}` : ", no end date");
 function mrState(r, m) {
   const end = mrEnds(r, m);
-  if (end && end.why === "stopped") return {cls: "ended", text: `Ended ${fmtD(dayTs(end.day))}: the records say this medication stopped then`};
+  if (end && end.why === "stopped") return {cls: "ended", text: `Ended ${fmtD(dayTs(end.day))}: this medication stopped then`};
   if (end && end.day < zToday()) return {cls: "ended", text: `Ended ${fmtD(dayTs(end.day))}`};
   if (r.paused) return {cls: "paused", text: "Paused: not on Today, in the counts or the calendar feed until resumed"};
   if (r.asneeded) return {cls: "asneeded", text: "Logged when taken: no reminders"};
@@ -314,7 +315,7 @@ function medReminderSection(m) {
   })));
   if (write && cur) out.push(el("div", {class: "btns"}, el("button", {class: "btn needs-server", type: "button", text: rs.length ? "Add another line" : "Add a schedule",
     onclick: () => medReminderForm(m, null)})));
-  else if (write && !cur && m.stop) out.push(el("p", {class: "hint", text: "The records say this medication stopped, so no new schedule can be set for it."}));
+  else if (write && !cur && m.stop) out.push(el("p", {class: "hint", text: "This medication is stopped, so no new schedule can be set for it. Started again, above, takes it up again."}));
   out.push(el("p", {class: "hint"}, "Today lists each dose it gives. With Remind me on, its times reach your calendar app through ",
     el("a", {href: `sharing.html?profile=${PROFILE.id}#calendar`, text: "Sharing → Calendar feed"}), "; nothing is sent unless you set up notifications to your own server."), msg);
   return out;

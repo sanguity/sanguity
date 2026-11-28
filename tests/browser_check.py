@@ -1342,6 +1342,111 @@ IN_SIGHT = """(a => a && a !== document.body && a.checkVisibility() && (r => r.b
     ? [a.tagName, a.id, a.dataset.id || '', a.textContent.trim().slice(0, 40)] : null)(document.activeElement)"""
 
 
+def meds_stopped_check(browser, base, cookies, check):
+    """Stopped taking (#1161, medmine.js mmTakingForm), as an owner whose sign-in cookies are given, on profile 1: a
+    current medication of the records, its drawer's Stopped taking opens the form (focus on the day, today; each field
+    labelled), saved with a reason: out of Current and Today, under Past with its dates and the reason, its drawer
+    saying both, a toast with an Undo, which makes it current again; stopped again, Started again takes it up from
+    today, the time before kept, listed in its drawer. One of your own, stopped without a reason: under Past. The form
+    at 320 and 412 px (200% text there), light and dark, forced colours: fits, axe-core. Leaves profile 1 as it found
+    it. Returns the page's script errors."""
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)   # (its waits are evaluated)
+    ctx.add_cookies(cookies)
+    pg, errs = ctx.new_page(), []
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    js, settle = pg.evaluate, (lambda ms=400: pg.wait_for_timeout(ms))
+    key = None
+    try:
+        pg.goto(base + "/?profile=1#medications")
+        pg.wait_for_function("typeof booted !== 'undefined' && booted && MEDS.length > 0", timeout=20000)
+        js("setPeriod('all')")
+        key, name = js("(() => { const m = MEDS.find(m => mrCurrent(m) && !m.own && !m.change); return [m.key, m.name]; })()")
+        today = js("zToday()")
+        pg.locator("#view-medications li.med-row .cell-btn", has_text=name).first.click()
+        settle()
+        pg.click("#dbody .btns button:text-is('Stopped taking')")
+        settle()
+        form = js("""[document.getElementById('dtitle').textContent, document.activeElement.type, document.activeElement.value,
+            [...document.querySelectorAll('#dbody form label')].map(l => l.textContent),
+            [...document.querySelectorAll('#dbody form input, #dbody form textarea')].every(i => i.labels.length === 1)]""")
+        check("Stopped taking (#1161): a current medication's drawer opens the form, focus on the day (today), every field labelled",
+              form == [f"Stopped taking {name}", "date", today, ["The day it stopped", "Why it stopped (optional)"], True], form)
+        bad, axe = [], []
+        for width, theme in ((1400, "light"), (1400, "dark"), (412, "light"), (320, "dark")):
+            pg.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+            js("t => { document.documentElement.dataset.theme = t; }", theme)
+            settle(250)
+            if width < 1000:
+                bad.extend(phone_fits(pg, f"Stopped taking's form, {width} px ({theme})"))
+            axe.extend(axe_check(pg, f"Stopped taking's form, {width} px, {theme}")[0])
+        js("document.documentElement.style.fontSize = '200%'")
+        pg.set_viewport_size({"width": 412, "height": 860})
+        settle(300)
+        bad.extend(phone_fits(pg, "Stopped taking's form, 412 px at 200%"))
+        js("document.documentElement.style.fontSize = ''; delete document.documentElement.dataset.theme")
+        pg.set_viewport_size({"width": 1400, "height": 900})
+        pg.emulate_media(forced_colors="active")
+        settle(250)
+        axe.extend(axe_check(pg, "Stopped taking's form, forced colours")[0])
+        pg.emulate_media(forced_colors="none")
+        check("…the form fits 320 and 412 px and 200% text, and passes axe-core's WCAG A and AA rules, light, dark and forced colours",
+              not bad and not axe, (bad + axe)[:6])
+        pg.fill("#dbody textarea[id^=mt-why]", "Fictional reason, in my words")
+        pg.click("#dbody button[type=submit]")
+        pg.wait_for_function("k => !mrCurrent(MEDS.find(m => m.key === k))", arg=key, timeout=20000)
+        settle()
+        pg.click("#view-medications details.med-past:has(h2:text-matches('^Past')) > summary")
+        settle(250)
+        said = js("""([k, w]) => { const v = document.getElementById('view-medications'), past = v.querySelector('details.med-past li[data-med-key="' + CSS.escape(k) + '"]');
+            return [[...v.querySelectorAll('div.card:not(.med-past) li.med-row .cell-btn, #medToday .dose-med')].some(b => b.textContent === w),
+              past?.textContent.includes('Why it stopped: Fictional reason, in my words'), !!past?.textContent.match(/ – /),
+              document.getElementById('dbody').textContent.includes('Why it stopped') && document.getElementById('dbody').textContent.includes('Fictional reason, in my words'),
+              [...document.querySelectorAll('#sgToasts .sg-toast-text')].at(-1)?.textContent.startsWith('Marked ' + w + ' as stopped on '),
+              MEDS.find(m => m.key === k).stop]; }""", [key, name])
+        check("…saved with a reason: out of Current and Today, under Past with its dates and the reason, its drawer saying it, a toast with an Undo",
+              said == [False, True, True, True, True, today], said)
+        pg.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+        pg.wait_for_function("k => mrCurrent(MEDS.find(m => m.key === k)) && !MEDS.find(m => m.key === k).change", arg=key, timeout=20000)
+        settle()
+        check("…Undo: current again, as the records list it", js("k => document.querySelector('#view-medications div.card li.med-row[data-med-key=\"' + CSS.escape(k) + '\"]') !== null", key))
+        js("k => mmSend('POST', 'stopped', {key: k, day: zToday()})", key)
+        pg.wait_for_function("k => !mrCurrent(MEDS.find(m => m.key === k))", arg=key, timeout=20000)
+        js("k => openMedication(MEDS.find(m => m.key === k))", key)
+        settle()
+        pg.click("#dbody .btns button:text-is('Started again')")
+        settle()
+        again = js("[document.getElementById('dtitle').textContent, document.activeElement.value, [...document.querySelectorAll('#dbody form label')].map(l => l.textContent)]")
+        pg.click("#dbody button[type=submit]")
+        pg.wait_for_function("k => mrCurrent(MEDS.find(m => m.key === k))", arg=key, timeout=20000)
+        settle()
+        again += js("""k => { const m = MEDS.find(m => m.key === k); return [m.spans.length - m.listed.spans.length, m.spans.at(-1).again, m.spans.at(-2).to,
+            document.getElementById('dbody').textContent.includes('Started again'), !!document.querySelector('#dbody .btns button[aria-label^="Stopped taking"]')]; }""", key)
+        check("…Started again: from today, the time before kept, current again, its drawer listing it and offering Stopped taking",
+              again == [f"Started {name} again", today, ["The day it started again"], 1, True, today, True, True], again)
+        js("k => mmSend('PUT', 'taking', {key: k, was: {}})", key)
+        pg.wait_for_function("k => !MEDS.find(m => m.key === k).change", arg=key, timeout=20000)
+        key = None
+        # one of your own, stopped without a reason: under Past with its dates
+        js("mmSend('POST', 'own', {name: 'Stoppable (fictional)', start: '2026-01-05', status: 'Active'})")
+        pg.wait_for_function("MEDS.some(m => m.own && m.name === 'Stoppable (fictional)')", timeout=20000)
+        js("openMedication(MEDS.find(m => m.own && m.name === 'Stoppable (fictional)'))")
+        settle()
+        pg.click("#dbody .btns button:text-is('Stopped taking')")
+        settle()
+        pg.click("#dbody button[type=submit]")
+        pg.wait_for_function("!mrCurrent(MEDS.find(m => m.own && m.name === 'Stoppable (fictional)'))", timeout=20000)
+        settle()
+        own = js("""[...document.querySelectorAll('#view-medications details.med-past li.med-row')].find(r => r.textContent.includes('Stoppable (fictional)'))?.textContent.includes(fmtD(dayTs('2026-01-05')) + ' – ' + fmtD(dayTs(zToday())))""")
+        check("…one of your own, stopped without a reason: under Past with its dates", own is True, own)
+        js("(() => { const m = MEDS.find(m => m.own && m.name === 'Stoppable (fictional)'); return mmSend('DELETE', `own/${m.own.id}`); })()")
+        settle(300)
+    finally:
+        if key:
+            js("k => mmSend('PUT', 'taking', {key: k, was: {}})", key)
+        ctx.close()
+    return errs
+
+
 def family_check(browser, base, cookies, check):
     """Family history (#1134, family.js), as an owner whose sign-in cookies are given, on profile 1 (the demo's two
     relatives from the records): the Overview's Health record lists each relative, its conditions under it; Add a
@@ -12207,7 +12312,7 @@ def main():
                 ended = js("""(() => { const m = MEDS.find(m => m.key === 'examplocin');
                     DATA.reminders.push({id: 99999, med: 'examplocin', name: m.name, times: ['09:00'], days: ['mo','tu','we','th','fr','sa','su'], from: '2025-06-01', until: null, tz: 'UTC', on: true});
                     openMedication(m); const t = document.getElementById('dbody').innerText; DATA.reminders.pop();
-                    return {ended: t.includes('Ended ' + fmtD(dayTs('2025-09-30')) + ': the records say this medication stopped then'),
+                    return {ended: t.includes('Ended ' + fmtD(dayTs('2025-09-30')) + ': this medication stopped then'),
                             add: [...document.querySelectorAll('#dbody button')].some(b => /^Add (a schedule|another line)$/.test(b.textContent)),
                             none: t.includes('no new schedule can be set'),
                             off: [...document.querySelectorAll('#dbody .mr-item button')].map(b => b.textContent)}; })()""")
@@ -12909,6 +13014,9 @@ def main():
                 check("…Show again: back under Current, focus on its row, said", shown1093 == [cur["key"], False, True], shown1093)
                 js("async () => { const m = MEDS.find(m => m.own); if (m) await mmSend('DELETE', `own/${m.own.id}`); }")
                 settle(300)
+                # ---- #1161: Stopped taking and Started again (meds_stopped_check)
+                errs1161 = meds_stopped_check(browser, base, [c for c in page.context.cookies() if c["name"] == "sg_session"], check)
+                check("…no script errors on the Medications tab", not errs1161, errs1161)
                 # ---- #1134: family history on the Overview, added, changed, removed and hidden (family_check)
                 errs1134 = family_check(browser, base, [c for c in page.context.cookies() if c["name"] == "sg_session"], check)
                 check("…no script errors on the family history page", not errs1134, errs1134)

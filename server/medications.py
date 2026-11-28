@@ -276,7 +276,7 @@ def back(db, pid, moved):
 # ---------------------------------------------------------------- your own medications, and your changes (#1091)
 # A profile's own medications and its changes to ones from the records (schema version 46, med_entries; the API in
 # routes_meds.py). Each row's body is encrypted: {key, own, name, strength, dose, route, start, stop, status,
-# prescriber, note, hidden}.
+# prescriber, note, reason, hidden, again}.
 #   an own entry  a medication of the person's own, every field theirs (a name and a start at least). Its key is "own:"
 #                 and a random word, kept for good: what hangs on a key (reminders, doses) stays with it through a
 #                 rename, and finds it again when its removal is undone (add_own(key=...)).
@@ -285,12 +285,20 @@ def back(db, pid, moved):
 #                 Only the fields that differ from what the records say are kept ("" for one taken away), applied over
 #                 them (apply()). hidden: the medication is left out of DATA.medications (Current, Past, Today, the
 #                 lanes, the calendar feed), its records kept, and listed in DATA.hiddenMeds to show again.
+# Stopped taking (#1161): the person marks a current medication stopped, on a day (today by default) and with a reason
+# in their own words or none: its stop, reason and status (Stopped) as a change's or an own entry's fields, so it leaves
+# Current and its schedule ends there (med_reminders.ends: Today, the calendar feed, notifications). Started again
+# adds a period after it, "again": [{from, to ("" while taken), reason}], each a span after the medication's own, the
+# history before kept; stopping it again ends the latest. Both are kept by the medication's key, as every change is, so
+# a later pull or re-import keeps them; Undo puts back the stop, reason, status and again they had (put_taking()).
 # records._assemble adds both (assembled()): an own entry as a medication of one span with "own" (its row), one changed
 # with "change" (its row) and "listed" (what the records say: the fields, and the spans as they were). A change whose
 # records are gone (an import undone) is kept, unapplied, until they're back.
-FIELDS = ("name", "strength", "dose", "route", "start", "stop", "status", "prescriber", "note")
+FIELDS = ("name", "strength", "dose", "route", "start", "stop", "status", "prescriber", "note", "reason")
 OWN = "own:"
-FIELD_MAX = {"name": 200, "strength": 100, "dose": 500, "route": 100, "status": 40, "prescriber": 200, "note": 2000}
+FIELD_MAX = {"name": 200, "strength": 100, "dose": 500, "route": 100, "status": 40, "prescriber": 200, "note": 2000, "reason": 500}
+TAKING = ("stop", "reason", "status", "again")   # what Stopped taking and Started again change, and Undo puts back
+AGAIN_MAX = 100
 _DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _OWN_KEY = re.compile(r"^own:[0-9a-f]{8,32}$")
 
@@ -319,7 +327,7 @@ def check(fields, own):
             continue
         if not isinstance(v, str):
             raise EntryError(f"The {k} must be text.")
-        v = v.strip() if k == "note" else " ".join(v.split())
+        v = v.strip() if k in ("note", "reason") else " ".join(v.split())
         if k in ("start", "stop"):
             if v and not _DAY.match(v):
                 raise EntryError(f"Give the {k} date as YYYY-MM-DD.")
@@ -345,7 +353,7 @@ def listed(m):
     last = spans[-1] if spans else {}
     return {"name": m.get("name") or "", "strength": "", "dose": last.get("dose") or "", "route": "",
             "start": spans[0]["from"] if spans else m.get("start") or "", "stop": m.get("stop") or "",
-            "status": last.get("status") or "", "prescriber": last.get("prescriber") or "", "note": ""}
+            "status": last.get("status") or "", "prescriber": last.get("prescriber") or "", "note": "", "reason": ""}
 
 
 def differs(was, fields):
@@ -365,7 +373,8 @@ def listing(db, pid):
     """The profile's own entries and changes, oldest first: {id, key, own, each field it has, hidden?, by, at, changed,
     changed_by} (an export's "medEntries")."""
     return [{"id": r["id"], "key": b.get("key"), "own": bool(b.get("own")), **{k: b[k] for k in FIELDS if k in b},
-             **({"hidden": True} if b.get("hidden") else {}), "by": r["created_name"], "at": r["created"],
+             **({"hidden": True} if b.get("hidden") else {}), **({"again": b["again"]} if b.get("again") else {}),
+             "by": r["created_name"], "at": r["created"],
              "changed": r["changed"], "changed_by": r["changed_name"]} for r, b in _rows(db, pid)]
 
 
@@ -385,7 +394,7 @@ def _span(f, title):
     to = f.get("stop") or (f["start"] if stopped else None)
     return {"from": f["start"], "to": to, "open": to is None, "stopped": stopped, "dose": f.get("dose") or "",
             "title": title, "status": f.get("status") or "", "prescriber": f.get("prescriber") or None,
-            "sources": [], "ids": [], "rxnorm": None}
+            "sources": [], "ids": [], "rxnorm": None, **({"reason": f["reason"]} if stopped and f.get("reason") else {})}
 
 
 def _own_med(row):
@@ -415,6 +424,8 @@ def apply(m, row):
         for k in ("dose", "status", "prescriber"):
             if k in ch:
                 last[k] = ch[k] or (None if k == "prescriber" else "")
+        if ch.get("reason"):
+            last["reason"] = ch["reason"]
         if ch.get("start"):
             first["from"] = min(ch["start"], first["to"]) if first["to"] else ch["start"]
         stop = ch["stop"] if "stop" in ch else was["stop"]
@@ -430,18 +441,34 @@ def apply(m, row):
     return m
 
 
+def again(m, periods):
+    """(#1161) Medication m with the periods it was started again in after it stopped, each a span after its own (the
+    latest one's title and dose; "again": true; its reason when it stopped again), its stop the latest one's."""
+    spans = m.get("spans") or []
+    if not spans or not periods:
+        return m
+    for a in periods:
+        last, to = spans[-1], a.get("to") or None
+        spans.append({"from": a["from"], "to": to, "open": to is None, "stopped": bool(to), "dose": last.get("dose") or "",
+                      "title": last.get("title") or m.get("name") or "", "status": "Stopped" if to else "",
+                      "prescriber": last.get("prescriber"), "sources": [], "ids": [], "rxnorm": None, "again": True,
+                      **({"reason": a["reason"]} if to and a.get("reason") else {})})
+    m["stop"] = spans[-1]["to"] if spans[-1]["stopped"] else None
+    return m
+
+
 def with_entries(meds, rows):
     """(meds with the profile's own entries added and its changes applied, sorted by name; those hidden: [{key, name,
     id, start, stop}]). rows: listing()'s."""
     by_key, hidden, out = {m["key"]: m for m in meds}, [], list(meds)
     for row in rows:
         if row["own"]:
-            out.append(_own_med(row))
+            out.append(again(_own_med(row), row.get("again")))
             continue
         m = by_key.get(row["key"])
         if m is None:
             continue
-        apply(m, row)
+        again(apply(m, row), row.get("again"))
         if row.get("hidden"):
             out.remove(m)
             hidden.append({"key": m["key"], "name": m["name"], "id": row["id"], "start": m.get("start"), "stop": m.get("stop")})
@@ -501,7 +528,7 @@ def change_own(db, pid, who, eid, fields):
     was = get(db, pid, eid)
     if was is None or not was.get("own"):
         return None
-    _save(db, pid, who, {"key": was["key"], "own": True, **fields}, eid)
+    _save(db, pid, who, {"key": was["key"], "own": True, **fields, **({"again": was["again"]} if was.get("again") else {})}, eid)
     if was.get("name") and was["name"] != fields.get("name"):
         for r in db.execute("SELECT id, body FROM journal WHERE profile_id=?", (pid,)).fetchall():
             b = json.loads(crypto.dec(r["body"]))
@@ -532,11 +559,147 @@ def set_change(db, pid, who, key, was, fields=None, hidden=None):
     if hidden is not None:
         body.pop("hidden", None)
         body.update({"hidden": True} if hidden else {})
-    if not any(k in body for k in (*FIELDS, "hidden")):
+    if not any(k in body for k in (*FIELDS, "hidden", "again")):
         if eid is not None:
             _drop(db, pid, eid)
         return before, None
     return before, _save(db, pid, who, body, eid)
+
+
+def check_again(v):
+    """(#1161) Started again's periods as kept ([{from, to, reason}], in order, none before the one before it ended),
+    or EntryError."""
+    from datetime import date
+    if v is None:
+        return []
+    if not isinstance(v, list) or len(v) > AGAIN_MAX:
+        raise EntryError("The times it was started again aren't a list.")
+    out, end = [], None
+    for i, a in enumerate(v):
+        if not isinstance(a, dict):
+            raise EntryError("A time it was started again isn't an object.")
+        x = {k: " ".join(str(a.get(k) or "").split()) if k != "reason" else str(a.get(k) or "").strip() for k in ("from", "to", "reason")}
+        for k in ("from", "to"):
+            if (x[k] or k == "from") and not _DAY.match(x[k]):
+                raise EntryError("Give the dates as YYYY-MM-DD.")
+            try:
+                x[k] and date.fromisoformat(x[k])
+            except ValueError:
+                raise EntryError("A date given doesn't exist.") from None
+        if len(x["reason"]) > FIELD_MAX["reason"]:
+            raise EntryError(f"The reason is too long (at most {FIELD_MAX['reason']} characters).")
+        if (x["to"] and x["to"] < x["from"]) or (end is not None and x["from"] < end) or (i < len(v) - 1 and not x["to"]):
+            raise EntryError("The times it was started again overlap.")
+        out.append(x if x["to"] else {"from": x["from"], "to": "", "reason": ""})
+        end = x["to"]
+    return out
+
+
+def _entry(db, pid, key):
+    """(id, body) of the own entry or the change of this key, or (None, None)."""
+    return next(((r["id"], b) for r, b in _rows(db, pid) if b.get("key") == key), (None, None))
+
+
+def _taking(body):
+    return {k: body[k] for k in TAKING if k in (body or {})}
+
+
+def _med_now(db, pid, key):
+    m = next((x for x in of_records(db, pid) if x.get("key") == key), None)
+    if m is None:
+        raise LookupError(key)
+    return m
+
+
+def _keep(db, pid, who, key, eid, body):
+    """A change or own entry saved, or a change left with nothing removed. -> its id, or None"""
+    if not body.get("own") and not any(k in body for k in (*FIELDS, "hidden", "again")):
+        if eid is not None:
+            _drop(db, pid, eid)
+        return None
+    return _save(db, pid, who, body, eid)
+
+
+def _day_given(day, what):
+    from datetime import date
+    if not isinstance(day, str) or not _DAY.match(day):
+        raise EntryError(f"Give the day it {what} as YYYY-MM-DD.")
+    try:
+        date.fromisoformat(day)
+    except ValueError:
+        raise EntryError("That day doesn't exist.") from None
+    return day
+
+
+def mark_stopped(db, pid, who, key, day, reason=""):
+    """(#1161) Stopped taking: the medication of this key (your own or the records') stopped on day, with the
+    person's reason or none. It must be current (its latest span open). LookupError: no such medication. -> what its
+    entry had of TAKING before (put_taking() puts it back)"""
+    m = _med_now(db, pid, key)
+    spans = m.get("spans") or []
+    if not spans or not spans[-1].get("open"):
+        raise EntryError("It's listed as stopped already.")
+    _day_given(day, "stopped")
+    if day < spans[-1]["from"]:
+        raise EntryError(f"It was taken from {spans[-1]['from']}: give that day or a later one.")
+    reason = str(reason or "").strip()
+    if len(reason) > FIELD_MAX["reason"]:
+        raise EntryError(f"The reason is too long (at most {FIELD_MAX['reason']} characters).")
+    eid, body = _entry(db, pid, key)
+    if is_own(key) and eid is None:
+        raise LookupError(key)
+    before = _taking(body)
+    body = dict(body or {"key": key})
+    if body.get("again"):
+        body["again"] = [*body["again"][:-1], {**body["again"][-1], "to": day, "reason": reason}]
+    else:
+        body.update(stop=day, status="Stopped", reason=reason)
+        if not reason and not body.get("own"):
+            body.pop("reason")
+    _keep(db, pid, who, key, eid, body)
+    return before
+
+
+def started_again(db, pid, who, key, day):
+    """(#1161) Started again: the medication of this key, stopped, taken again from day (on or after it stopped), the
+    history before it kept. -> what its entry had of TAKING before"""
+    m = _med_now(db, pid, key)
+    spans = m.get("spans") or []
+    if not spans or spans[-1].get("open"):
+        raise EntryError("It's listed as taken now." if spans else "It has no dates to start again from.")
+    _day_given(day, "started again")
+    ended = spans[-1].get("to") or spans[-1]["from"]
+    if day < ended:
+        raise EntryError(f"It stopped on {ended}: give that day or a later one.")
+    eid, body = _entry(db, pid, key)
+    if is_own(key) and eid is None:
+        raise LookupError(key)
+    before = _taking(body)
+    body = dict(body or {"key": key})
+    if len(body.get("again") or []) >= AGAIN_MAX:
+        raise EntryError("It has been started again too many times to keep another.")
+    body["again"] = [*(body.get("again") or []), {"from": day, "to": "", "reason": ""}]
+    _keep(db, pid, who, key, eid, body)
+    return before
+
+
+def put_taking(db, pid, who, key, was):
+    """(#1161) Undo: the stop, reason, status and again of the medication of this key's entry as they were (was:
+    mark_stopped's or started_again's reply; what it lacks, taken away). LookupError: no such entry or medication."""
+    if not isinstance(was, dict):
+        raise EntryError("Nothing to put back.")
+    fields = check({k: was[k] for k in ("stop", "reason", "status") if k in was}, False)
+    periods = check_again(was.get("again"))
+    eid, body = _entry(db, pid, key)
+    if eid is None:
+        if is_own(key):
+            raise LookupError(key)
+        _med_now(db, pid, key)
+    body = {k: v for k, v in (body or {"key": key}).items() if k not in TAKING}
+    body.update(fields)
+    if periods:
+        body["again"] = periods
+    _keep(db, pid, who, key, eid, body)
 
 
 def log_detail(change_):

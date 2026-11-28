@@ -4,13 +4,16 @@
    the records say: the fields, and their spans as they were). DATA.hiddenMeds lists those of the records hidden by
    hand. Owners and editors add one on the Medications tab (Add a medication), and in a medication's drawer Edit it,
    put one from the records back as listed, or Remove it: one of their own is deleted, one from the records hidden (its
-   records kept, a later pull doesn't bring it back), each with an Undo; Hidden on the tab shows each one again. Every
+   records kept, a later pull doesn't bring it back), each with an Undo; Hidden on the tab shows each one again.
+   Stopped taking (#1161) marks a current one stopped, on a day (today unless changed) with a reason in the person's
+   words or none: it moves to Past, its history kept, its schedule ended (Today, the calendar feed, notifications);
+   Started again takes a stopped one up again from a day, the time before kept; each with an Undo. Every
    change's reply carries the records whole, put in place (store.js storeRecords), the tab drawn again with them.
    Plain script, loaded in order by index.html after medlog.js; all files share one global scope. */
 "use strict";
 const MM_FIELDS = [["name", "Name"], ["strength", "Strength"], ["dose", "Dose and instructions"], ["route", "Route"],
-  ["start", "Started"], ["stop", "Stopped"], ["status", "Status"], ["prescriber", "Prescribed by"], ["note", "Note"]];
-const MM_MAX = {name: 200, strength: 100, dose: 500, route: 100, prescriber: 200, note: 2000};
+  ["start", "Started"], ["stop", "Stopped"], ["reason", "Why it stopped"], ["status", "Status"], ["prescriber", "Prescribed by"], ["note", "Note"]];
+const MM_MAX = {name: 200, strength: 100, dose: 500, route: 100, prescriber: 200, note: 2000, reason: 500};
 const MM_STATUS = ["Active", "On hold", "Stopped"];
 /* what the records say of one, as its fields (server/medications.listed): what Edit starts from */
 function mmListed(m) {
@@ -73,7 +76,7 @@ function medMineSection(m) {
   const out = [], changed = mmChanged(m);
   if (m.own) {
     out.push(el("div", {class: "sect", text: "Your own entry"}),
-      drawerFacts([...MM_FIELDS.filter(([k]) => !["name", "start", "stop"].includes(k)).map(([k, l]) => [l, m.own[k] || ""]), ["Added by", m.own.by || ""]]));
+      drawerFacts([...MM_FIELDS.filter(([k]) => !["name", "start", "stop", "reason"].includes(k)).map(([k, l]) => [l, m.own[k] || ""]), ["Added by", m.own.by || ""]]));
   } else if (changed.length) {
     const was = mmListed(m);
     out.push(el("div", {class: "sect", text: "Your change"}),
@@ -82,9 +85,15 @@ function medMineSection(m) {
         el("tbody", {}, changed.map(([k, l]) => el("tr", {}, el("th", {scope: "row", text: l}), el("td", {text: mmSays(k, m.change[k])}), el("td", {text: mmSays(k, was[k])})))))),
       el("p", {class: "hint", text: `By ${m.change.changed_by || m.change.by}. The records stay as they are, and a later pull doesn't undo it.`}));
   }
+  const again = m.spans.filter(s => s.again);   // (#1161) the times it was started again, each after the time before
+  if (again.length) out.push(el("div", {class: "sect", text: "Started again"}), el("ul", {class: "medchanges"},
+    ...again.map(s => el("li", {}, el("b", {text: fmtD(s.ts)}), ` – ${s.open ? "no end date" : fmtD(s.te)}` + (s.reason ? ` · Why it stopped: ${s.reason}` : "")))));
   if (!canEdit()) return out;
   const btn = (text, onclick, more = {}) => el("button", {class: "btn needs-server", type: "button", text, onclick, ...more});
+  const last = m.spans.at(-1);
   out.push(el("div", {class: "btns"}, btn("Edit", () => medEditForm(m), {"aria-label": `Edit ${m.name}`}),
+    last && last.open ? btn("Stopped taking", () => mmTakingForm(m, true), {"aria-label": `Stopped taking ${m.name}`, "data-tip": "Mark it stopped: its history is kept, its schedule ends"})
+      : last ? btn("Started again", () => mmTakingForm(m, false), {"aria-label": `Started ${m.name} again`, "data-tip": "Taken again from a day: the time before is kept"}) : null,
     changed.length ? btn("Put back as listed", () => mmPutBack(m), {"data-tip": "Undo your changes: as the records list it"}) : null,
     btn("Remove", () => mmRemove(m), {"aria-label": `Remove ${m.name}`, "data-tip": m.own ? "Delete your entry" : "Hide it here; its records are kept"})));
   return out;
@@ -121,6 +130,38 @@ async function mmPutBack(m) {
   }});
 }
 
+/* (#1161) Stopped taking (stop) or Started again, in the drawer: the day (today unless changed) and, stopping, why
+   in the person's own words (optional); sent, the drawer shows the medication again and a toast offers Undo */
+function mmTakingForm(m, stop) {
+  const body = drawerHead("med", stop ? `Stopped taking ${m.name}` : `Started ${m.name} again`, stop ? "Its history is kept, and its schedule ends that day" : "The time before is kept");
+  drawerStill = () => MEDS.some(x => x.key === m.key);   // (app.js, #517)
+  const uid = Math.random().toString(36).slice(2, 8), msg = el("p", {class: "hint edit-msg", role: "status"});
+  const last = m.spans.at(-1), min = stop ? last.from : last.to || last.from;
+  const day = el("input", {type: "date", id: `mt-day-${uid}`, required: true, min, value: zToday() < min ? min : zToday()});
+  const why = stop ? el("textarea", {id: `mt-why-${uid}`, rows: 3, maxlength: MM_MAX.reason}) : null;
+  const back = () => openMedication(MEDS.find(x => x.key === m.key) || m);
+  const form = el("form", {class: "jform", novalidate: true},
+    el("div", {class: "jfield"}, el("label", {for: day.id, text: stop ? "The day it stopped" : "The day it started again"}), day),
+    stop ? el("div", {class: "jfield"}, el("label", {for: why.id, text: "Why it stopped (optional)"}), why) : null,
+    el("div", {class: "btns"}, el("button", {class: "btn primary needs-server", type: "submit", text: stop ? "Mark as stopped" : "Mark as started again"}),
+      el("button", {class: "btn", type: "button", text: "Cancel", onclick: back})), msg);
+  form.onsubmit = async ev => {
+    ev.preventDefault();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day.value)) { sayIn(msg, "Give the day.", true); return day.focus(); }
+    if (day.value < min) { sayIn(msg, `${stop ? "It was taken from" : "It stopped on"} ${fmtD(dayTs(min))}: give that day or a later one.`, true); return day.focus(); }
+    const j = await mmSend("POST", stop ? "stopped" : "again", {key: m.key, day: day.value, ...(stop ? {reason: why.value.trim()} : {})}, msg);
+    if (!j) return;
+    const name = m.name, said = stop ? `Marked ${name} as stopped on ${fmtD(dayTs(day.value))}.` : `Marked ${name} as started again on ${fmtD(dayTs(day.value))}.`;
+    mmOpen(m.key);
+    toast(said, {action: "Undo", onAction: async () => {
+      if (await mmSend("PUT", "taking", {key: m.key, was: j.was})) { mmOpen(m.key); announce(stop ? `${name} is current again.` : `${name} is stopped again.`); }
+    }});
+  };
+  body.append(form);
+  showDrawer();
+  day.focus({preventScroll: true});
+}
+
 /* the add / edit form, in the drawer. m: the medication (null: a new one of your own) */
 function medEditForm(m) {
   const own = !m || !!m.own, f = m ? mmFields(m) : {start: zToday(), status: "Active"};
@@ -141,6 +182,8 @@ function medEditForm(m) {
     field("name", "Name", Object.assign(text("name"), {required: true})), field("strength", "Strength (optional)", text("strength")),
     field("dose", "Dose and instructions (optional)", text("dose")), field("route", "Route (optional)", text("route")),
     el("div", {class: "jwhen"}, field("start", own ? "Started" : "Started (optional)", el("input", {type: "date", required: own})), field("stop", "Stopped (optional)", el("input", {type: "date"}))), el("div", {}, today),
+    m?.spans.some(s => s.again) ? el("p", {class: "hint", text: `These dates are the first time it was taken; it was started again on ${fmtD(m.spans.find(s => s.again).ts)}.`}) : null,
+    field("reason", "Why it stopped (optional)", el("textarea", {rows: 2, maxlength: MM_MAX.reason})),
     field("status", "Status", status), field("prescriber", "Prescribed by (optional)", text("prescriber")),
     field("note", "Note (optional)", el("textarea", {rows: 3, maxlength: MM_MAX.note})),
     el("div", {class: "btns"}, el("button", {class: "btn primary needs-server", type: "submit", text: m ? "Save" : "Add medication"}),
