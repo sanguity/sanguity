@@ -1,7 +1,7 @@
 """A fake ntfy server for the notification tests (#1130): every POST to it recorded (path, headers, body), answered
 with `status`. Standard library only; it runs in a thread on a free 127.0.0.1 port.
 
-    ntfy = FakeNtfy()          # ntfy.url: a topic's address on it
+    ntfy = FakeNtfy()          # ntfy.url: its address (a topic goes after it)
     ... ntfy.posts ...
     ntfy.stop()
 """
@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 class FakeNtfy:
-    def __init__(self, topic="sanguity-fictional"):
+    def __init__(self):
         self.posts, self.status = [], 200
         fake = self
 
@@ -28,7 +28,7 @@ class FakeNtfy:
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.host = f"127.0.0.1:{self.server.server_address[1]}"
-        self.url = f"http://{self.host}/{topic}"
+        self.url = f"http://{self.host}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def stop(self):

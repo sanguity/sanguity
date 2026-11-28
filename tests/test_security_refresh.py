@@ -82,6 +82,7 @@ ROUTES = {
     ("GET", "/api/settings/install/notify"): (ADMIN, None), ("PUT", "/api/settings/install/notify/token"): (ADMIN, None),
     ("POST", "/api/settings/install/notify/test"): (ADMIN, None),
     ("GET", "/api/me/notify"): (USER, None), ("PUT", "/api/me/notify"): (USER, "viewer"),
+    ("POST", "/api/me/notify/topic"): (USER, None), ("POST", "/api/me/notify/test"): (USER, None),   # one's own topic
     # anyone signed in: nothing of anyone's records
     ("POST", "/api/profiles"): (USER, None), ("GET", "/api/uploads/limits"): (USER, None), ("GET", "/api/lab-names"): (USER, None),
     ("GET", "/api/lab-test-pages"): (USER, None),                     # "What is this test?" pages: the app's own table (#163)

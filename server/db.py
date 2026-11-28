@@ -1309,13 +1309,19 @@ SCHEMA = [
         changed INTEGER);
     CREATE INDEX family_entries_profile ON family_entries(profile_id);
     """,
-    # version 54: notifications to the install's own server (#1130; notify.py). notify_optins: a person's opt-in, per
-    # profile they can see and per kind ("results": a connected source's pull brought new records; "doses": a dose of
-    # a schedule line with Remind me on is due). notify_sent: each notification, made once (key: what it's for,
-    # "results:<import id>" or "doses:<profile id>:<day>:<HH:MM>", so a restart never makes it again), then sent in the
-    # background and retried: its state, tries and next try. It holds no message: the words are made as it's sent
-    # (notify.message), from its kind and the profile's name alone.
+    # version 54: notifications to the install's own server (#1130; notify.py). notify_topics: each person's own topic
+    # there (random, unguessable; encrypted), which only they subscribe to; made again by Make a new topic.
+    # notify_optins: a person's opt-in, per profile they can see and per kind ("results": a connected source's pull
+    # brought new records; "doses": a dose of a schedule line with Remind me on is due). notify_sent: each
+    # notification, made once for each person who wants it (key: what it's for and whose, "results:<import id>:<user>"
+    # or "doses:<profile id>:<day>:<HH:MM>:<user>", so a restart never makes it again), then sent in the background to
+    # that person's topic and retried: its state, tries and next try. It holds no message: the words are made as it's
+    # sent (notify.message), from its kind and the profile's name alone.
     """
+    CREATE TABLE notify_topics(
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        topic TEXT NOT NULL,                       -- encrypted
+        created INTEGER NOT NULL);
     CREATE TABLE notify_optins(
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -1326,6 +1332,7 @@ SCHEMA = [
     CREATE TABLE notify_sent(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         key TEXT NOT NULL UNIQUE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         profile_id INTEGER REFERENCES profiles(id) ON DELETE CASCADE,
         kind TEXT NOT NULL,
         state TEXT NOT NULL DEFAULT 'queued',      -- queued | sent | failed | dropped

@@ -575,16 +575,19 @@ from the internet; a phone on your home network or tailnet works without that.
 ### Notifications
 
 Off by default: nothing is sent unless you set up notifications to your own server. An admin sets the server under
-**Settings → Install → General → Notifications**: a topic of a self-hosted [ntfy](https://ntfy.sh) server, like
-`https://ntfy.example.com/sanguity` (https only, unless the server is on your local network), its access token if
-the topic needs one (saved encrypted and never shown again, or `NOTIFY_TOKEN` in the server's environment), and
-**Send a test**. Then each person turns them on under **Settings → Notifications**, for each profile they can see:
-**New results** (a connected portal's sync brought new records) and **Dose reminders** (at the times of the
-medication schedules with Remind me on, in the time zone they were set in; paused ones don't remind). A notification
-says only which profile and what kind, "Sanguity: new results for Ben" or "Sanguity: a dose is due for Ben", never a
-result, a medication or anything else of the records; tapping it opens Sanguity, where you sign in to see what it is.
-The topic is the install's, so whoever reads it sees them. Each is sent once, in the background, tried again a few
-times if the server doesn't answer; one that never goes through is in Install activity, without its words.
+**Settings → Install → General → Notifications**: a self-hosted [ntfy](https://ntfy.sh) server's address, like
+`https://ntfy.example.com` (https only, unless the server is on your local network), its access token if it needs
+one (saved encrypted and never shown again, or `NOTIFY_TOKEN` in the server's environment; either is sent only to the
+scheme and host it's for, the environment's to the first one it's used with), and **Send a test**. Then each person
+turns them on under **Settings → Notifications**, for each profile they can see: **New results** (a connected
+portal's sync brought new records) and **Dose reminders** (at the times of the medication schedules with Remind me
+on, in the time zone they were set in; paused ones don't remind). Each person has a topic of their own on that
+server, made for them, that can't be guessed: subscribe to the address shown there in the ntfy app, and **Make a new
+topic** if it's been seen by someone else. A profile's notifications go only to the topics of the people who turned
+them on and can still see it. A notification says only which profile and what kind, "Sanguity: new results for Ben"
+or "Sanguity: a dose is due for Ben", never a result, a medication or anything else of the records; tapping it opens
+Sanguity, where you sign in to see what it is. Each is sent once, in the background, tried again a few times if the
+server doesn't answer; one that never goes through is in Install activity, without its words.
 
 ### Share links
 

@@ -14,7 +14,9 @@ removing it, stops the next request even in the middle of a pull.
   resolve(permit, url) -> [ip]            the host's addresses (getaddrinfo), for a caller that checks them (shl.py)
   connection(permit, url, purpose=None, ip=None, timeout=..., context=None) -> http.client connection, not yet
                                           connected; with ip, it connects to that address (checked beforehand)
-                                          while the certificate is still checked for the host
+                                          while the certificate is still checked for the host (https), or the
+                                          Host header still names it (http: #1130, so a name checked once isn't
+                                          looked up again to another address)
   Errors                                  what a host that didn't answer, or broke off, raises: (OSError, HTTPException)
   why(e) -> str                           one of those in plain words, for people ("its name wasn't found")
 
@@ -136,6 +138,16 @@ class _Pinned(http.client.HTTPSConnection):
         self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
 
 
+class _PinnedHTTP(http.client.HTTPConnection):
+    """Plain HTTP to host, connecting to an address checked beforehand; the Host header still names host."""
+    def __init__(self, host, port, ip, timeout):
+        super().__init__(host, port, timeout=timeout)
+        self._ip = ip
+
+    def connect(self):
+        self.sock = socket.create_connection((self._ip, self.port), self.timeout)
+
+
 def connection(permit, url, purpose=None, ip=None, timeout=20, context=None):
     """A connection to url's host, after the permit allows it and the contact is recorded. Raises Refused."""
     scheme, name, port = _split(url)
@@ -145,4 +157,6 @@ def connection(permit, url, purpose=None, ip=None, timeout=20, context=None):
         if ip:
             return _Pinned(name, port, ip, timeout, ctx)
         return http.client.HTTPSConnection(name, port, timeout=timeout, context=ctx)
+    if ip:
+        return _PinnedHTTP(name, port, ip, timeout)
     return http.client.HTTPConnection(name, port, timeout=timeout)
