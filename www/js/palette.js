@@ -215,9 +215,10 @@ const SgPalette = (() => {
     labs: "tests results charts blood work", costs: "money bills claims payments insurance", medications: "meds medicine prescriptions pills doses taking reminders"};
   /* the views with an address of their own (#452, app.js HASH_TABS), each listed as well, once something's typed: [tab,
      view, its # after the tab's, title, words]; a tab itself opens its first view, as its address does */
-  const TAB_VIEWS = [["labs", "heatmap", "-heatmap", "Heatmap", "grid colors colours every result table"],
+  const TAB_VIEWS = [["labs", "latest", "-latest", "Latest", "latest results newest last every lab list now"],
+    ["labs", "chart", "-chart", "Chart", "charts graph lines over time values table"],
+    ["labs", "heatmap", "-heatmap", "Heatmap", "grid colors colours every result table"],
     ["labs", "compare", "-compare", "Compare", "side by side within ranges milestone before after"],
-    ["labs", "latest", "-latest", "Latest", "latest results newest last every lab list now"],
     ["timeline", "journal", "-journal", "Journal", "notes diary entries photos symptoms"],
     ["costs", "paid", "-paid", "What you paid", "out of pocket spent spending payments total hsa fsa premiums"],
     // (#1127, #1128, #1136) cards of Costs' views, opened with focus on their heading (costs.js costJump)
