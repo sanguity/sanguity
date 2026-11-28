@@ -10,6 +10,7 @@ profiles whose phones need it. Fictional data only.
   python3 tests/test_general_host.py
 """
 import contextlib, io, os, shutil, sys, tempfile, unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-general-host-test-")
@@ -140,11 +141,8 @@ class Host(unittest.TestCase):
         self.assertEqual((r.status_code, config.setting("PUBLIC_ORIGINS")), (200, ()), r.text)   # a reset, confirmed
         self.set_to([NEW])
         self.set_to([])   # emptied, through the guard
-        os.environ["PUBLIC_ORIGINS"] = OLD
-        try:
-            self.assertEqual(self.put([NEW]).status_code, 409)
-        finally:
-            del os.environ["PUBLIC_ORIGINS"]
+        with mock.patch.dict(os.environ, {"PUBLIC_ORIGINS": OLD}):   # (#1158) the environment's locks nothing
+            self.assertEqual(config.setting("PUBLIC_ORIGINS"), ())
 
     def test_d_fresh_check_after_the_guard(self):
         """The fresh check is asked for after the guard: a refused list is said before a password is asked for."""
@@ -160,7 +158,7 @@ class Host(unittest.TestCase):
     def test_e_upload_address_applies_at_once(self):
         """#1003: the upload address saved in the app is the one Sources → Phone and watch gives, at once (with the
         answer that makes a secret too); its effects count the phones that need it; back to empty, the public address's
-        host on RECEIVER_PORT again. A bad one is refused; the environment's is locked."""
+        host on RECEIVER_PORT again. A bad one is refused; the environment's changes nothing (#1158)."""
         self.set_to([OLD])
         key, url = "phone.uploadUrl", "https://phones.example.test/ingest"
         upload = lambda: self.c.get(f"/api/profiles/{self.pid}/watch/receiver").json()["addresses"]   # noqa: E731
@@ -178,30 +176,18 @@ class Host(unittest.TestCase):
         self.assertEqual(put("ftp://phones.example.test").status_code, 400)
         self.assertEqual(put("").status_code, 200)
         self.assertEqual(upload(), ["http://health.example.test:8731/ingest"])
-        os.environ["WATCH_UPLOAD_URL"] = url
-        try:
-            self.assertEqual(put("https://other.example.test/ingest").status_code, 409)
-            self.assertEqual(upload(), [url])
-        finally:
-            del os.environ["WATCH_UPLOAD_URL"]
+        with mock.patch.dict(os.environ, {"WATCH_UPLOAD_URL": url}):
+            self.assertEqual(upload(), ["http://health.example.test:8731/ingest"])
 
     def test_f_receiver_values_shown(self):
-        """#998 (the owner, 2026-11-26): the app is given TZ and SLOT_GRACE_DAYS as the receiver is, so Phone receiver
-        says the receiver's values: as set, else its defaults (UTC, 7 days), and a number it wouldn't read as its 7."""
-        was = {k: os.environ.pop(k, None) for k in ("TZ", "SLOT_GRACE_DAYS")}
+        """#998, #1158: Phone receiver says the receiver's values, the ones the app copies for it: those changed under
+        Needs a restart, else its defaults (UTC, 7 days); the environment's changes nothing."""
+        from server import server_settings as ss
         rows = lambda: (lambda j: (j["tz"], j["slot_grace_days"]))(self.c.get("/api/settings/phone").json())   # noqa: E731
-        try:
+        with mock.patch.object(ss, "in_force", return_value={}), mock.patch.dict(os.environ, TZ="America/Chicago", SLOT_GRACE_DAYS="14"):
             self.assertEqual(rows(), ("UTC", 7))
-            os.environ.update(TZ="America/Chicago", SLOT_GRACE_DAYS="")   # compose's ${SLOT_GRACE_DAYS:-}, unset in .env
-            self.assertEqual(rows(), ("America/Chicago", 7))
-            for given, shown in (("14", 14), ("1.5", 1.5), ("-3", 7), ("soon", 7), ("nan", 7), ("inf", 7)):
-                os.environ["SLOT_GRACE_DAYS"] = given
-                self.assertEqual(rows()[1], shown, given)
-        finally:
-            for k, v in was.items():
-                os.environ.pop(k, None)
-                if v is not None:
-                    os.environ[k] = v
+        with mock.patch.object(ss, "in_force", return_value={"TZ": "America/Chicago", "SLOT_GRACE_DAYS": 14}):
+            self.assertEqual(rows(), ("America/Chicago", 14))
 
 
 if __name__ == "__main__":

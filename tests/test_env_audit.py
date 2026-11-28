@@ -13,7 +13,7 @@ TMP = tempfile.mkdtemp(prefix="sanguity-env-audit-")
 os.environ.update(SANGUITY_DATA=TMP, SANGUITY_KEY_FILE=os.path.join(TMP, "data_key"))
 sys.path.insert(0, ROOT)
 
-from server import config, notify, oidc, server_settings   # noqa: E402
+from server import config, notify, oidc, server_settings, settings   # noqa: E402
 
 FOLDERS = ("server", "watch", "docker")
 NAME = r"""["']([A-Z][A-Z0-9_]*)["']"""
@@ -26,8 +26,7 @@ KNOWN = {
     ("server/config.py", "v.name"): set(config.VARS),   # each of VARS, read by its name
     ("server/server_settings.py", "name"): set(server_settings.DEFS),   # each restart setting, by its name
     ("server/server_settings.py", "n"): set(server_settings.DEFS),
-    ("server/oidc.py", "SECRET_ENV"): {oidc.SECRET_ENV},
-    ("server/notify.py", "TOKEN_ENV"): {notify.TOKEN_ENV},
+    ("server/settings_import.py", "n"): set(config.VARS) - set(config.CONTAINER) | set(config.SECRETS),   # taken in once
 }
 
 
@@ -80,6 +79,14 @@ class EnvironmentAudit(unittest.TestCase):
         self.assertEqual(sorted(n for n, why in config.CONTAINER.items() if len(why) < 20), [], "each says why")
         self.assertEqual(sorted(set(config.CONTAINER) & (set(server_settings.DEFS) | set(config.SECRETS))), [],
                          "a page setting can't be the container's too")
+
+    def test_no_setting_is_the_environments_alone(self):
+        """(#1158) Each page setting has a home on the page: an install setting that stands for it (applies at once) or
+        one of Needs a restart's (server_settings.DEFS); each secret its write-only store."""
+        home = {s.env for s in settings.SETTINGS.values() if s.env} | set(server_settings.DEFS)
+        self.assertEqual(sorted(n for n in config.VARS if n not in config.CONTAINER and n not in home), [])
+        self.assertEqual(sorted(config.RESTART - set(server_settings.DEFS)), [])
+        self.assertEqual((oidc.SECRET_ENV in config.SECRETS, notify.TOKEN_ENV in config.SECRETS), (True, True))
 
     def test_the_receiver_reads_no_setting_of_its_own(self):
         """(#1158) Its time zone and days are the app's copy (receiver-settings.json), never its environment's."""

@@ -395,10 +395,13 @@ class View(unittest.TestCase):
                 update.wake()   # the app's thread looks at the weekly update
                 time.sleep(0.3)
                 self.assertEqual(host.hits, [], "nobody contacted")
-                self.assertFalse(self.robin.get("/api/provider-directory").json()["weekly"])
+                # (#1158) connected sources, on as saved, are off too while saved settings are left out
+                self.assertEqual(self.robin.get("/api/provider-directory").status_code, 404)
                 settings.put(db, "directory.weekly", False)
         finally:
             settings.put(db, "directory.weekly", False)
+            settings.put(db, "experimental.connectedSources", True)
+            settings.forget_saved()
             db.close()
         self.assertEqual(netguard.take(), [])
 
@@ -424,7 +427,9 @@ class View(unittest.TestCase):
             settings.put(db, "directory.weekly", True)
             db.execute("UPDATE connections SET next_sync=1 WHERE id=?", (cid,))
             before = len(self.fake.requests)
-            with mock.patch.dict(os.environ, {"CONNECTED_SOURCES": "0"}):
+            settings.put(db, "experimental.connectedSources", False)   # (#1158: the page's switch, not the environment's)
+            settings.forget_saved()
+            if True:
                 for c, method, path in ((self.lee, "GET", p + "/connections"), (self.lee, "GET", p + "/connections/warnings"),
                                         (self.lee, "POST", f"{p}/connections/{cid}/sync"), (self.lee, "POST", p + "/connect/start"),
                                         (self.lee, "POST", f"{p}/connections/{cid}/disconnect"), (self.lee, "POST", "/api/connect/return"),
@@ -447,6 +452,8 @@ class View(unittest.TestCase):
                     self.assertEqual((v["sources"], v["may_contact"], v["earlier"], "directory" in v), ([], [], [], False))
             self.assertEqual((len(self.fake.requests), host.hits), (before, []), "nobody contacted")
             self.assertEqual(db.execute("SELECT state, next_sync FROM connections WHERE id=?", (cid,)).fetchone()[:], ("active", 1), "kept as it was")
+            settings.put(db, "experimental.connectedSources", True)
+            settings.forget_saved()
             settings.put(db, "directory.weekly", False)
             self.assertGreaterEqual(sync.run_due(), 1, "on again: it syncs")
             self.assertGreater(len(self.fake.requests), before)

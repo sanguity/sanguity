@@ -63,6 +63,8 @@ class OIDC(unittest.TestCase):
         dbm.init()
         db = dbm.connect()
         atrest.check_key(db); atrest.load_pepper(db); prof.bootstrap(db)
+        from server import settings_import   # (#1158) what the environment sets (PUBLIC_ORIGINS, above), taken in once
+        settings_import.take(db, say=lambda *a: None)
         cls.uid = {n: accounts.create(db, n, is_admin=n == "ada", password=pw)[0] for n, pw in PW.items()}
         cls.lee_secret = twofactor.new_secret()
         db.execute("UPDATE users SET totp_secret=? WHERE id=?", (crypto.enc(cls.lee_secret), cls.uid["lee"]))
@@ -435,14 +437,24 @@ class OIDC(unittest.TestCase):
         self.assertTrue(stored.startswith(crypto.FIELD) and SECRET not in stored)
         self.assertNotIn(SECRET, dbm.meta_get(db, oidc.OIDC_META))
         db.close()
-        # the environment's wins, and then it can't be changed here
+        # (#1158) the environment's is taken in once, encrypted as one saved here; after that it changes nothing
+        from server import settings_import
         with mock.patch.dict(os.environ, {"OIDC_CLIENT_SECRET": "the environment's (fictional)"}):
-            self.assertEqual(ada.get("/api/settings/install/oidc").json()["secret"], "environment")
-            self.assertEqual(ada.put("/api/settings/install/oidc", json={"secret": "another"}, headers=H).status_code, 409)
+            self.assertEqual(ada.get("/api/settings/install/oidc").json()["secret"], "install")
+            db = dbm.connect()
+            mark = dbm.meta_get(db, settings_import.MARK)
+            dbm.meta_set(db, settings_import.MARK, None)   # as before this version
+            self.assertIn("OIDC_CLIENT_SECRET", settings_import.take(db, say=lambda *a: None))
+            self.assertNotIn("the environment's", dbm.meta_get(db, oidc.SECRET_META) + dbm.meta_get(db, settings_import.MARK))
+            self.assertEqual(oidc.client_secret(db), "the environment's (fictional)")
+            dbm.meta_set(db, settings_import.MARK, mark)
+            db.close()
             self.idp.secret = "the environment's (fictional)"
             self.link("kim", "kim-subject-1")
             c, r = self.oidc_sign_in()
             self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(ada.put("/api/settings/install/oidc", json={"secret": SECRET}, headers=H).status_code, 200, "changed here")
+        self.idp.secret = SECRET
 
     def test_each_setting_is_checked_and_each_change_needs_the_fresh_check(self):
         ada = self.set_up()

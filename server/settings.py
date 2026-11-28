@@ -18,11 +18,12 @@ Adding a setting (#36-#46): one define() call below, with its section (add one t
 editor for its kind on the Settings screen (www/js/settings.js; "labs", "tiles", "names", "rules", "tabs",
 "theme" and "units" exist).
 
-A server setting the environment can also set (#999): an install setting with env="NAME", a variable of config.VARS,
-private=False and the variable's default. Where NAME is used, config.setting("NAME") gives the value in force: the
-environment's when it's set (then shown "set by the environment", and a change to it refused), else the one saved
-here, else the default. Its value and where it comes from (in_force) are the same everywhere: the API, effective(),
-install_values() and the server's own use.
+A server setting a variable stands for (#999): an install setting with env="NAME", a variable of config.VARS,
+private=False and the variable's default. Where NAME is used, config.setting("NAME") gives the value in force: the one
+saved here, else the default. The environment no longer sets it (#1158): on the first start of this version the
+environment's value was taken in once (settings_import.py), and a later change to it is ignored with a warning. Its
+value and where it comes from (in_force) are the same everywhere: the API, effective(), install_values() and the
+server's own use.
 
 settings.json, before schema version 18: each profile's copy (profiles/<id>/settings.json) is loaded into the
 table once at start-up (migrate_files), then deleted (#934). A setup build's settings.json
@@ -49,7 +50,7 @@ class Setting:
         # only once the admin has typed "type" (the count unless it says) back (routes_settings._confirmed, one rule)
         self.confirm = confirm
         self.scope, self.private, self.kind, self.help, self.merge = scope, private, kind, help, merge
-        self.env = env   # the variable of config.VARS it stands for (#999): the environment's value wins over it
+        self.env = env   # the variable of config.VARS it stands for (#999): taken in from the environment once (#1158)
         self.reread = reread   # a stored value is checked again when read: its check gives older values in today's terms
         self.screen = screen   # shown on the Settings screen (False: kept for a page of its own, like the guide's, #199)
         self.records = records   # the records carry it (#1135: keyDocs): a change moves the profile's records' revision
@@ -478,10 +479,9 @@ define("notify.url", "notify", "Notification server", "", notify_url, scope="ins
 # ---------------------------------------------------------------- Accounts and sign-in → Sign-in rules (#1001)
 # How people sign in, each applying at once where it's used (config.setting, or install_value for those no variable
 # stands for), with the fresh check and logged old and new as every install setting's change (#1006). Each is bounded,
-# and never more lenient than Sanguity's own default (#998): a value outside is refused (400), and the environment's
-# wins over it (a variable set there shows locked). Requiring two-factor sign-in for everyone is the meta row
-# require_2fa (accounts.two_factor_required, PATCH /api/settings), shown in this section too; the Secure cookie and the
-# password checks at once (COOKIE_SECURE, HASH_PARALLEL) are the environment's alone, shown read-only. Shortening a
+# and never more lenient than Sanguity's own default (#998): a value outside is refused (400). Requiring two-factor
+# sign-in for everyone is the meta row require_2fa (accounts.two_factor_required, PATCH /api/settings), shown in this
+# section too; the Secure cookie is chosen here (#1158), each way from automatic asked first (cookie_goes). Shortening a
 # sign-in or turning on idle sign-out ends sign-ins: the change counts them and asks first (routes_settings.py).
 IDLE_LEAST = 5   # minutes: a shorter idle sign-out would end a sign-in while its person reads a page
 
@@ -537,6 +537,34 @@ define("security.reauthMinutes", "security", "The fresh check lasts (minutes)", 
        whole(1, 5, "The fresh check's minutes"), scope="install", private=False, kind="number", env="REAUTH_MINUTES",
        help="Before the most powerful changes, like these, Sanguity asks for the password, a code or a passkey again, "
             "unless one was given within this long.")
+COOKIE_CHOICES = {"auto": "Automatic", "1": "Always", "0": "Never"}
+
+
+def cookie_goes(db, before, after, request, s):
+    """(#1158) The Secure cookie away from automatic, asked first (routes_settings._confirmed): Always over a page that
+    came over plain HTTP signs everyone out here for good (the browser keeps no Secure cookie over HTTP); Never lets the
+    sign-in cookie travel unencrypted."""
+    if after == before or after == "auto":
+        return None
+    https = request is not None and request.url.scheme == "https"
+    if after == "1":
+        if https:
+            return None
+        return {"count": 1, "type": "always secure", "title": "Always mark the sign-in cookie Secure?", "action": "Always Secure",
+                "message": "This page came over plain HTTP: with Always, browsers keep no sign-in here, so you and everyone "
+                           "reaching Sanguity this way are signed out and can't sign in again until it's reached over "
+                           "HTTPS (or python -m server.manage config reset COOKIE_SECURE is run)."}
+    return {"count": 1, "type": "never secure", "title": "Never mark the sign-in cookie Secure?", "action": "Never Secure",
+            "message": "Browsers will then send the sign-in cookie over plain HTTP too, where anyone on the network between "
+                       "can read it and sign in as that person. Only for a server reached over plain HTTP alone, on a network "
+                       "you trust."}
+
+
+define("security.cookieSecure", "security", "Secure sign-in cookie", "auto", one_of(COOKIE_CHOICES, "The Secure cookie"),
+       scope="install", private=False, kind="choice", env="COOKIE_SECURE", confirm=cookie_goes,
+       help="Automatic marks it Secure (sent only over HTTPS) when the request came over HTTPS, as your reverse proxy "
+            "says. Always and Never are for a proxy that doesn't say.")
+CHOICES["security.cookieSecure"] = COOKIE_CHOICES
 # failed sign-ins before each further try waits (security.Throttle's kinds), never more than its FREE
 SIGN_IN_TRIES = {"pair": "security.triesHere", "ip": "security.triesAddress", "user": "security.triesAccount"}
 define("security.triesHere", "security", "Wrong tries before a wait: one account, from one place", 5,
@@ -1095,7 +1123,7 @@ def stored(db, scope, pid=None, uid=None):
 
 
 def effective(db, pid, uid):
-    """{key: (value, where it came from: "default", a scope or "environment")} for every setting, as seen by user uid
+    """{key: (value, where it came from: "default" or a scope)} for every setting, as seen by user uid
     on profile pid."""
     out = {k: (s.default, "default") for k, s in SETTINGS.items()}
     for scope in SCOPES:
@@ -1194,8 +1222,8 @@ config.saved = saved_values
 
 
 def in_force(key):
-    """(value, where it comes from) of an install setting that stands for a variable: "environment" when it's set,
-    "install" when saved here (and not left out: SANGUITY_SAVED_SETTINGS=off, #1006), else "default"."""
+    """(value, where it comes from) of an install setting that stands for a variable: "install" when saved here (and
+    not left out: SANGUITY_SAVED_SETTINGS=off, #1006), else "default"."""
     src, value = config.lookup(SETTINGS[key].env)
     return (list(value) if isinstance(value, tuple) else value), src
 

@@ -30,6 +30,7 @@ import logging, shutil   # noqa: E402
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, activity, calendar, crypto, db as dbm, main, profiles as prof, records, security as sec   # noqa: E402
+import given   # noqa: E402  (#1158: a setting as the app holds it)
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
@@ -396,14 +397,14 @@ class Calendar(unittest.TestCase):
         first), as "base" beside its path, when it's made and when it's rotated, and each event links back there too;
         without one, no base, and the link back is the address the request reached."""
         from unittest import mock
-        with mock.patch.dict(os.environ, {"PUBLIC_ORIGINS": ""}):
+        with given.settings(PUBLIC_ORIGINS=""):
             j = self.make(details="full")
             try:
                 self.assertNotIn("base", j)
                 self.assertIn("URL:http://testserver/", self.fetch(j["path"]).text)
             finally:
                 self.drop()
-        with mock.patch.dict(os.environ, {"PUBLIC_ORIGINS": "http://sanguity.lan:8730, https://health.example.test, https://zz-second.example.test"}):
+        with given.settings(PUBLIC_ORIGINS="http://sanguity.lan:8730, https://health.example.test, https://zz-second.example.test"):
             j = self.make(details="full")
             try:
                 r = self.c["robin"].post(f"/api/profiles/{self.pid}/calendar/rotate", headers=H).json()

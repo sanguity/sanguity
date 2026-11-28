@@ -71,6 +71,8 @@ class Notify(unittest.TestCase):
         dbm.init()
         db = dbm.connect()
         atrest.check_key(db); atrest.load_pepper(db); prof.bootstrap(db)
+        from server import settings_import   # (#1158) what the environment sets (PUBLIC_ORIGINS, above), taken in once
+        settings_import.take(db, say=lambda *a: None)
         cls.uid = {n: accounts.create(db, n, is_admin=n == "ada", password=pw)[0] for n, pw in PW.items()}
         db.execute("UPDATE users SET totp_secret=? WHERE id=?", (crypto.enc(twofactor.new_secret()), cls.uid["ada"]))
         cls.pid = prof.create_profile(db, "Ben", owner_id=cls.uid["kim"])
@@ -231,12 +233,11 @@ class Notify(unittest.TestCase):
             self.assertNotIn("Authorization", notify.request(self.db(), "test", claim=True)[1])
         self.set_server()
         self.assertEqual(notify.token_source(self.db()), "install")
-        # removed; and the environment's wins, and can't be changed here
+        # removed; and (#1158) the environment's changes nothing once it's been taken in
         self.assertIsNone(ada.put("/api/settings/install/notify/token", json={"token": ""}, headers=H).json()["token"])
         with mock.patch.dict(os.environ, {"NOTIFY_TOKEN": "tk_from_the_environment"}):
-            self.assertEqual(ada.get("/api/settings/install/notify").json()["token"], "environment")
-            self.assertEqual(ada.put("/api/settings/install/notify/token", json={"token": "x"}, headers=H).status_code, 409)
-            self.assertEqual(notify.request(self.db(), "test", claim=True)[1]["Authorization"], "Bearer tk_from_the_environment")
+            self.assertIsNone(ada.get("/api/settings/install/notify").json()["token"])
+            self.assertNotIn("Authorization", notify.request(self.db(), "test", claim=True)[1])
         # a failed test says why, and the admin's actions are in Install activity by name only
         self.ntfy.status = 403
         notify._tested.clear()
@@ -411,43 +412,33 @@ class Notify(unittest.TestCase):
         self.assertLessEqual({notify.TOKEN_META, notify.ENV_META}, set(backup.INSTALL_META))
         self.assertIn(("notify_topics", "user_id", "topic"), atrest.FIELDS)
 
-    # ------------------------------------------------------------ the environment's token (#1130's review)
-    def test_an_environment_token_that_cant_be_sent_is_ignored_unquoted(self):
+    # ------------------------------------------------------------ the environment's token (#1130's review, #1158)
+    def test_the_environment_token_is_taken_in_once_for_its_server(self):
+        """The environment's NOTIFY_TOKEN is taken in once, as one saved here (write-only, encrypted): for the server it
+        had gone to already, else today's; one that can't be sent in a header isn't (said without it)."""
+        from server import settings_import
         self.set_server()
         db = self.db()
-        notify.topic(db, self.uid["kim"])
-        bad = "tk_secret_word\nX-Injected: yes"
-        notify._warned.clear()
-        with mock.patch.dict(os.environ, {"NOTIFY_TOKEN": bad}), self.assertLogs("sanguity.notify", "WARNING") as logs:
-            self.assertEqual(notify.token(db, claim=True), "")
-            notify.send(db, "test", self.uid["kim"])
-        self.assertNotIn("Authorization", self.ntfy.posts[0]["headers"])
-        self.assertNotIn("X-Injected", self.ntfy.posts[0]["headers"])
-        self.assertFalse(any("tk_secret_word" in m for m in logs.output))
-        # a header http.client refuses all the same: a SendError that doesn't quote it
-        with mock.patch.object(notify, "request", return_value=(b"x", {"Authorization": "Bearer tk_secret_word\r\nX: y"})):
-            with self.assertRaises(notify.SendError) as e:
-                notify.send(db, "test", self.uid["kim"])
-        self.assertNotIn("tk_secret_word", str(e.exception))
-
-    def test_the_environment_token_goes_to_the_first_scheme_and_host_alone(self):
-        self.set_server()
-        db = self.db()
-        notify.topic(db, self.uid["kim"])
-        with mock.patch.dict(os.environ, {"NOTIFY_TOKEN": "tk_env_one"}):
-            notify.send(db, "test", self.uid["kim"])
-            self.assertEqual(self.ntfy.posts[-1]["headers"]["Authorization"], "Bearer tk_env_one")
-            for elsewhere in ("https://" + self.ntfy.host, "https://ntfy.example.test"):
-                self.set_server(elsewhere)
-                self.assertEqual(notify.token_source(db), "environment-elsewhere")
-                self.assertNotIn("Authorization", notify.request(db, "test", claim=True)[1])
-            self.set_server()
-            self.assertEqual(notify.token_source(db), "environment")
-        with mock.patch.dict(os.environ, {"NOTIFY_TOKEN": "tk_env_two"}):   # a new token: kept for the next server it goes to
-            self.set_server("https://ntfy.example.test")
-            self.assertEqual(notify.request(db, "test", claim=True)[1]["Authorization"], "Bearer tk_env_two")
-            self.set_server()
+        mark = dbm.meta_get(db, settings_import.MARK)
+        try:
+            for bad in ("tk_secret_word\nX-Injected: yes",):
+                dbm.meta_set(db, settings_import.MARK, None)
+                said = []
+                with mock.patch.dict(os.environ, {"NOTIFY_TOKEN": bad}):
+                    self.assertNotIn("NOTIFY_TOKEN", settings_import.take(db, say=said.append))
+                self.assertFalse(any("tk_secret_word" in s for s in said), said)
+                self.assertIsNone(notify.token_source(db))
+            dbm.meta_set(db, settings_import.MARK, None)
+            with mock.patch.dict(os.environ, {"NOTIFY_TOKEN": "tk_env_one"}):
+                self.assertIn("NOTIFY_TOKEN", settings_import.take(db, say=lambda *a: None))
+            self.assertEqual((notify.token_source(db), notify.token(db)), ("install", "tk_env_one"))
+            self.assertNotIn("tk_env_one", dbm.meta_get(db, notify.TOKEN_META) + dbm.meta_get(db, settings_import.MARK))
+            self.set_server("https://ntfy.example.test")   # kept for its server alone, as one saved here
             self.assertNotIn("Authorization", notify.request(db, "test", claim=True)[1])
+            self.set_server()
+        finally:
+            dbm.meta_set(db, settings_import.MARK, mark)
+            notify.set_token(db, "")
 
     def test_the_loop_logs_no_exceptions_words(self):
         with mock.patch.object(notify, "tick", side_effect=ValueError("Invalid header value b'Bearer tk_secret_word'")), \

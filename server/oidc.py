@@ -34,7 +34,7 @@ The provider's settings are the install's (meta OIDC_META, plain: none is a secr
 which wins (#999's rule). Linked identities: the oidc_identities table (schema 49): issuer, subject (the ID token's
 sub), the account, when linked and last used, and the name the provider gave for it (encrypted), to show.
 """
-import base64, hashlib, hmac, ipaddress, json, os, re, secrets, threading, time, urllib.parse
+import base64, hashlib, hmac, ipaddress, json, re, secrets, threading, time, urllib.parse
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
@@ -149,15 +149,12 @@ def only(db):
 
 
 def secret_source(db):
-    """Where the client secret comes from: "environment", "install" or None (a public client: PKCE alone)."""
-    if os.environ.get(SECRET_ENV):
-        return "environment"
+    """Where the client secret comes from: "install" or None (a public client: PKCE alone). (#1158) The environment's
+    OIDC_CLIENT_SECRET was taken in once (settings_import.py), and isn't read after."""
     return "install" if dbm.meta_get(db, SECRET_META) else None
 
 
 def client_secret(db):
-    if (v := os.environ.get(SECRET_ENV)):
-        return v
     stored = dbm.meta_get(db, SECRET_META)
     return crypto.dec(stored) if stored else ""
 
