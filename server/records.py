@@ -61,7 +61,7 @@ from .importers import common
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
 SERVED = ("imports", "edits", "same", "possible", "journal", "medications", "oop", "reminders", "doses",
-          "hiddenMeds", "medEntries", "corrections")   # parts assemble() adds: never stored from an import (an
+          "hiddenMeds", "medEntries", "corrections", "costPlans")   # parts assemble() adds: never stored from an import (an
                            # export's data.json has them, and its corrections, #589, and its own medications, #1091:
                            # those go back into their own tables, export.restore)
 
@@ -771,6 +771,9 @@ def _assemble(db, pid, raw=False):
     if raw:   # (#1091) the profile's own medications and changes to the records', as kept
         if (mine := medications.listing(db, pid)):
             out["medEntries"] = mine
+        from . import costplan
+        if (typed := costplan.plans(db, pid)):   # (#1127) the plan years typed in on Costs
+            out["costPlans"] = typed
     else:   # #50: each medication's spans and fills, only when there are some; with the profile's own and changes (#1091)
         meds, hidden = medications.assembled(db, pid, out)
         if meds:

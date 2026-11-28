@@ -109,6 +109,7 @@ function drawCosts() {
   [tile("Discounts & not covered", usd(Math.max(0, billed - paid - owe)), "network discounts, write-offs, denials"),
     tile("Claims", rows.length.toLocaleString("en-US"), `${rows.filter(r => r.kind === "pharmacy").length} pharmacy fills`),
     tile("Denied", denied.toLocaleString("en-US"), denied ? `${rows.filter(r => /PROVIDER_DENIED/i.test(r.status)).length} provider-denied` : "")]);
+  box.append(planCard());   // the deductible and out-of-pocket max, per plan year (#1127)
   // the chart, by month or by year
   const ds = rows.map(r => r.d).sort(), span = ds.length ? (+ds.at(-1).slice(0, 4) - +ds[0].slice(0, 4)) * 12 + (+ds.at(-1).slice(5, 7) - +ds[0].slice(5, 7)) + 1 : 0;
   const by = costState.by || (span > 48 ? "year" : "month");
@@ -428,6 +429,94 @@ function renderPaid(box, claimRows, periodLabel) {
   if (edit && !edit.parentElement) tw.append(edit);   // its row not listed (a row above picked since): under the list
   card.append(tw);
   box.append(card);
+}
+/* ---- plan years (#1127): how much of the deductible and the out-of-pocket max the claims' shares have met, per plan
+   year typed in here (owners and editors), else per calendar year with no limits. The sums are the server's
+   (costplan.py, DATA.oop.years); arithmetic only, the numbers always as text, each bar their picture (aria-hidden),
+   on the limit's scale */
+const planState = {edit: null};   // the plan year being typed: "new", its id, or null
+const amountIn = v => { const t = String(v).replace(/[$,\s]/g, ""); return t === "" ? null : /^\d+(\.\d+)?$/.test(t) ? +t : NaN; };
+async function costSend(path, method, body, msg, then) {   // a plan year's or a bill's change; its reply's oop put in place
+  sayIn(msg, "Saving…");
+  try {
+    const r = await api(`profiles/${PROFILE.id}/costs/${path}`, {method, body: body ? JSON.stringify(body) : undefined});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't save (${r.status}).`, true); return; }
+    then(); storePut("oop", j);
+  } catch (e) { sayIn(msg, "Couldn't reach the server: " + e.message, true); }
+}
+function planYearsIn() {
+  const ys = (DATA.oop || {}).years || [];
+  if (state.preset === "all") return ys;
+  const a = isoDay(state.from), b = isoDay(state.to);
+  return ys.filter(y => y.start <= b && y.end >= a);
+}
+const planMeter = (label, got, of, note) => el("div", {class: "ov-row still"}, el("span", {class: "n", text: label}),
+  el("span", {class: "v", text: `${usd(got)} of ${usd(of)}`}),
+  el("span", {class: "s cost-bars"}, el("span", {class: "cost-bar-run", "aria-hidden": "true"},
+    el("span", {class: "cost-bar", style: {width: (of > 0 ? Math.min(1, Math.max(0, got / of)) * 100 : got > 0 ? 100 : 0) + "%", background: "var(--measure)"}})),
+    note ? el("span", {class: "cost-bar-note", text: note}) : null));
+function planForm(p) {   // a plan year typed: new (p null) or changed
+  const msg = el("p", {class: "hint", id: "planMsg"}), id = f => "plan-" + f;
+  const f = (k, label, v, type = "text") => el("label", {for: id(k)}, el("span", {text: label}),
+    el("input", {id: id(k), type, inputmode: type === "text" ? "decimal" : null, autocomplete: "off", value: v == null ? "" : String(v), size: type === "text" ? 9 : null}));
+  const form = el("div", {class: "oop-form needs-server"}, f("start", "Plan year starts", p?.start, "date"), f("deductible", "Deductible", p?.deductible),
+    f("oop", "Out-of-pocket max", p?.oop), f("familyDeductible", "Family deductible (optional)", p?.familyDeductible),
+    f("familyOop", "Family out-of-pocket max (optional)", p?.familyOop));
+  const back = () => { planState.edit = null; keepFocus(renderCosts); $(p ? `#plan-${p.id} .plan-change` : "#planAdd")?.focus(); };
+  form.append(el("button", {class: "btn primary", type: "button", text: "Save", onclick: () => {
+    const body = {start: $("#plan-start").value};
+    for (const k of ["deductible", "oop", "familyDeductible", "familyOop"]) {
+      body[k] = amountIn($("#plan-" + k).value);
+      if (Number.isNaN(body[k])) { sayIn(msg, `Type the ${$(`label[for=plan-${k}] span`).textContent.replace(/ \(optional\)/, "").toLowerCase()} as an amount, such as 3000.`, true); $("#plan-" + k).focus(); return; }
+    }
+    costSend(p ? `plans/${p.id}` : "plans", p ? "PUT" : "POST", body, msg, () => { planState.edit = null;
+      requestAnimationFrame(() => { ($(p ? `#plan-${p.id} .plan-change` : "#planAdd") || $("#planCard h2")).focus(); announce("Plan year saved."); }); });
+  }}), el("button", {class: "btn", type: "button", text: "Cancel", onclick: back}));
+  return el("div", {class: "oop-edit", id: "planEdit"}, el("h3", {class: "sub", text: p ? "Change the plan year" : "Add a plan year"}), form, msg);
+}
+function planCard() {
+  const o = DATA.oop || {}, plans = o.plans || [], ys = planYearsIn(), byId_ = new Map(plans.map(p => [p.id, p]));
+  const claimOf = new Map((DATA.costs || []).map(c => [c.id, c]));
+  const card = el("div", {class: "card", id: "planCard"}, el("div", {class: "list-hd"}, el("h2", {tabindex: -1, text: "Deductible and out-of-pocket max"}), el("span", {class: "spacer"}),
+    canEdit() ? el("button", {class: "btn needs-server", type: "button", id: "planAdd", "aria-expanded": planState.edit === "new", text: "Add a plan year",
+      onclick: () => { planState.edit = planState.edit === "new" ? null : "new"; keepFocus(renderCosts); $("#plan-start")?.focus(); }}) : null),
+    el("p", {class: "hint", text: plans.length ? "Your share on each claim in the plan year, and the part of it toward the deductible where the claim says."
+      : "Your share on each claim, by calendar year. Add a plan year to see it against your plan's deductible and out-of-pocket max."}));
+  if (planState.edit === "new") card.append(planForm(null));
+  if (!ys.length) card.append(el("p", {class: "hint", text: "No claim in this period lists a share for you to pay, and no plan year is typed in for it."}));
+  // the newest three, the rest under Earlier years (a long "All" stays short), open where a plan year being changed is
+  const later = ys.length > 3 ? el("details", {class: "more mt-3", open: ys.slice(3).some(y => y.plan != null && y.plan === planState.edit) || null},
+    el("summary", {text: `${ys.length - 3} earlier year${ys.length === 4 ? "" : "s"}`})) : null;
+  ys.forEach((y, n) => {
+    const p = y.plan != null ? byId_.get(y.plan) : null, part = el("div", {id: p ? "plan-" + p.id : null, class: "mt-3"});
+    const split = y.noSplit ? `${y.noSplit} of ${y.claims.length} claim${y.claims.length === 1 ? " gives" : "s give"} no deductible part` : "";
+    part.append(el("h3", {class: "sub", text: p ? `Plan year ${fmtD(dayTs(y.start))} to ${fmtD(dayTs(y.end))}` : plans.length ? `${y.start.slice(0, 4)}, outside the plan years typed in` : y.start.slice(0, 4)}));
+    if (p) {
+      part.append(planMeter("Deductible", y.towardDeductible, p.deductible, split), planMeter("Out-of-pocket max", y.outOfPocket, p.oop));
+      if (p.familyDeductible != null) part.append(planMeter("Family deductible", y.towardDeductible, p.familyDeductible, "this profile's claims only"));
+      if (p.familyOop != null) part.append(planMeter("Family out-of-pocket max", y.outOfPocket, p.familyOop, "this profile's claims only"));
+    } else part.append(el("p", {text: `${usd(y.towardDeductible)} toward the deductible · ${usd(y.outOfPocket)} out of pocket`}), split ? el("p", {class: "hint", text: split + "."}) : null);
+    const cs = y.claims.map(i => claimOf.get(i)).filter(Boolean);
+    if (cs.length) part.append(el("details", {class: "more"}, el("summary", {text: `The ${cs.length} claim${cs.length === 1 ? "" : "s"} counted`}),
+      scrollBox({class: "tablewrap", "aria-label": "Claims counted"}, stacked(el("table", {class: "data"},
+        el("thead", {}, el("tr", {}, ["Date", "Service", "Provider", "Toward the deductible", "Your share"].map((h, i) => el("th", {class: i > 2 ? "num" : null, text: h})))),
+        el("tbody", {}, cs.map(c => el("tr", {}, el("td", {text: fmtD(dayTs(c.d))}), el("td", {text: c.title}), el("td", {text: c.prov || ""}),
+          el("td", {class: "num", text: typeof c.ded === "number" ? usd2(c.ded) : "—"}), el("td", {class: "num", text: usd2(c.owe)})))))))));
+    if (p && canEdit()) {
+      const msg = el("p", {class: "hint"});
+      part.append(el("div", {class: "btns my-2"}, el("button", {class: "btn plan-change needs-server", type: "button", "aria-expanded": planState.edit === p.id, text: "Change",
+        onclick: () => { planState.edit = planState.edit === p.id ? null : p.id; keepFocus(renderCosts); $("#plan-start")?.focus(); }}),
+        el("button", {class: "btn needs-server", type: "button", text: "Remove", onclick: async () => {
+          if (await ask({title: `Remove the plan year from ${fmtD(dayTs(p.start))}?`, message: "The claims stay as they are.", action: "Remove", danger: true}))
+            costSend(`plans/${p.id}`, "DELETE", null, msg, () => { if (planState.edit === p.id) planState.edit = null; requestAnimationFrame(() => $("#planCard h2").focus()); });
+        }})), msg);
+      if (planState.edit === p.id) part.append(planForm(p));
+    }
+    (n < 3 ? card : later).append(part);
+  });
+  if (later) card.append(later);
+  return card;
 }
 /* ---- the charts (#300), on the chart kit (chartkit.js): its scales, value grid, time axis, crosshair and pinned
    readout; their gutters, rows and offsets grow with larger text (ckK, #633). Money on a value axis: "$30K", "$2.5K",
