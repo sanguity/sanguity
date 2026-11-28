@@ -103,6 +103,8 @@ check changes without updating the list, and it exercises this table against a l
 | Connected-source apps (vendor setup), lab-name matches, install settings, backups | No | No | No | Yes (with their own second factor; the most powerful changes, and every change to an install setting (#1006), also need a fresh check) | No | No |
 | The provider directory: search it | Yes | Yes | Yes | Yes | No | No |
 | The provider directory: add or update Epic's and Oracle Health's lists, the weekly update (#992, `/api/provider-directory`) | No | No | No | Yes (with their own second factor; turning the weekly update on or off also needs a fresh check) | No | No |
+| Text recognition (#1129): a document's recognised text, the search of documents' text | Yes | Yes | Yes | No | No | No |
+| Text recognition (#1129): its languages, import or download one (`/api/settings/install/ocr`) | No | No | No | Yes (with their own second factor and a fresh check; a language file's name, size and shape are checked, then Tesseract tries it with a time limit) | No | No |
 | "What is this test?" pages (#163, `GET /api/lab-test-pages`): the app's own table of links, nothing of anyone's | Yes | Yes | Yes | Yes | No | No |
 
 Someone signed in to an account a profile isn't shared with gets 404 on every route of that profile. A share link

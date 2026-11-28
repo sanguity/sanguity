@@ -10,7 +10,7 @@ const SgOutside = (() => {
   const dl = rows => el("dl", {}, ...rows.filter(r => r).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {}, v)]));
   const times = n => n === 1 ? "once" : `${n} times`;
   const none = what => emptyState(what, null, {cls: ""});   // a list with nothing in it says so (util.js, #499: "None yet.")
-  const profileOf = e => e.profile_name || (e.profile == null ? (["Provider directory", "Sign-in provider", "Notification server"].includes(e.purpose) ? "no profile (the install's)" : "no profile (an admin's test)") : "profile " + e.profile);
+  const profileOf = e => e.profile_name || (e.profile == null ? (["Provider directory", "Sign-in provider", "Notification server", "Text recognition language"].includes(e.purpose) ? "no profile (the install's)" : "no profile (an admin's test)") : "profile " + e.profile);
 
   function source(s) {
     const h = s.hosts || {}, v = s.vendor_label || s.vendor;   // its vendor as Set up a source names it (#528: "epic")
@@ -85,6 +85,10 @@ const SgOutside = (() => {
         el("p", {class: "muted"}, `${v.notifications.hosts.join(", ")}: sent the notifications people turn on, in `,
           el("a", {href: "#notify", text: "Notifications"}), ", saying only which profile and what kind", v.admin ? ["; set in ", el("a", {href: "#gen-notify", text: "General, Notifications"})] : "", "."),
         ...(v.admin ? [contacts(v.notifications.contacts, "Not contacted yet: each contact is listed once a notification or a test is sent.")] : [])] : []),
+      ...(v.languages ? [sub("Text recognition languages"),   // (#1129) an admin's alone, while downloading them is on
+        el("p", {class: "muted"}, "The tesseract-ocr project's language files, downloaded only when an admin asks for one, in ",
+          el("a", {href: "#gen-ocr", text: "General, Text recognition"}), "."),
+        contacts(v.languages.contacts, "None downloaded yet: the host is listed once one is.")] : []),
       ...(v.earlier.length ? [sub("Earlier contacts, no longer allowed"), contacts(v.earlier, "")] : []));
   }
   return {load};

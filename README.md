@@ -633,8 +633,9 @@ too. With none set, every name works, as before.
   directory's two lists, from open.epic.com and raw.githubusercontent.com, only when an admin presses Add the lists
   or Update now, or weekly once an admin turns that on ([Finding your provider](#finding-your-provider)); and, once an
   admin sets up a sign-in provider ([Sign in with OIDC](#sign-in-with-oidc)), that provider, as someone signs in with it
-  or an admin tests it; and, once an admin sets a notification server ([Notifications](#notifications)), that server,
-  for the notifications people turn on. **Settings → Install →
+  or an admin tests it; once an admin sets a notification server ([Notifications](#notifications)), that server,
+  for the notifications people turn on; and, once an admin turns on downloading text recognition languages,
+  raw.githubusercontent.com for a language file an admin asks for there (#1129). **Settings → Install →
   [Outside connections](www/settings.html)** (`settings.html#outside` on your install, for admins) lists every host the install
   may contact, grouped by purpose, with the scopes asked for and granted and when each was last contacted, for
   the whole install. Every outbound request goes through one gateway

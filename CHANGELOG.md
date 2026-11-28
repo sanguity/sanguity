@@ -151,6 +151,12 @@ Everything on `main` so far; it becomes the first tagged release.
 - Insurance cards (#1137): Settings → This person → Insurance cards keeps each health plan's name, member ID, group
   number and phone numbers, with a photo of the card's front and back (encrypted, metadata taken out); a share link
   shows them only when its maker ticks Insurance cards, and they go with the export and backups.
+- Searchable scanned documents (#1129): scanned letters and reports are read on the server by Tesseract (in the
+  Docker images, with English), as they're added and in one background pass over those already there, so the
+  Timeline's search and the palette find them by their words; a PDF with its own text uses it. The text is kept
+  encrypted, only for finding the document, behind "Text found by text recognition" in its drawer. Other languages
+  in Settings → General → Text recognition: a language file imported, or downloaded from the tesseract-ocr project
+  once an admin turns that on (listed under Outside connections).
 
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for

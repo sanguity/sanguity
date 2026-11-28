@@ -44,6 +44,7 @@ const FILES = [
   "js/gen-about.js",
   "js/gen-demo.js",
   "js/gen-restart.js",
+  "js/gen-ocr.js",
   "guide.html", "js/guide.js",
   "js/cycle.js", "js/sources-cycle.js",
   "js/targets.js",

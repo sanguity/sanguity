@@ -891,7 +891,8 @@ html.sg-docked #drawer{width:var(--dock)}
 .msg{border-left:3px solid var(--grid);padding:var(--sp-1) 0 var(--sp-1) var(--sp-3);margin:0 0 var(--sp-4)}
 .msg .mh{font-size:var(--fs-2);color:var(--muted);margin-bottom:var(--sp-1)}
 .msg .mh b{color:var(--ink)}
-.msg pre{white-space:pre-wrap;font:inherit;margin:0}
+.msg pre,.doc-words pre{white-space:pre-wrap;font:inherit;margin:0}
+.doc-words{max-height:20em;overflow:auto;overflow-wrap:anywhere}   /* a scan's text (#1129, drawer.js docText) */
 pre.report{white-space:pre-wrap;font:var(--fs-2)/1.5 var(--font-mono);background:var(--raised);border:1px solid var(--ring);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin:0;overflow-x:auto}
 iframe.doc{width:100%;border:1px solid var(--ring);border-radius:var(--r-md);background:var(--paper);min-height:200px}
 .sect{font-size:var(--fs-1);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:var(--fw-semibold);margin:var(--sp-4) 0 var(--sp-2)}

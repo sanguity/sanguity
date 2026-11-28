@@ -58,7 +58,7 @@ jobs:
           python-version: "3.12"
 
       - name: Python files compile
-        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_first_run.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_recategorize.py tests/test_crossmatch.py tests/test_journal.py tests/test_milestones.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py server/importers/pdf_layouts/*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py tests/test_outside.py tests/netguard.py tests/whole_records.py tests/test_calendar.py tests/test_summary.py tests/test_share_links.py tests/test_security_refresh.py tests/test_host_check.py tests/test_general_host.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py tests/test_pwa.py tests/test_units.py tests/test_ranges.py tests/ranges_matrix.py tools/make_icons.py tools/make_wordmark.py tools/make_social_preview.py tools/site_screenshots.py tools/screenshots.py .github/scripts/changes.py tests/test_ci_changes.py tests/test_medications.py tests/test_costs.py tests/test_backups.py tests/test_performance.py tools/anonymise.py tests/test_anonymise.py tests/test_glucose.py tests/test_person.py tests/test_receiver_vitals.py tests/test_cycle.py tests/test_ecg.py tests/test_receiver_activity.py tests/test_growth.py tools/growth_tables.py tests/test_fhir_export.py tests/fhir_schema_check.py tools/fhir_schema_subset.py tests/test_med_log.py tests/test_export.py tests/test_condition_presets.py tests/test_lab_test_pages.py tests/test_css_tokens.py tests/test_palette.py tests/test_qr.py tests/test_ids.py tests/test_family.py tests/test_emergency.py tests/test_keydocs.py tests/test_server_settings.py tests/test_insurance.py
+        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_first_run.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_recategorize.py tests/test_crossmatch.py tests/test_journal.py tests/test_milestones.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py server/importers/pdf_layouts/*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py tests/test_outside.py tests/netguard.py tests/whole_records.py tests/test_calendar.py tests/test_summary.py tests/test_share_links.py tests/test_security_refresh.py tests/test_host_check.py tests/test_general_host.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py tests/test_pwa.py tests/test_units.py tests/test_ranges.py tests/ranges_matrix.py tools/make_icons.py tools/make_wordmark.py tools/make_social_preview.py tools/site_screenshots.py tools/screenshots.py .github/scripts/changes.py tests/test_ci_changes.py tests/test_medications.py tests/test_costs.py tests/test_backups.py tests/test_performance.py tools/anonymise.py tests/test_anonymise.py tests/test_glucose.py tests/test_person.py tests/test_receiver_vitals.py tests/test_cycle.py tests/test_ecg.py tests/test_receiver_activity.py tests/test_growth.py tools/growth_tables.py tests/test_fhir_export.py tests/fhir_schema_check.py tools/fhir_schema_subset.py tests/test_med_log.py tests/test_export.py tests/test_condition_presets.py tests/test_lab_test_pages.py tests/test_css_tokens.py tests/test_palette.py tests/test_qr.py tests/test_ids.py tests/test_family.py tests/test_emergency.py tests/test_keydocs.py tests/test_server_settings.py tests/test_insurance.py tests/test_ocr.py tests/fake_tesseract.py
 
       - name: Which jobs a pull request runs (docs only, templates only, tests only, CI itself)
         run: python tests/test_ci_changes.py
@@ -240,6 +240,8 @@ jobs:
 
       - name: Settings that need a restart (#1121; applied at start, the environment wins, bounded, a value that fails falls back, Restart now, config reset)
         run: python tests/test_server_settings.py
+      - name: Searchable scanned documents (#1129; read in the background, found by search, text encrypted, PDFs' own text, caps, language files checked, downloads only when on)
+        run: python tests/test_ocr.py
 
       - name: Milestones and workout rules (moved in once, edited, one primary, roles, encrypted; bad and catastrophic regular expressions refused)
         run: python tests/test_milestones.py
@@ -367,6 +369,14 @@ jobs:
           done
           echo "The app didn't come up with a setup code within 3 minutes"; exit 1
 
+      - name: Text recognition in the image (#1129) recognises a line of text, and adds at most 40 MB
+        run: |
+          docker compose exec -T app python -m server.ocr check
+          # the one layer that adds it (docker/app.Dockerfile): at most 40 MB (#1129's bar; about 16 MB in November 2026)
+          size=$(docker history --no-trunc --human=false --format '{{.Size}} {{.CreatedBy}}' sanguity-app | awk '/tessdata_fast/ {print $1; exit}')
+          echo "Text recognition's layer: $size bytes"
+          test -n "$size" && [ "$size" -le 41943040 ]
+
       - name: First run (setup, sign-in, records, documents, nothing served that shouldn't be)
         run: python3 tests/docker_smoke.py --code "$SETUP_CODE" --receiver http://127.0.0.1:8731 --phone-secret "$RUNNER_TEMP/phone-secret"
 
@@ -492,6 +502,7 @@ jobs:
           assert all(os.path.isfile(f) for f in need), [f for f in need if not os.path.isfile(f)]
           assert not any(os.path.exists(f) for f in never), [f for f in never if os.path.exists(f)]
           assert os.environ['SANGUITY_VERSION'] == 'ci'"
+          docker run --rm sanguity-release:ci python3 -m server.ocr check   # (#1129) its Tesseract and English
           docker run --rm --user 1000:1000 --read-only --tmpfs /tmp --add-host app:127.0.0.1 sanguity-release:ci nginx -t -e stderr
 
       - name: Start compose.release.yaml
