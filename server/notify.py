@@ -11,7 +11,11 @@ see (notify_optins, schema 54; Settings → Notifications), for each kind:
 
 Each person has a topic of their own on that server (notify_topics, encrypted: "sanguity-" and 24 random url-safe
 characters, unguessable), which only they subscribe to (Settings → Notifications shows its address, and Make a new
-topic replaces it). A profile's notification goes to the topic of each person who turned that kind on for it and can
+topic replaces it). Every topic is made new when the server's origin (scheme, host and port) changes (TOPICS_META
+keeps the one they were made for; the change is confirmed first, saying so: confirm_url), so an admin pointing it at
+a host of their own learns no topic that's used afterwards; and a person's is made new when their account's password
+or second factors are reset, by an admin or themself, or they're signed out everywhere (renew, from
+accounts.sign_out_everywhere and a password change), as their calendar feeds end then. A profile's notification goes to the topic of each person who turned that kind on for it and can
 still see it (a membership, the account not disabled), once each: never to a topic someone without access reads.
 
 What is sent carries no health details, said in one place: message() makes the only words a notification may have,
@@ -49,6 +53,7 @@ log = logging.getLogger("sanguity.notify")
 
 KINDS = ("results", "doses")
 TOKEN_META, ENV_META, TOKEN_ENV = "notify.token", "notify.token_env", "NOTIFY_TOKEN"
+TOPICS_META = "notify.topics_origin"   # the server's origin the topics were made for
 PURPOSE = "Notification server"
 TITLE = "Sanguity"
 TEXTS = {"results": "Sanguity: new results for {name}", "doses": "Sanguity: a dose is due for {name}",
@@ -175,8 +180,52 @@ def permit(db, who=None, ip=None, actor=None):
 
 # ---------------------------------------------------------------- each person's topic
 
+def _follow(db):
+    """Every topic made new (dropped, to be made again as each is next wanted) when the server's origin isn't the one
+    they were made for."""
+    now = origin()
+    if not now:
+        return
+    was = dbm.meta_get(db, TOPICS_META)
+    if was != now:
+        if was is not None:
+            db.execute("DELETE FROM notify_topics")
+        dbm.meta_set(db, TOPICS_META, now)
+
+
+def topics_made_new(db, value):
+    """How many topics a change of the server to value would make new (0: the same origin, or none to make new)."""
+    now, was = origin(value or ""), dbm.meta_get(db, TOPICS_META)
+    if not now or was is None or now == was:
+        return 0
+    return db.execute("SELECT COUNT(*) FROM notify_topics").fetchone()[0]
+
+
+def confirm_url(db, before, after, request=None, s=None):
+    """(routes_settings._confirmed) A change of the server to another origin, with topics made: asked first, saying
+    each is made new."""
+    n = topics_made_new(db, after)
+    if not n:
+        return None
+    return {"count": n, "title": "Change the notification server?", "action": "Change it",
+            "message": f"Another server makes every person's topic new: {'the person' if n == 1 else f'the {n} people'} "
+                       "with one see its new address under Settings, Notifications, and subscribe to it again; nothing "
+                       "more goes to the old ones."}
+
+
+settings.get_def("notify.url").confirm = confirm_url
+
+
+def renew(db, uid):
+    """This person's topic made new, if they have one (their password or second factors reset, signed out
+    everywhere): whoever had the old address learns nothing more from it."""
+    if db.execute("SELECT 1 FROM notify_topics WHERE user_id=?", (uid,)).fetchone():
+        new_topic(db, uid)
+
+
 def topic(db, uid, make=True):
     """This person's topic (made the first time, with make), or None."""
+    _follow(db)
     r = db.execute("SELECT topic FROM notify_topics WHERE user_id=?", (uid,)).fetchone()
     if r:
         return crypto.dec(r["topic"])
@@ -185,6 +234,7 @@ def topic(db, uid, make=True):
 
 def new_topic(db, uid):
     """A new topic for this person, in place of the one they had: notifications stop reaching the old one."""
+    _follow(db)
     t = TOPIC_PREFIX + secrets.token_urlsafe(18)
     db.execute("""INSERT INTO notify_topics(user_id, topic, created) VALUES(?, ?, ?)
                   ON CONFLICT(user_id) DO UPDATE SET topic=excluded.topic, created=excluded.created""",
@@ -240,9 +290,7 @@ def send(db, kind, uid, name=None, p=None):
     u = url()
     if not u:
         raise SendError("No notification server is set.")
-    t = topic(db, uid, make=False)
-    if not t:
-        raise SendError("This person has no topic yet.")
+    t = topic(db, uid)
     p = p or permit(db)
     body, headers = request(db, kind, name, claim=True)
     full = topic_url(t)
