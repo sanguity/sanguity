@@ -167,6 +167,9 @@ ROUTES = {
     ("DELETE", "/api/profiles/{pid}/medications/own/{eid}"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/followups"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/followups/{fid}"): (USER, "editor"),   # (#1138)
     ("DELETE", "/api/profiles/{pid}/followups/{fid}"): (USER, "editor"),
+    ("GET", "/api/profiles/{pid}/requests"): (USER, "viewer"), ("POST", "/api/profiles/{pid}/requests"): (USER, "editor"),   # (#1133)
+    ("PUT", "/api/profiles/{pid}/requests/{rid}"): (USER, "editor"), ("DELETE", "/api/profiles/{pid}/requests/{rid}"): (USER, "editor"),
+    ("PUT", "/api/profiles/{pid}/requests/{rid}/import"): (USER, "editor"),
     ("PUT", "/api/profiles/{pid}/medications/listed"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/medications/hidden"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/family/own"): (USER, "editor"),             # family history of your own (#1134)
     ("PUT", "/api/profiles/{pid}/family/own/{eid}"): (USER, "editor"),
@@ -447,6 +450,7 @@ PLAIN = {
     "cost_plans": {"created_name", "changed_name"}, "cost_bills": {"created_name", "changed_name"},   # #1127, #1128: as med_entries'
     "insurance_plans": {"front", "front_type", "back", "back_type", "created_name", "changed_name"},   # #1137: random file names, jpeg/png/webp
     "followups": {"created_name", "changed_name"},   # #1138
+    "records_requests": {"created_name", "changed_name"},   # #1133
     "labmaps": {"lookup", "importer", "created_name", "changed_name"},
     "memberships": {"role"}, "meta": {"k", "v"}, "outside_contacts": {"purpose"},
     "passkeys": {"credential_id", "public_key", "rp_id", "name", "transports"},

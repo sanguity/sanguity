@@ -360,7 +360,8 @@
     ["costPlans", ["plan year", "plan years"]], ["costBills", ["bill", "bills"]],
     ["familyEntries", ["family history entry you added or hid", "family history entries you added or hid"]],   // (#1127, #1128)
     ["insurance", ["insurance plan", "insurance plans"]],   // (#1137)
-    ["followups", ["follow-up", "follow-ups"]]];   // (#1138)
+    ["followups", ["follow-up", "follow-ups"]],   // (#1138)
+    ["requests", ["records request", "records requests"]]];   // (#1133)
   function restoredLine(r, done) {
     const said = RESTORED.filter(([k]) => (r || {})[k] > 0).map(([k, words]) => plural(r[k], words));
     if (!said.length) return null;
@@ -632,7 +633,8 @@
       ln.matched ? node("p", {class: "hint", text: `${plural(ln.matched, ["lab name", "lab names"])} put in an existing series.`}) : null,
       j.linked ? node("p", {class: "hint", text: `${plural(j.linked, ["result", "results"])} shown once, as the same result from another source.`}) : null,
       notes(j),
-      node("p", {}, node("a", {href: `index.html?profile=${pid}#timeline`, text: "See them on the timeline"})));   // its profile and tab (#208)
+      node("p", {}, node("a", {href: `index.html?profile=${pid}#timeline`, text: "See them on the timeline"})),   // its profile and tab (#208)
+      j.import_id != null && items.length ? rqOffer(pid, j.import_id) : null);
     result(card, said);
     // said by a toast (#263), with the way to what came in and an Undo, which asks first in Import history's words
     // (#360: it can't be reversed): the card stays as it is
@@ -649,6 +651,19 @@
       undoable(t, j.import_id);
       told(pid, j.import_id, false);   // Import history read again (#508: a save from Waiting for you too), the guide's steps
     }
+  }
+  /* (#1133) the records a request was waiting for? With records requests waiting and not yet linked, a line linking
+     this import to one, on the records page (requests.js #link-import-<id>); none otherwise */
+  function rqOffer(pid, id) {
+    const p = node("p", {class: "hint", hidden: ""});
+    call(`profiles/${pid}/requests`).then(r => r.ok ? r.json() : null).then(j => {
+      const open = (j?.requests || []).filter(q => (q.status === "waiting" || q.status === "extended") && !q.import);
+      if (!open.length) return;
+      p.append(open.length === 1 ? `The records you asked ${open[0].to} for? ` : "The records of a request you made? ",
+        node("a", {href: `index.html?profile=${pid}#link-import-${id}`, text: "Link this import to the request"}));
+      p.hidden = false;
+    }).catch(() => {});
+    return p;
   }
   /* a toast with an import's Undo (an upload's, Type them in's), marked with the import, for told to take its Undo away
      once the import is undone elsewhere (#513) */

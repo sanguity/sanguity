@@ -115,7 +115,7 @@ from . import config, crypto, db as dbm
 
 PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit", "outside",
                    "settings", "connect", "disconnect", "calendar", "journal", "summary", "emergency", "watch.secret", "source", "link", "cycle",
-                   "medication", "labmap", "family", "notify", "insurance", "followup")
+                   "medication", "labmap", "family", "notify", "insurance", "followup", "request")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset", "2fa.stopped",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",

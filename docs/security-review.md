@@ -71,6 +71,7 @@ check changes without updating the list, and it exercises this table against a l
 | Costs' plan years and bills (#1127, #1128): `…/costs/plans`, `…/costs/bills` | Read | Add, change, remove | Add, change, remove | No | No | No |
 | Costs' tax-year report (#1136): `GET …/costs/tax-report?year=` (a preview, or the zip) | Download | Download; set the tax year's first month | Download; set the tax year's first month | No | No | No |
 | Follow-ups from a visit (#1138): `…/followups` | Read | Add, change, mark done, remove | Add, change, mark done, remove | No | No | Each one not done with a date, all day, "Sanguity follow-up" unless that one was set to show its words |
+| Records requests (#1133): `…/requests`, `…/requests/{id}/import` | Read | Add, change, link to an import, remove | Add, change, link to an import, remove | No | No | Each one waiting or extended on its response date, all day, "Sanguity records request" unless that one was set to show who it went to |
 | Medication reminders (#162): `…/medications/reminders` | Read | Set, change, turn off, remove | Set, change, turn off, remove | No | No | Each time as a recurring event, "Medication" unless the feed is set to full details; on unless the feed's person turns them off |
 | The phone's and watch's measures in a visit summary or a share link (#225): home blood pressure, glucose, temperature, blood oxygen, respiratory rate, VO2 max, immunizations, BMI and growth | Read (summary) | Read (summary) | Read (summary; ticks them for a link) | No | Only the measures its owner ticked (each unticked by default), in the link's dates; cycle tracking never | No |
 | About this person: birth date, sex used for reference ranges, height history (#194) | Read | Change; add and remove heights | Change; add and remove heights | No | Only if its owner ticks About this person (unticked by default) | No |
@@ -605,6 +606,10 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 - Follow-ups from a visit (#1138, `followups`): the same again, the body (its words, date and the record it's about)
   encrypted; the activity log says only what was done. A calendar feed shows its words only for one set to show them
   (unticked by default), whatever the feed's detail setting: calendar apps keep the feed on their servers.
+- Records requests (#1133, `records_requests`): the same again, the body (who it went to, when, the rule, the records
+  and format wanted, the name for the letter, a note) encrypted; the import it's linked to is a plain id (set to NULL
+  when that import is undone), and only an import of the same profile can be linked. The letter is made in the browser
+  and never sent anywhere by Sanguity.
 
 ### About this person (#194)
 - Birth date, sex used for reference ranges and height history are three profile settings (`person.*`), sealed like

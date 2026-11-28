@@ -12621,6 +12621,82 @@ def main():
                 check("…the card and the form fit 412 px at 200% text and pass axe-core's WCAG A and AA rules", not bad1138 and not axe1138, (bad1138 + axe1138)[:6])
                 js("async () => { for (const f of DATA.followups || []) await ownSend('DELETE', `followups/${f.id}`); }")
                 settle(300)
+                # ---- #1133: records requests. Add → Records request opens the form; saved (UK/EU GDPR, sent on a 31st: one
+                # calendar month, the month's last day), its drawer says the facts ("Sent … · response due by … (UK/EU GDPR,
+                # one month)", days left), the Overview's card lists it on one line; the letter names the GDPR's articles, has
+                # the person's name, the records and the format, and Copy, Download and Print; a plain rule's letter names no
+                # law. Linked to an import, it's received, "imported N records". Never "violation" or "overdue". The form
+                # fits 412 px at 200% text and passes axe, light and forced colours
+                menu_click(page, "#rqAddLink")
+                page.wait_for_function("document.getElementById('dtitle')?.textContent === 'Records request'", timeout=10000)
+                settle(300)
+                rq1133 = [js("document.activeElement.id.startsWith('rq-to')")]
+                page.fill("#dbody input[id^=rq-to]", "Riverside Clinic (fictional)")
+                page.fill("#dbody input[id^=rq-sent]", "2026-01-31")
+                page.select_option("#dbody select[id^=rq-rule]", "gdpr")
+                page.select_option("#dbody select[id^=rq-format]", "fhir")
+                page.fill("#dbody input[id^=rq-kinds]", "lab results")
+                page.click("#dbody button[type=submit]")
+                page.wait_for_function("(DATA.requests || []).length === 1", timeout=20000)
+                settle(400)
+                rq1133.append(js("""[DATA.requests[0].due, document.getElementById('dtitle').textContent, document.getElementById('dsub').textContent,
+                    [...document.querySelectorAll('#dbody dl.facts dd')][0].textContent]"""))
+                check("a records request added from Add (#1133): GDPR from Jan 31 is due Feb 28, its drawer saying the facts",
+                      rq1133 == [True, ["2026-02-28", "Records request to Riverside Clinic (fictional)", "Sent Jan 31, 2026 · response due by Feb 28, 2026 (UK/EU GDPR, one month)",
+                                        "Feb 28, 2026 · Past the date you set"]], rq1133)
+                page.click("#dbody button:text-is('The letter')")
+                settle(300)
+                letter1133 = js("document.querySelector('#dbody textarea').value")
+                btns1133 = js("[...document.querySelectorAll('#dbody .btns > :is(button, a)')].map(b => b.textContent)")
+                check("…its letter: the GDPR's articles, the person's name, the records and the format; Copy, Download, Print",
+                      "Article 15 of the GDPR" in letter1133 and f"Name: {js('PROFILE.name')}" in letter1133 and "Records wanted: All of my health records (lab results)" in letter1133
+                      and "Format: An electronic copy in FHIR format" in letter1133 and btns1133[:3] == ["Copy", "Download", "Print"], [letter1133, btns1133])
+                plain1133 = js("rqLetter({...DATA.requests[0], rule: 'other', days: 20})")
+                check("…a rule of your own: a plain request, no law named", not re.search(r"HIPAA|GDPR|CFR|Article", plain1133), plain1133)
+                page.click("#dbody button:text-is('Back')")
+                settle(300)
+                page.click("#dbody button:text-is('Link an import')")
+                settle(300)
+                page.locator("#dbody .ov-row button", has_text="Link").first.click()
+                page.wait_for_function("DATA.requests[0].import", timeout=20000)
+                settle(300)
+                link1133 = js("""[DATA.requests[0].status, [...document.querySelectorAll('#dbody dl.facts dd')].map(d => d.textContent)[2],
+                    DATA.requests[0].import.records === EV.filter(e => e.imp === DATA.requests[0].import.id).length]""")
+                check("…linked to an import: received, “<date>, imported N records”",
+                      link1133[0] == "received" and re.fullmatch(r"\w{3} \d{1,2}, \d{4}, imported [\d,]+ records?", link1133[1] or "") is not None and link1133[2], link1133)
+                js("closeDrawer(); switchTab('overview')")
+                page.wait_for_timeout(300)
+                card1133 = [js("document.querySelectorAll('#ovFollowups [data-rq]').length")]
+                js("async () => { const r = DATA.requests[0]; await ownSend('PUT', `requests/${r.id}/import`, {import_id: null}); await ownSend('PUT', `requests/${r.id}`, {...r, status: 'waiting', received: null}); }")
+                settle(400)
+                card1133.append(js("[...document.querySelectorAll('#ovFollowups [data-rq] > span')].map(s => s.textContent)"))
+                text1133 = page.inner_text("#ovFollowups") + letter1133 + page.inner_text("#dbody")
+                check("…received, off the Overview; waiting, one line there: who, the date and the days; no verdict words",
+                      card1133[0] == 0 and card1133[1][0] == "Records request to Riverside Clinic (fictional)" and card1133[1][1].startswith("due by Feb 28, 2026")
+                      and not re.search(r"(?i)\b(violation|overdue|illegal|breach|should)\b", text1133), [card1133, text1133])
+                bad1133, axe1133 = [], []
+                js("rqForm(DATA.requests[0])")
+                page.set_viewport_size({"width": 412, "height": 900})
+                js("document.documentElement.style.fontSize = '200%'")
+                settle(300)
+                bad1133.extend(phone_fits(page, "Records request form, 412 px at 200%"))
+                js("rqLetterView(DATA.requests[0])")
+                settle(300)
+                bad1133.extend(phone_fits(page, "The letter, 412 px at 200%"))
+                js("document.documentElement.style.fontSize = ''")
+                page.set_viewport_size({"width": 1400, "height": 900})
+                js("openRequest(DATA.requests[0].id)")
+                settle(300)
+                axe1133.extend(axe_check(page, "A records request's drawer")[0])
+                page.emulate_media(forced_colors="active")
+                js("rqForm(DATA.requests[0])")
+                settle(300)
+                axe1133.extend(axe_check(page, "Records request form, forced colours")[0])
+                page.emulate_media(forced_colors="none")
+                page.keyboard.press("Escape")
+                check("…the form and the letter fit 412 px at 200% text, and pass axe-core's WCAG A and AA rules", not bad1133 and not axe1133, (bad1133 + axe1133)[:6])
+                js("async () => { for (const r of DATA.requests || []) await ownSend('DELETE', `requests/${r.id}`); }")
+                settle(300)
                 page.goto(base + "/")
                 page.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
                 js("setRange(dayTs('2025-01-01'), dayTs('2025-12-31')); switchTab('timeline')")

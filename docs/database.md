@@ -186,7 +186,11 @@ conditions, its key "own:" and a random word) and its hiding of entries of the r
 doesn't bring one back); the body is encrypted, and the records list them in `familyHistory` (the hidden ones as
 `hiddenFamily`). **followups** (schema version 56, #1138, `server/followups.py`) are the person's own follow-ups from a
 visit: the body (its words, date, the record it's about, whether it's done and whether the calendar feed shows its
-words) is encrypted, and the records list them as `followups`. An import's
+words) is encrypted, and the records list them as `followups`. **records_requests** (schema version 57, #1133,
+`server/rec_requests.py`) are the person's requests for their own records: the body (who it went to, when and how, the
+rule its response date is counted by, the records and format wanted, its status) is encrypted, `import_id` is the import
+its records came in (NULL again when that import is undone), and the records list them as `requests`, their dates
+worked out. An import's
 **name** (schema version 25, #38) is what the person renamed it to, encrypted; the records call it by that wherever
 they say where a record came from, and NULL means the importer's label. **cost_marks** (schema version 27, #55,
 `server/oop.py`) hold what a person said about an out-of-pocket amount on the Costs tab: a payment or a claim's share
@@ -223,6 +227,8 @@ erDiagram
     profiles ||--o{ med_entries : "has"
     profiles ||--o{ family_entries : "has"
     profiles ||--o{ followups : "has"
+    profiles ||--o{ records_requests : "has"
+    imports |o--o{ records_requests : "brought"
     profiles ||--o{ cost_marks : "has"
 
     profiles {
@@ -975,6 +981,7 @@ heart rate is the profile setting `person.maxHr` (above), sealed like the other 
 | `med_entries` | `body` |
 | `family_entries` | `body` |
 | `followups` | `body` |
+| `records_requests` | `body` |
 | `share_links` | `label`, `scope` |
 | `cost_marks` | `target_key`, `value` |
 | `labmaps` | `source`, `target` |
