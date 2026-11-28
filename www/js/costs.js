@@ -219,7 +219,8 @@ function drawCosts() {
 /* ---- out of pocket (#55): payments typed in or from a payments file uploaded, and claims' shares with no payment.
    Where each amount came from, the HSA/FSA tags and the payment-to-claim matches are worked out by the server
    (server/oop.py, DATA.oop); this counts each once: a payment that arrived twice once, a claim's share only until a
-   payment is matched to it. */
+   payment is matched to it. Out of pocket is oop.py's one definition (#1163): the claims' shares counted and the
+   payments for care, never premiums (a row's "premium", the server's; oopOf adds them up for a period) */
 const paidState = {q: "", open: null, limit: 200};   // limit: the amounts listed, 200 more at a time like the claims (#201)
 /* where a payment came from, one label each wherever it's said (#1163): its row, its editor, the hint (taxreport.py
    says the same in its CSV) */
@@ -231,9 +232,9 @@ function oopRows() {
   const claimOf = new Map((DATA.costs || []).filter(c => c.id != null).map(c => [c.id, c]));
   const rows = [];
   pays.forEach((p, i) => {
-    const x = info.get(i) || {i, key: p.key, src: /^manual:/.test(p.key || "") ? "typed" : "records", hsa: p.hsa || null};
+    const x = info.get(i) || {i, key: p.key, src: /^manual:/.test(p.key || "") ? "typed" : "records", hsa: p.hsa || null, premium: /premium/i.test(p.group || "")};
     rows.push({type: "pay", d: p.d, who: p.payee || "", group: p.group || "Other", amount: p.amount || 0, counted: x.dup != null ? 0 : (p.amount || 0),
-      src: x.src, hsa: x.hsa || null, hsaFrom: x.hsaFrom, key: x.key, i, dup: x.dup, claim: x.claim != null ? claimOf.get(x.claim) || null : null,
+      src: x.src, hsa: x.hsa || null, hsaFrom: x.hsaFrom, premium: !!x.premium, key: x.key, i, dup: x.dup, claim: x.claim != null ? claimOf.get(x.claim) || null : null,
       match: x.match, receipt: x.receipt, marked: x.marked, account: p.account || "", memo: p.memo || "", est: p.est});
   });
   const shares = o.claims || (DATA.costs || []).filter(c => c.id != null && c.owe >= 0.01).map(c => ({id: c.id, owe: c.owe, counted: c.owe, hsa: null}));
@@ -246,6 +247,12 @@ function oopRows() {
   return rows;
 }
 function paidRows() { return inPeriod(oopRows()); }
+/* out of pocket, of the rows counted (#1163): what care cost (the claims' shares with no payment and the payments for
+   care), and the premiums apart, never added in */
+function oopOf(rows) {
+  const sum = xs => xs.reduce((a, r) => a + r.counted, 0), care = rows.filter(r => r.counted && !r.premium), prem = rows.filter(r => r.counted && r.premium);
+  return {care, prem, total: sum(care), premiums: sum(prem), paid: sum(care.filter(r => r.type === "pay")), shares: sum(care.filter(r => r.type === "claim"))};
+}
 const srcText = r => r.type === "claim" ? `Your share, per ${r.ins ? r.ins + "'s" : "the"} claim; no payment recorded`
   : (OOP_SRC[r.src] || OOP_SRC.records) + (r.est ? " (estimated)" : "");
 const oopKey = r => r.type === "claim" ? "c" + r.id : "p" + r.i;
@@ -336,21 +343,21 @@ function renderPaid(box, claimRows, periodLabel) {
   // the rest behind its ⓘ: how each amount is counted (#280, #465)
   h2.append(aboutWords({title: "what you paid"}, from(true), "A payment that arrived two ways is counted once, and a claim's share only until a payment is matched to it. Click a row below to see where its number came from."));
   const top = [h2, el("p", {class: "hint", text: from(false)})];
-  const tile = statTile;
-  const typed = sum(pays.filter(r => r.src === "typed")), exp = sum(pays.filter(r => r.src !== "typed"));
-  const prem = sum(counted.filter(r => /premium/i.test(r.group)));
+  const tile = statTile, o = oopOf(counted), forCare = o.care.filter(r => r.type === "pay"), n = (k, w) => `${k} ${w}${k === 1 ? "" : "s"}`;
+  const typed = sum(forCare.filter(r => r.src === "typed")), imp = sum(forCare.filter(r => r.src !== "typed"));
   const hsa = sum(counted.filter(r => r.hsa === "HSA")), fsa = sum(counted.filter(r => r.hsa === "FSA"));
   const dups = rows.filter(r => r.dup != null).length, matched = pays.filter(r => r.claim).length;
-  // the figures (#278): the total and its two parts first (with no claims, the HSA's), the rest under More figures
+  // the figures (#278): out of pocket and its two parts first (with no claims, the HSA's), the rest under More
+  // figures; premiums on a tile of their own, never in out of pocket (#1163)
   const hsaTile = tile("Paid with an HSA", usd(hsa), "tagged HSA", "oopHsa");
-  const head = [tile("Total out of pocket", usd(sum(counted)), `${pays.length} payment${pays.length === 1 ? "" : "s"}${shares.length ? ` + ${shares.length} claim share${shares.length === 1 ? "" : "s"}` : ""}`, "oopTotal"),
-    tile("Payments", usd(sum(pays)), [typed && `${usd(typed)} typed in`, exp && `${usd(exp)} imported`].filter(Boolean).join("\u00a0· ") || "none in this period"),
-    claims ? tile("Claim shares with no payment", usd(sum(shares)), "per the insurers; counted until a payment matches") : hsaTile];
+  const head = [tile("Total out of pocket", usd(o.total), `${n(forCare.length, "payment")} for care${shares.length ? ` + ${n(shares.length, "claim share")}` : ""}; premiums not included`, "oopTotal"),
+    tile("Paid for care", usd(o.paid), [typed && `${usd(typed)} typed in`, imp && `${usd(imp)} imported`].filter(Boolean).join(" · ") || "none in this period"),
+    claims ? tile("Claim shares with no payment", usd(o.shares), "per the insurers; counted until a payment matches") : hsaTile];
   const tiles = [];
+  if (o.prem.length) tiles.push(tile("Premiums paid", usd(o.premiums), (o.prem.some(r => r.est) ? "includes estimated months; " : "") + "insurance premiums, apart from out of pocket", "oopPrem"));
   if (claims) tiles.push(tile("Payments matched to claims", matched.toLocaleString("en-US"), dups ? `${dups} that arrived twice, counted once` : "by amount, date and provider, or by hand"), hsaTile);
   else if (dups) tiles.push(tile("Counted once", dups.toLocaleString("en-US"), "payments that arrived twice"));
   tiles.push(tile("Paid with an FSA", usd(fsa), "tagged FSA", "oopFsa"));
-  if (prem) tiles.push(tile("Insurance premiums", usd(prem), counted.some(r => r.est && /premium/i.test(r.group)) ? "includes estimated months" : "premiums paid"));
   // HSA and FSA by year, under More figures too
   const years = new Map();
   for (const r of counted) if (r.hsa) {
@@ -520,10 +527,10 @@ function planCard() {
     const split = y.noSplit ? `${y.noSplit} of ${y.claims.length} claim${y.claims.length === 1 ? " gives" : "s give"} no deductible part` : "";
     part.append(el("h3", {class: "sub", text: p ? `Plan year ${fmtD(dayTs(y.start))} to ${fmtD(dayTs(y.end))}` : plans.length ? `${y.start.slice(0, 4)}, outside the plan years typed in` : y.start.slice(0, 4)}));
     if (p) {
-      part.append(planMeter("Deductible", y.towardDeductible, p.deductible, split), planMeter("Out-of-pocket max", y.outOfPocket, p.oop));
+      part.append(planMeter("Deductible", y.towardDeductible, p.deductible, split), planMeter("Out-of-pocket max", y.share, p.oop));
       if (p.familyDeductible != null) part.append(planMeter("Family deductible", y.towardDeductible, p.familyDeductible, "this profile's claims only"));
-      if (p.familyOop != null) part.append(planMeter("Family out-of-pocket max", y.outOfPocket, p.familyOop, "this profile's claims only"));
-    } else part.append(el("p", {text: `${usd(y.towardDeductible)} toward the deductible · ${usd(y.outOfPocket)} out of pocket`}), split ? el("p", {class: "hint", text: split + "."}) : null);
+      if (p.familyOop != null) part.append(planMeter("Family out-of-pocket max", y.share, p.familyOop, "this profile's claims only"));
+    } else part.append(el("p", {text: `${usd(y.towardDeductible)} toward the deductible · ${usd(y.share)} your share of claims`}), split ? el("p", {class: "hint", text: split + "."}) : null);
     const cs = y.claims.map(i => claimOf.get(i)).filter(Boolean);
     if (cs.length) part.append(el("details", {class: "more"}, el("summary", {text: `The ${cs.length} claim${cs.length === 1 ? "" : "s"} counted`}),
       scrollBox({class: "tablewrap", "aria-label": "Claims counted"}, stacked(el("table", {class: "data"},
@@ -656,8 +663,9 @@ async function taxPreview(y, m) {
   }
   const j = taxState.seen[k];
   if (!out || taxState.year !== y || taxStart() !== m) return;   // another picked since
-  out.textContent = `${fmtD(dayTs(j.from))} to ${fmtD(dayTs(j.to))}: ${usd2(j.total)} in ${j.count} payment${j.count === 1 ? "" : "s"}`
-    + ` · ${j.receipts} with a receipt · ${j.missing} without one.`;
+  const n = k => `${k} payment${k === 1 ? "" : "s"}`;   // for care and for premiums apart, then both (#1163)
+  out.textContent = `${fmtD(dayTs(j.from))} to ${fmtD(dayTs(j.to))}: ${usd2(j.care)} for care in ${n(j.careCount)} · ${usd2(j.premiums)} for premiums in ${n(j.premiumCount)}`
+    + ` · ${usd2(j.total)} in ${n(j.count)} in all · ${j.receipts} with a receipt · ${j.missing} without one.`;
 }
 function taxCard() {
   const m = taxStart(), ys = [...new Set(oopRows().filter(r => r.type === "pay" && r.dup == null && r.d).map(r => taxYearOf(r.d, m)))].sort((a, b) => b - a);

@@ -6,7 +6,7 @@ and a CSV cell that would be a formula kept as text; roles, the year checked, th
 
   python3 tests/test_taxreport.py
 """
-import csv, io, json, os, shutil, sys, tempfile, unittest, zipfile
+import csv, io, json, os, shutil, sys, tempfile, unittest, zipfile, zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-tax-test-")
@@ -98,6 +98,12 @@ class TaxReport(unittest.TestCase):
         self.assertEqual((p["from"], p["to"], p["label"], p["count"], p["total"], p["receipts"], p["missing"]),
                          ("2026-01-01", "2026-12-31", "2026", 6, 645.5, 1, 5))
         self.assertEqual((self.preview(2025)["total"], self.preview(2027)["total"]), (40.0, 80.0))
+        # (#1163) the premium apart from what was paid for care, with both totals
+        self.assertEqual((p["care"], p["careCount"], p["premiums"], p["premiumCount"]), (345.5, 5, 300.0, 1))
+        pdf = taxreport.pdf_bytes(taxreport.plan(dbm.connect(), self.pid, 2026, 1))
+        text = zlib.decompress(pdf.split(b"stream\n", 1)[1].split(b"\nendstream", 1)[0])
+        self.assertIn(b"Paid for care: $345.50 in 5 payments", text)
+        self.assertIn(b"Insurance premiums: $300.00 in 1 payment", text)
 
     def test_2_a_tax_year_from_april(self):
         self.start(4)
