@@ -415,6 +415,62 @@ define("phone.uploadUrl", "phone", "Upload address", "", upload_url, scope="inst
        help="Only when the receiver is behind your own reverse proxy, like https://health.example.com/ingest. Empty, "
             "phones are given each public address's name (or this page's) on the receiver's published port.")
 
+# ---------------------------------------------------------------- General → Notifications (#1130, notify.py)
+# The install's own notification server: a self-hosted ntfy topic's address. https only, unless its host is on the
+# local network: an address of a private range, or a name that is one word or ends in a local suffix (notify.py checks
+# again, as it sends, that such a name's addresses are all on the local network). Its access token is a secret, kept
+# apart (notify.py: encrypted in meta, never given to a page), as the sign-in provider's client secret is.
+LOCAL_SUFFIXES = (".local", ".lan", ".home", ".internal", ".localdomain", ".home.arpa")
+
+
+def local_host(host):
+    """Whether a host (a name or an address, no port) is on the local network, by how it's written."""
+    import ipaddress
+    host = (host or "").strip("[]").lower().rstrip(".")
+    try:
+        return local_address(ipaddress.ip_address(host.split("%")[0]))
+    except ValueError:
+        return bool(host) and ("." not in host or host == "localhost" or host.endswith(LOCAL_SUFFIXES))
+
+
+def local_address(ip):
+    """An address of the local network: private, loopback, link-local or the carrier-grade range (Tailscale's)."""
+    import ipaddress
+    if getattr(ip, "ipv4_mapped", None):
+        ip = ip.ipv4_mapped
+    return ip.is_private or ip.is_loopback or ip.is_link_local or (ip.version == 4 and ip in ipaddress.ip_network("100.64.0.0/10"))
+
+
+def notify_url(v):
+    """An ntfy topic's address, or "" for none (nothing is sent)."""
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return ""
+    v = _text(v, "The notification server", 300)
+    u = urllib.parse.urlsplit(v)
+    try:
+        u.port
+    except ValueError:
+        u = None
+    if (u is None or u.scheme not in ("http", "https") or not u.hostname or " " in v or "@" in u.netloc
+            or not u.path.strip("/") or u.query or u.fragment):
+        raise SettingError(f"“{v}” isn't a topic's address like https://ntfy.example.com/sanguity: https://, then your "
+                           "server's name and the topic.")
+    if u.scheme == "http" and not local_host(u.hostname):
+        raise SettingError(f"“{v}” would send notifications unencrypted over the internet: use https://. http:// is "
+                           "only for a server on your local network (like 192.168.1.20, or a name like ntfy.lan).")
+    return v
+
+
+section("notify", "Notifications", "Sent only to a notification server you run yourself, and only to the people who "
+        "turn them on.\nA self-hosted ntfy server's topic. Nothing is sent until it's set and someone turns them on "
+        "for a profile, under Settings → Notifications. Each says only which profile and what kind (\u201cSanguity: new "
+        "results for Ben\u201d, \u201cSanguity: a dose is due for Ben\u201d): never a result, a medication or anything "
+        "else of the records. Tapping one opens Sanguity, where its person signs in to see what it is.")
+define("notify.url", "notify", "Notification server", "", notify_url, scope="install", private=False, kind="url",
+       help="Your ntfy server's topic, like https://ntfy.example.com/sanguity. https:// only, unless the server is on "
+            "your local network (like http://192.168.1.20/sanguity, or http://ntfy.lan/sanguity). Empty: nothing is sent.")
+
+
 # ---------------------------------------------------------------- General → Security (#1001)
 # How people sign in, each applying at once where it's used (config.setting, or install_value for those no variable
 # stands for), with the fresh check and logged old and new as every install setting's change (#1006). Each is bounded,

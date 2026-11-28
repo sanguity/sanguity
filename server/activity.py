@@ -56,6 +56,8 @@ Profile events (profile_id set), readable by the profile's owners:
   labmap        {"change": "add" | "keep" | "change" | "check" | "remove" | "undo", "matches", "moved"?}: lab-name
                 matches of the profile's own made, kept as their own test, changed, kept (one to check), removed or
                 undone by an owner or editor, with how many saved results were re-filed (labmap.py, #1097; never names)
+  notify        {"kind": "results" | "doses", "on"}: someone turned a kind of notification on or off for the profile
+                (notify.py, #1130)
   link          {"change": "create" | "revoke" | "view", "link", "label"?, ...}: a share link made or revoked by an owner
                 (with its sections, number of labs, dates and hours), or opened by whoever holds it: actor SHARE_LINK,
                 with the viewer's address (share_links.py, #47; never the token)
@@ -90,6 +92,10 @@ Account events (no profile), readable by admins:
                 Delete now, or by actor TIME_LIMIT days after the restore (backup_jobs.sweep_replaced, #595)
   directory.update {"origin", "read": {list: entries}, "failed": {list: why}}: the provider directory's lists read
                 by an admin's Add the lists / Update now, or by actor WEEKLY_DIRECTORY (directory/update.py, #992)
+  notify.test {"ok", "why"?} / notify.token {"change": "set" | "remove"}: an admin's Test of the notification server,
+                or its access token saved or removed (never the token); notify.fail {"kind", "tries", "why"}: a
+                notification that didn't go through after its tries, by actor NOTIFICATIONS (notify.py, #1130; never
+                what it said)
   records.rekey {"left": [what]}: records saved before #1022 that start-up couldn't key as they are now, left as they
                 were, by actor START_UP (records.rekey_stamped, #1044)
   records.copies {"events", "results", "entries", "marks"}: the copies #1022's bug made, keyed alike by
@@ -105,13 +111,13 @@ from . import config, crypto, db as dbm
 
 PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "import", "reload", "export", "upload", "discard", "undo", "edit", "outside",
                    "settings", "connect", "disconnect", "calendar", "journal", "summary", "emergency", "watch.secret", "source", "link", "cycle",
-                   "medication", "labmap", "family")
+                   "medication", "labmap", "family", "notify")
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset", "2fa.stopped",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",
                    "labmap.remove", "labmap.undo", "settings.user", "settings.install", "connect.source", "outside",
                    "backup.create", "backup.check", "backup.fail", "backup.schedule", "backup.replaced", "directory.update",
-                   "records.rekey", "records.copies", "server.restart")
+                   "records.rekey", "records.copies", "server.restart", "notify.test", "notify.fail", "notify.token")
 COMMAND_LINE, SETUP_BUILD = "command line", "setup build"
 SCHEDULED_SYNC = "scheduled sync"   # a connected source's pull on its schedule (sync.py)
 SHARE_LINK = "share link"           # whoever holds a share link, opening it (share_links.py)
@@ -120,7 +126,9 @@ TIME_LIMIT = "time limit"   # something deleted when its time is up: what a rest
 ACCESS_ENDED = "access ended"   # what ends with its maker's access: a phone upload secret (watch_keys.end_lost, #929)
 WEEKLY_DIRECTORY = "weekly directory update"   # the provider directory's lists read again (directory/update.py, #992)
 START_UP = "start-up"   # what the app does as it starts (records.rekey_stamped, #1044)
-SYSTEM = (COMMAND_LINE, SETUP_BUILD, SCHEDULED_SYNC, SHARE_LINK, SCHEDULED_BACKUP, TIME_LIMIT, ACCESS_ENDED, WEEKLY_DIRECTORY, START_UP)
+NOTIFICATIONS = "notifications"   # the notifications' own sends (notify.py, #1130)
+SYSTEM = (COMMAND_LINE, SETUP_BUILD, SCHEDULED_SYNC, SHARE_LINK, SCHEDULED_BACKUP, TIME_LIMIT, ACCESS_ENDED, WEEKLY_DIRECTORY, START_UP,
+          NOTIFICATIONS)
 
 
 def log(db, action, who=None, profile_id=None, detail=None, ip=None, session_id=None, actor=None, item=None):

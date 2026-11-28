@@ -5,7 +5,8 @@ and until; or a line As needed, with no times (doses logged when taken, its usua
 medication's schedule: every day at 08:00, and Mondays and Fridays at 20:00 (the owner, on #1094). Today lists each
 dose a line gives that day (medlog.js), and the counts are of those (med_log.schedule_counts). Remind me on a line
 (its remind column) puts each of its times in the calendar feed (#51, calendar.py) as a recurring event, with the
-amounts, so the person's own calendar app does the reminding. Sanguity sends nothing itself. A line paused (its
+amounts, so the person's own calendar app does the reminding; nothing is sent unless notifications to the install's
+own server are set up (notify.py, #1130: "a dose is due", nothing more). A line paused (its
 paused column; the owner, on #1090) is kept with its times and days to resume: until then it gives no dose on Today
 or in any count (med_log.scheduled), and is in no calendar.
 

@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, backup_jobs, calendar, config, crypto, db as dbm, demo, edits, export, fhir_export, general, hrzones, jobs, milestones, oidc, passkeys, profiles as prof, records, security as sec, server_settings as restart_settings, settings, sync, twofactor, units, uploads, watch_keys, watch_store
+from . import accounts, activity, alerts, atrest, backup, backup_jobs, calendar, config, crypto, db as dbm, demo, edits, export, fhir_export, general, hrzones, jobs, milestones, notify, oidc, passkeys, profiles as prof, records, security as sec, server_settings as restart_settings, settings, sync, twofactor, units, uploads, watch_keys, watch_store
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -170,12 +170,14 @@ async def lifespan(app):
         jobs.start()
         sync.start()   # connected sources' scheduled pulls (#91)
         backup_jobs.start()   # Back up now, scheduled backups and checks (#200)
+        notify.start()   # notifications to the install's own server, once one is set and someone turns them on (#1130)
         from .directory import update as directory_update
         directory_update.start()   # the provider directory's lists, when an admin asks and weekly if turned on (#992)
         try:
             yield
         finally:
             directory_update.stop()
+            notify.stop()
             backup_jobs.stop()
             sync.stop()
             jobs.stop()
@@ -1808,6 +1810,7 @@ app.include_router(__import__("server.routes_person", fromlist=["router"]).route
 app.include_router(__import__("server.routes_cycle", fromlist=["router"]).router)     # menstrual cycle tracking, opt-in (#183)
 app.include_router(__import__("server.routes_family", fromlist=["router"]).router)    # family history (#1134)
 app.include_router(__import__("server.routes_meds", fromlist=["router"]).router)      # medication reminders (#162) and log (#235)
+app.include_router(__import__("server.routes_notify", fromlist=["router"]).router)    # notifications to the install's own server (#1130)
 
 
 if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here
