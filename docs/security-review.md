@@ -70,6 +70,7 @@ check changes without updating the list, and it exercises this table against a l
 | Your own medications and your changes to the records' (#1091): `…/medications/own`, `…/listed`, `…/hidden` | Read | Add, change, remove, hide, show again | Add, change, remove, hide, show again | No | No | No |
 | Costs' plan years and bills (#1127, #1128): `…/costs/plans`, `…/costs/bills` | Read | Add, change, remove | Add, change, remove | No | No | No |
 | Costs' tax-year report (#1136): `GET …/costs/tax-report?year=` (a preview, or the zip) | Download | Download; set the tax year's first month | Download; set the tax year's first month | No | No | No |
+| Follow-ups from a visit (#1138): `…/followups` | Read | Add, change, mark done, remove | Add, change, mark done, remove | No | No | Each one not done with a date, all day, "Sanguity follow-up" unless that one was set to show its words |
 | Medication reminders (#162): `…/medications/reminders` | Read | Set, change, turn off, remove | Set, change, turn off, remove | No | No | Each time as a recurring event, "Medication" unless the feed is set to full details; on unless the feed's person turns them off |
 | The phone's and watch's measures in a visit summary or a share link (#225): home blood pressure, glucose, temperature, blood oxygen, respiratory rate, VO2 max, immunizations, BMI and growth | Read (summary) | Read (summary) | Read (summary; ticks them for a link) | No | Only the measures its owner ticked (each unticked by default), in the link's dates; cycle tracking never | No |
 | About this person: birth date, sex used for reference ranges, height history (#194) | Read | Change; add and remove heights | Change; add and remove heights | No | Only if its owner ticks About this person (unticked by default) | No |
@@ -601,6 +602,9 @@ What each added, and how it keeps to the rules above. Each file named has its ow
   Costs), logged as an export with its year. Its names hold only row numbers and dates (`receipts/003-2026-03-21.pdf`),
   never a payee's or a file's name; a CSV cell that would start a formula is written as text. The tax year's first
   month is a plain profile setting (`costs.taxStart`, 1–12).
+- Follow-ups from a visit (#1138, `followups`): the same again, the body (its words, date and the record it's about)
+  encrypted; the activity log says only what was done. A calendar feed shows its words only for one set to show them
+  (unticked by default), whatever the feed's detail setting: calendar apps keep the feed on their servers.
 
 ### About this person (#194)
 - Birth date, sex used for reference ranges and height history are three profile settings (`person.*`), sealed like

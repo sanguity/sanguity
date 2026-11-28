@@ -442,7 +442,8 @@ function openEvent(e) {
   }
   { const mh = medHistoryAction(e); if (mh) go.push(mh); }   // a medication's whole history (meds.js, #50)
   go.push(journalAddAction(e));   // "Add a journal note" for this day (journal.js)
-  body.append(...present(fixes, ...main, el("div", {class: "btns dgo"}, ...go), eventSource(e, !fixes?.querySelector(".edited"))));   // where it came from (sources.js), "Edited" once
+  body.append(...present(fixes, ...main, el("div", {class: "btns dgo"}, ...go), ...fuDrawerPart(e),   // its follow-ups (followups.js, #1138)
+    eventSource(e, !fixes?.querySelector(".edited"))));   // where it came from (sources.js), "Edited" once
   showDrawer();
   renderTimeline(); document.querySelectorAll(".tl-row").forEach(r => r.classList.remove("sel"));
 }

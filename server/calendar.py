@@ -15,6 +15,8 @@ What a feed holds:
   expected labs  a guess, for a panel drawn at a steady rhythm (DRAWS_MIN draws or more, the recent gaps within
                  RHYTHM_SPREAD of each other): the next draw one usual gap after the last, as a tentative all-day
                  event, "expected, not scheduled". Never a time of day: the records don't know one.
+  follow-ups (#1138, followups.py)  the person's own, not done, on the day they noted, all day: "Sanguity follow-up"
+                 and nothing more unless they chose to show that one's words, whatever the feed's detail setting
   medication reminders (#162, med_reminders.py)  each time of day of each schedule line with Remind me on (#1094),
                  with its amounts in the full wording, as a recurring event (RRULE) in the line's own time zone (TZID, with a VTIMEZONE), ending on its until day or the day
                  the records say the medication stopped; listed while the feed's "meds" is on (the default)
@@ -166,6 +168,27 @@ def fetched(db, feed):
     now = dbm.now()
     if now - (feed["last_fetched"] or 0) >= FETCH_NOTE_SECONDS:
         db.execute("UPDATE calendar_feeds SET last_fetched=? WHERE id=?", (now, feed["id"]))
+
+
+# ---------------------------------------------------------------- dates a number of days, weeks or months on
+
+def add_months(d, n):
+    """d (a date) n calendar months on: the same day of the month, or that month's last day where it has fewer (Jan 31
+    and one month: Feb 28, or 29 in a leap year). Of the date as given, so in whichever time zone it was the day in."""
+    y, m = divmod(d.month - 1 + n, 12)
+    y, m = d.year + y, m + 1
+    last = (date(y + m // 12, m % 12 + 1, 1) - timedelta(days=1)).day
+    return date(y, m, min(d.day, last))
+
+
+UNITS = ("days", "weeks", "months")
+
+
+def add(d, n, unit):
+    """d n days, weeks or (calendar) months on (#1138, #1133)."""
+    if unit == "months":
+        return add_months(d, n)
+    return d + timedelta(days=n * (7 if unit == "weeks" else 1))
 
 
 # ---------------------------------------------------------------- what's in a feed
@@ -390,6 +413,12 @@ def build(db, feed, base_url, now=None):
             else:
                 desc = f"A reminder set in Sanguity. Details are in Sanguity: {link}"
             event(e["ident"], e["summary"], desc, None, None, False, when=e["lines"])
+
+    # (#1138) follow-ups not done, on their day: "Sanguity follow-up" unless the person chose to show that one's words
+    from . import followups
+    for e in followups.feed_events(db, pid):
+        desc = ("You noted this follow-up in Sanguity." if e["words"] else "A follow-up you noted. Details are in Sanguity.") + f"\nOpen Sanguity: {link}"
+        event(e["ident"], e["summary"], desc, e["day"], e["day"] + timedelta(days=1), True)
 
     lines.append("END:VCALENDAR")
     return "".join(fold(l) for l in lines)

@@ -13,7 +13,7 @@ throttled; creation, rotation and revocation are logged but fetches aren't. Fict
 
   python3 tests/test_calendar.py
 """
-import os, re, sys, tempfile, unittest
+import json, os, re, sys, tempfile, unittest
 from datetime import date, datetime, timedelta, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -29,7 +29,7 @@ import logging, shutil   # noqa: E402
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, activity, calendar, db as dbm, main, profiles as prof, records, security as sec   # noqa: E402
+from server import accounts, activity, calendar, crypto, db as dbm, main, profiles as prof, records, security as sec   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
@@ -1108,6 +1108,121 @@ class Reminders(unittest.TestCase):
         r = self.c["lee"].patch(self.path(f"/{ids[1]}"), headers=H, json={"on": False})
         self.assertEqual((r.json()["reminders"][0]["paused"], r.json()["reminders"][0]["on"]), (True, False), "still paused")
         self.assertEqual(self.c["lee"].patch(self.path(f"/{ids[1]}"), headers=H, json={}).status_code, 400)
+
+
+class MonthArithmetic(unittest.TestCase):
+    """(#1138, #1133) "in N months" is calendar months: the same day, or the month's last day where it has fewer"""
+    def test_calendar_months_clamped_to_the_month_end(self):
+        for d, n, want in (("2026-01-31", 1, "2026-02-28"), ("2028-01-31", 1, "2028-02-29"), ("2026-03-31", 1, "2026-04-30"),
+                           ("2026-01-15", 1, "2026-02-15"), ("2026-11-30", 3, "2027-02-28"), ("2026-12-31", 2, "2027-02-28"),
+                           ("2026-01-31", 3, "2026-04-30"), ("2026-05-31", 12, "2027-05-31"), ("2026-08-31", 18, "2028-02-29")):
+            self.assertEqual(calendar.add_months(date.fromisoformat(d), n).isoformat(), want, (d, n))
+        self.assertEqual(calendar.add(date(2026, 3, 3), 2, "weeks"), date(2026, 3, 17))
+        self.assertEqual(calendar.add(date(2026, 3, 3), 30, "days"), date(2026, 4, 2))
+
+
+class FollowUps(unittest.TestCase):
+    """Follow-ups from a visit (#1138): added from a visit ("in 3 months" from its day) or with a date; viewers can't
+    write; in the calendar feed as "Sanguity follow-up" unless that one shows its words, done ones and those with no
+    date left out; in the records, encrypted, in Export everything and put back from it"""
+    @classmethod
+    def setUpClass(cls):
+        db = dbm.connect()
+        cls.pid = prof.create_profile(db, "Ada Example (fictional)", owner_id=Calendar.uid["robin"])
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (Calendar.uid["kim"], cls.pid))
+        db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'editor')", (Calendar.uid["lee"], cls.pid))
+        db.close()
+        cls.c = Calendar.c
+
+    def setUp(self):
+        calendar.throttle._fails.clear()
+        db = dbm.connect()
+        db.execute("DELETE FROM followups")
+        db.close()
+
+    def add(self, who="lee", status=201, **body):
+        r = self.c[who].post(f"/api/profiles/{self.pid}/followups", json=body, headers=H)
+        self.assertEqual(r.status_code, status, r.text)
+        return r.json()
+
+    def feed(self):
+        r = self.c["robin"].post(f"/api/profiles/{self.pid}/calendar", json={"tz": "UTC", "details": "full"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        try:
+            text = client().get("/" + r.json()["path"]).text
+        finally:
+            self.c["robin"].delete(f"/api/profiles/{self.pid}/calendar", headers=H)
+        return text, [e for e in parse(text)["events"] if "RRULE" not in e]
+
+    def test_added_from_a_visit_and_listed_in_the_records(self):
+        j = self.add(text="  Repeat   bloodwork ", in_n=3, in_unit="months", about={"id": 7, "title": "Annual physical", "t": "2026-11-30T09:00:00"})
+        self.assertEqual(j["records"]["imports"], {}, "a profile with nothing imported: records of its follow-ups")
+        (f,) = j["records"]["followups"]
+        self.assertEqual((f["text"], f["due"], f["said"], f["from"], f["about"], f["show"], f["done"], f["by"]),
+                         ("Repeat bloodwork", "2027-02-28", "in 3 months", "2026-11-30", {"title": "Annual physical", "id": 7, "t": "2026-11-30"},
+                          False, False, "lee"))
+        self.add(who="kim", status=403, text="A viewer's")
+        self.add(status=400, text="")
+        self.add(status=400, text="x", due="2026-02-30")
+        self.add(status=400, text="x", in_n=0, in_unit="weeks")
+        # one week, said as such; no visit: from the day it's added
+        j = self.add(text="Call the clinic", in_n=1, in_unit="weeks", **{"from": "2026-03-03"})
+        f = next(x for x in j["records"]["followups"] if x["id"] == j["id"])
+        self.assertEqual((f["due"], f["said"]), ("2026-03-10", "in 1 week"))
+        # done, then changed: its wording kept while its date is
+        r = self.c["lee"].put(f"/api/profiles/{self.pid}/followups/{j['id']}", json={**f, "done": True}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        f2 = next(x for x in r.json()["records"]["followups"] if x["id"] == j["id"])
+        self.assertEqual((f2["done"], f2["said"]), (True, "in 1 week"))
+        self.assertIsInstance(f2["done_at"], int)
+        r = self.c["lee"].delete(f"/api/profiles/{self.pid}/followups/{j['id']}", headers=H)
+        self.assertEqual(r.json()["removed"]["text"], "Call the clinic")
+        self.assertEqual(self.c["lee"].delete(f"/api/profiles/{self.pid}/followups/{j['id']}", headers=H).status_code, 404)
+        db = dbm.connect()
+        try:
+            for (body,) in db.execute("SELECT body FROM followups"):
+                self.assertNotIn("bloodwork", body)
+            acts = [json.loads(crypto.dec(d)) for (d,) in db.execute("SELECT detail FROM activity WHERE action='followup' AND profile_id=?", (self.pid,))]
+            self.assertEqual([a["change"] for a in acts], ["add", "add", "done", "delete"])
+        finally:
+            db.close()
+
+    def test_feed_wording_both_ways_and_done_ones_left_out(self):
+        self.add(text="Book the MRI", due=D(10))
+        self.add(text="Ask about the rash", due=D(20), show=True)
+        done = self.add(text="Pick up the referral", due=D(5), done=True)
+        self.add(text="Someday", show=True)
+        text, evs = self.feed()
+        got = sorted((e["DTSTART"][1], unescape(e["SUMMARY"][1])) for e in evs)
+        self.assertEqual([s for _, s in got], ["Sanguity follow-up", "Ask about the rash"])
+        self.assertEqual(got[0][0], (TODAY + timedelta(days=10)).strftime("%Y%m%d"))
+        for word in ("Book the MRI", "MRI", "referral", "Someday"):
+            self.assertNotIn(word, text, "a follow-up's words only where it shows them (even with full details), done ones left out")
+        r = self.c["lee"].put(f"/api/profiles/{self.pid}/followups/{done['id']}", json={"text": "Pick up the referral", "due": D(5)}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(len(self.feed()[1]), 3, "not done again: back in the feed")
+
+    def test_in_the_export_and_put_back_from_it(self):
+        from server import export, followups
+        self.add(text="Repeat bloodwork", in_n=6, in_unit="weeks", **{"from": "2026-01-05"})
+        db = dbm.connect()
+        try:
+            data = export.plan(db, self.pid)["data"]
+            (x,) = data["followups"]
+            self.assertEqual((x["text"], x["due"], x["said"]), ("Repeat bloodwork", "2026-02-16", "in 6 weeks"))
+            self.assertEqual(export.brings(data), {"followups": 1})
+            other = prof.create_profile(db, "Restored (fictional)", owner_id=Calendar.uid["robin"])
+            with dbm.transaction(db):
+                n = export.restore(db, other, data, lambda f: None, [])
+            self.assertEqual((n["followups"], n["here"]), (1, 0))
+            with dbm.transaction(db):
+                self.assertEqual(export.restore(db, other, data, lambda f: None, [])["here"], 1, "not twice")
+            (y,) = followups.listing(db, other)
+            self.assertEqual((y["text"], y["due"], y["said"], y["by"]), ("Repeat bloodwork", "2026-02-16", "in 6 weeks", "lee"))
+            with self.assertRaises(ValueError):
+                export.check_parts({"followups": [{"text": ""}]})
+        finally:
+            db.close()
 
 
 DOW_L =["mo", "tu", "we", "th", "fr", "sa", "su"]

@@ -170,6 +170,9 @@ function storeSpan() {
   for (const s of SERIES) if (!s.watch) for (const p of s.pts) if (isFinite(p.ts)) { if (p.ts < min) min = p.ts; if (p.ts > max) max = p.ts; if (p.ts > last) last = p.ts; }
   // a medication of your own (#1091) as the journal's: its start and stop, up to today (one alone is a profile's records)
   for (const m of MEDS) if (m.own) for (const s of m.spans) for (const t of [s.ts, s.te ?? s.ts]) if (isFinite(t)) { const x = Math.min(t, today); if (x < min) min = x; if (x > max) max = x; if (x > last) last = x; }
+  // a follow-up (#1138) or a records request (#1133) alone is a profile's records too: the day it was noted, so its
+  // periods have a day to end on
+  for (const f of [...DATA.followups || [], ...DATA.requests || []]) { const x = Math.min(f.at * 1000, today); if (isFinite(x)) { if (x < min) min = x; if (x > max) max = x; if (x > last) last = x; } }
   state.min = min; state.max = max; state.last = last;
   // the watch's last day, a reading left out among them (#783: All ended at the last kept, the scale's later ones on
   // no period); with no records at all (a phone's readings, or weights typed in, alone), its first day too
