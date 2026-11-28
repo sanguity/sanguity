@@ -17,25 +17,30 @@ with an Undo; a change re-files the results already saved under the match when a
   DELETE /api/profiles/{pid}/labmaps/{id}       forget it (the next import asks again; results stay where they are) -> {change}
   POST   /api/profiles/{pid}/labmaps/undo/{cid} a change undone (409 if one of its matches was changed since)
 
-One an admin made before #927 is for every profile, and stays Install's, for admins, with no results counted (whose
-would they be):
+One an admin made before #927 is for every profile, with no results counted (whose would they be). They're listed on
+each profile's card, under For every profile on this server (#1114: the one place; Install had a page of them
+before): GET /api/profiles/{pid}/labmaps's "every": all of them for an admin, who changes them there ("can_change_every");
+for anyone else only those that file this profile's own saved results (labmap.every_filing: no test name from
+another profile's records), and never who made or changed them:
 
   GET    /api/labmaps          [{id, importer, label, name, unit, loinc, target, check, one_profile, created, created_by,
                                  changed, changed_by}]   (check: remembered before #546 and not applied until kept, first)
   PATCH  /api/labmaps/{id}     {"target": series name, or null to keep it as a series of its own}; the same target: Keep
                                ({"target": the one shown, "keep": true}: refused with 409 if it isn't the match's now, #575)
   DELETE /api/labmaps/{id}     forget it: the next import with that name asks again
+         ?profile={pid} on either: made from that profile's card (one the admin sees), with an Undo -> {..., "change"}
+  POST   /api/labmaps/undo/{cid}?profile={pid}   that change undone (404 once it's undone; 409 if changed since)
 
-Install's apply to later imports; results already saved keep their series. Each change is logged: a profile's
-(activity "labmap", never the names), Install's ("labmap.change", with "kept" for a Keep, and "labmap.remove", account
-events). The CSRF check in main.guard covers every change.
+They apply to later imports; results already saved keep their series. Each change is logged: a profile's (activity
+"labmap", never the names), these ("labmap.change", with "kept" for a Keep, "labmap.remove" and "labmap.undo",
+account events). The CSRF check in main.guard covers every change.
 """
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from . import activity, db as dbm, importers as registry, labmap, routes_edits
+from . import accounts, activity, db as dbm, importers as registry, labmap, routes_edits
 from .main import RANK, _client_ip, admin, get_db, need, user
 
 router = APIRouter()
@@ -64,8 +69,13 @@ class OwnChange(BaseModel):
 @router.get("/api/profiles/{pid}/labmaps")
 def profile_labmaps(pid: int, s=Depends(user), db=Depends(get_db)):
     role = need(db, s, pid, "viewer")
+    hide = {"one_profile"} if s["is_admin"] else {"one_profile", "created_by", "changed_by"}   # (#1114: who, to admins)
+    filing = None if s["is_admin"] else labmap.every_filing(db, pid)   # (#1114: a member, only those filing this profile's results)
     return {"matches": [{**{k: v for k, v in m.items() if k != "one_profile"}, "label": _label(m["importer"])} for m in labmap.own(db, pid)],
-            "tests": labmap.tests(db, pid), "can_change": RANK[role] >= RANK["editor"]}
+            "tests": labmap.tests(db, pid), "can_change": RANK[role] >= RANK["editor"],
+            "every": [{**{k: v for k, v in m.items() if k not in hide}, "label": _label(m["importer"])} for m in labmap.listing(db)
+                      if filing is None or m["id"] in filing],
+            "can_change_every": bool(s["is_admin"]) and not accounts.admin_needs_second_factor(db, s)}   # (as main.admin lets them)
 
 
 def _done(db, pid, s, request, change, out):
@@ -162,24 +172,47 @@ def _found(db, mid):
 
 
 @router.patch("/api/labmaps/{mid}")
-def change_labmap(mid: int, body: Change, request: Request, s=Depends(admin), db=Depends(get_db)):
+def change_labmap(mid: int, body: Change, request: Request, profile: Optional[int] = None, s=Depends(admin), db=Depends(get_db)):
+    if profile is not None:
+        need(db, s, profile, "viewer")
     with dbm.transaction(db):
         m = _found(db, mid)
         if body.keep and labmap.clean_target(body.target) != m["target"]:
             raise HTTPException(409, f"Not kept: this match was changed meanwhile; {_goes(m)}. Look at it again.")
+        before = labmap.every_before(db, mid)
         labmap.change(db, mid, body.target, s)
         after = labmap.get(db, mid)
         activity.log(db, "labmap.change", s, detail={"name": m["name"], "importer": m["importer"], "from": m["target"],
                                                      "to": after["target"], **({"kept": True} if body.keep else {})},   # Keep (#575)
                      ip=_client_ip(request))
-    return {**after, "label": _label(after["importer"])}
+        cid = labmap.every_record(db, profile, s, before) if profile is not None else None
+    return {**after, "label": _label(after["importer"]), **({"change": cid} if cid else {})}
 
 
 @router.delete("/api/labmaps/{mid}")
-def remove_labmap(mid: int, request: Request, s=Depends(admin), db=Depends(get_db)):
+def remove_labmap(mid: int, request: Request, profile: Optional[int] = None, s=Depends(admin), db=Depends(get_db)):
+    if profile is not None:
+        need(db, s, profile, "viewer")
     with dbm.transaction(db):
         m = _found(db, mid)
+        before = labmap.every_before(db, mid)
         labmap.remove(db, mid)
         activity.log(db, "labmap.remove", s, detail={"name": m["name"], "importer": m["importer"], "target": m["target"]},
                      ip=_client_ip(request))
+        cid = labmap.every_record(db, profile, s, before) if profile is not None else None
+    return {"ok": True, **({"change": cid} if cid else {})}
+
+
+@router.post("/api/labmaps/undo/{cid}")
+def undo_labmap(cid: int, profile: int, request: Request, s=Depends(admin), db=Depends(get_db)):
+    """(#1114) An admin's change to a match for every profile, made from a profile's card, undone there."""
+    need(db, s, profile, "viewer")
+    with dbm.transaction(db):
+        try:
+            m = labmap.undo(db, profile, cid, every=True)
+        except LookupError:
+            raise HTTPException(404, "Nothing to undo: it was undone already.")
+        except labmap.Refused as e:
+            raise HTTPException(409, str(e))
+        activity.log(db, "labmap.undo", s, detail=m, ip=_client_ip(request))
     return {"ok": True}
