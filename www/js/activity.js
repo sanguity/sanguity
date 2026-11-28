@@ -59,7 +59,8 @@ const WHAT = {
   journal: d => ({"spot.rename": "renamed a spot in the journal", "spot.merge": "merged two spots in the journal", "spot.untag": "took a journal photo off its spot"})[d.action] || `${{add: "added", change: "changed", delete: "deleted"}[d.action] || "changed"} a journal ${({symptom: "symptom", side_effect: "side effect", mood: "mood entry"})[d.kind] || "note"}`,   // mood: #161
   insurance: d => ({add: "added an insurance plan", change: "changed an insurance plan", delete: "removed an insurance plan",   // #1137
     photo: `put on a photo of an insurance card's ${d.side === "back" ? "back" : "front"}`,
-    "photo.delete": `took off the photo of an insurance card's ${d.side === "back" ? "back" : "front"}`}[d.change] || "changed an insurance plan"),
+    "photo.delete": `took off the photo of an insurance card's ${d.side === "back" ? "back" : "front"}`,
+    read: "read an insurance card's photo by text recognition"}[d.change] || "changed an insurance plan"),
   source: d => d.named ? `renamed the import “${d.label}”` : `went back to calling an import “${d.label}”`,   // #38
   settings: d => d.section ? `reset the ${d.label || d.section} settings to their defaults`
     : d.reset ? `reset “${d.label || d.setting}” to its default` : `changed the setting “${d.label || d.setting}”`,

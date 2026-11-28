@@ -152,6 +152,12 @@ Everything on `main` so far; it becomes the first tagged release.
   number and phone numbers, with a photo of the card's front and back (encrypted, metadata taken out); a share link
   shows them only when its maker ticks Insurance cards, and they go with the export and backups. The emergency card's
   Insurance part lists each plan's name, member ID and group number (text only; never on the lock-screen image).
+- Insurance cards, easier (#1168): the photos are added as a plan is created (the phone's camera or its photos), the
+  card found in each, straightened and cropped in the browser (its corners adjusted by dragging or the arrow keys);
+  Read the card suggests the member ID, group, plan name, pharmacy and phone numbers by the server's text recognition,
+  and the imported claims suggest a plan, each used or left, none saved by itself; type and order, policyholder, dates
+  (ended plans under Past), RxBIN, RxPCN, RxGroup, payer ID and website, links to Costs' plan years and claims, and
+  what the emergency card says of it; Show at the desk shows a card full screen, offline too.
 - Searchable scanned documents (#1129): scanned letters and reports are read on the server by Tesseract (in the
   Docker images, with English), as they're added and in one background pass over those already there, so the
   Timeline's search and the palette find them by their words; a PDF with its own text uses it. The text is kept

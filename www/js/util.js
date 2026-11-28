@@ -21,6 +21,8 @@ const el = (tag, attrs = {}, ...kids) => {
    (#245), so a part that may be left out (x ? el(…) : null) goes in through this, as el() leaves out its own children:
    box.append(...present(a, b ? el(…) : null)) */
 const present = (...kids) => kids.flat().filter(k => k != null);
+/* a picture's bytes as a data: address, the one kind the pages' policy lets an <img> show besides the app's own */
+const dataUrl = blob => new Promise((ok, no) => { const rd = new FileReader(); rd.onload = () => ok(rd.result); rd.onerror = no; rd.readAsDataURL(blob); });
 /* each kind of record's name: the Timeline's and the drawer's (core.js), and the command palette's on every page, an
    event's words as the Timeline searches them (store.js, palette.js: #463) */
 /* key documents (#1135, server/keydocs.py KINDS): a mark's kinds; keyDocWords(e) what a search finds a marked one by */
@@ -737,12 +739,12 @@ function labelCells(table) {
    first; Enter in it does the action. Escape or Cancel say no. Resolves true for the action, false otherwise, and
    focus goes back to whatever had it (the button that opened it). Use: if (!await ask({...})) return;
    A plain notice isn't asked: it goes in the page's message line beside what it's about (sayIn, above). */
-function ask({title, message = "", action = "OK", cancel = "Cancel", danger = false, field = null} = {}) {
+function ask({title, message = "", action = "OK", cancel = "Cancel", danger = false, field = null, cls = ""} = {}) {   // cls: the dialog's own class too
   const opener = document.activeElement, id = "sgAsk" + (ask.n = (ask.n || 0) + 1);
   return new Promise(resolve => {
     const no = el("button", {class: "btn", type: "button", text: cancel, onclick: () => box.close("")});
     const yes = el("button", {class: "btn " + (danger ? "danger" : "primary"), type: "submit", value: "yes", text: action});
-    const box = el("dialog", {class: "sg-ask", role: danger ? "alertdialog" : null, "aria-labelledby": id + "t", "aria-describedby": id + "m"},
+    const box = el("dialog", {class: "sg-ask" + (cls ? " " + cls : ""), role: danger ? "alertdialog" : null, "aria-labelledby": id + "t", "aria-describedby": id + "m"},
       el("form", {method: "dialog"},
         el("h2", {id: id + "t", text: title}),
         el("div", {class: "sg-ask-msg", id: id + "m"}, ...[].concat(message).filter(m => m != null && m !== "")

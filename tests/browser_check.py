@@ -1673,10 +1673,12 @@ def png_square(size=24, rgb=(200, 60, 80)):
 
 def insurance_check(browser, base, cookies, check):
     """Settings → This person → Insurance cards (#1137), as an owner whose sign-in cookies are given, on profile 1: a plan
-    added through its dialog (focus on its name, Escape back on Add), a photo of the front sent and shown; a share link
-    without Insurance cards shows nothing about insurance, one with it the plan's numbers and the card's photo. The card
-    at 320–1400 px and with text at 200%, light and dark, forced colours. Removes the plan and the links after. Returns
-    the pages' script errors."""
+    added through its dialog (focus on its name, Escape back on Add) with its photos (#1168): a fixture photo's card found,
+    its corners moved by keyboard, cropped and shown as it will be saved; Read the card's and the records' suggestions,
+    filled in only once used; the card at the desk, full screen; a share link without Insurance cards shows nothing about
+    insurance, one with it the plan's numbers and fields and the card's photos. The card, the dialog, a crop and the
+    desk at 320–1400 px and with text at 200%, light and dark, forced colours. Removes the plan and the links after.
+    Returns the pages' script errors."""
     ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
     ctx.add_cookies(cookies)
     pg, errs = ctx.new_page(), []
@@ -1700,26 +1702,176 @@ def insurance_check(browser, base, cookies, check):
         check("Insurance cards: its own group in This person, the card alone there; Add a plan… opens its dialog with focus on the "
               "plan's name, and Escape closes it with focus back on Add (#1137)",
               "insurance" in shown and "labmatches" not in shown and first and back == "insAdd", [shown, first, back])
+        # (#1168) a plan added with its photos: the card found in a photo, straightened and cropped, its corners moved by
+        # keyboard; Read the card's suggestions (the server's text recognition stood in for here: it's off in this
+        # demo) and the records', each shown under its field and filled in only once used
+        sugg = {"name": "FICTIONAL READ PLAN", "member": member, "group": "G-READ-1168", "rxbin": "004336",
+                "phones": [{"label": "Nurse line", "number": "1-800-555-0168"}]}
+        sent = []
+
+        def listing(route):
+            if route.request.method != "GET":
+                return route.continue_()
+            r = route.fetch()
+            route.fulfill(response=r, json={**r.json(), "can_read": True})
+        pg.route(re.compile(r".*/api/profiles/1/insurance$"), listing)
+        pg.route(re.compile(r".*/api/profiles/1/insurance/read$"), lambda route: (sent.append(route.request.post_data_buffer),
+                                                                                  route.fulfill(json={"state": "found", "found": sugg}))[1])
+        pg.reload()
+        pg.wait_for_selector("#insuranceBody > *", timeout=15000)
         pg.click("#insAdd")
-        box = pg.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
-        box.query_selector("input[id$=-name]").fill("Fictional Health Plan 1137")
-        box.query_selector("input[id$=-member]").fill(member)
-        box.query_selector("input[id$=-group]").fill("G-42")
-        box.query_selector("input[id$=-pl1]").fill("Member services")
-        box.query_selector("input[id$=-pn1]").fill("1-800-555-0137")
+        box = pg.wait_for_selector("dialog.ins-dlg[open]", timeout=10000)
+        photo, corners = card_photo()
+        pg.set_input_files("dialog.ins-dlg input[id$=front-file]", files=[{"name": "card.png", "mimeType": "image/png", "buffer": photo}])
+        pg.wait_for_selector("dialog.cc-dlg[open] .cc-h", timeout=15000)
+        pg.wait_for_timeout(300)
+        crop = pg.evaluate("""(() => { const s = document.querySelector('.cc-stage'), vb = s.viewBox.baseVal;
+          return [[...s.querySelectorAll('.cc-ring')].map(c => [c.getAttribute('cx') / vb.width, c.getAttribute('cy') / vb.height]),
+            [...s.querySelectorAll('.cc-h')].map(h => h.getAttribute('aria-label').split(',')[0]), document.querySelector('.cc-dlg .sg-ask-msg p').textContent]; })()""")
+        off = max(min(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 for cx, cy in corners) for x, y in crop[0])
+        pg.focus(".cc-h")
+        pg.keyboard.press("Shift+ArrowRight")
+        pg.wait_for_timeout(500)
+        moved = pg.evaluate("[document.querySelector('.cc-ring').getAttribute('cx') / document.querySelector('.cc-stage').viewBox.baseVal.width, "
+                            "document.querySelector('.cc-say').textContent]")
+        pg.keyboard.press("Shift+ArrowLeft")
+        check("…a photo chosen as a plan is added opens its crop: the card's edges found, each corner within 3% of the card's; each "
+              "corner named for where it is, moved by the arrow keys (Shift: 5%) and said (#1168)",
+              off < 0.03 and crop[2].startswith("Found the card's edges") and sorted(crop[1]) == sorted(["Top-left corner", "Top-right corner",
+              "Bottom-right corner", "Bottom-left corner"]) and abs(moved[0] - crop[0][0][0] - 0.05) < 0.002 and moved[1].endswith("down."),
+              [off, crop, moved])
+        pg.click("dialog.cc-dlg .sg-ask-acts button:last-child")
+        pg.wait_for_selector("dialog.ins-dlg img.ins-pv", timeout=15000)
+        pg.set_input_files("dialog.ins-dlg input[id$=back-file]", files=[{"name": "back.png", "mimeType": "image/png", "buffer": png_square(200)}])
+        pg.wait_for_selector("dialog.cc-dlg[open] .cc-h", timeout=15000)
+        nocard = pg.evaluate("document.querySelector('.cc-dlg .sg-ask-msg p').textContent")
+        pg.click("dialog.cc-dlg button:text('Use the whole photo')")
+        pg.wait_for_function("document.querySelectorAll('dialog.ins-dlg img.ins-pv').length === 2 && [...document.querySelectorAll('dialog.ins-dlg img.ins-pv')].every(i => i.naturalWidth)", timeout=15000)
+        pv = pg.evaluate("[[...document.querySelectorAll('dialog.ins-dlg img.ins-pv')].map(i => [i.naturalWidth, i.naturalHeight, i.alt]), "
+                         "[...document.querySelectorAll('dialog.ins-dlg .ins-side')].map(s => [...s.querySelectorAll('label.btn, button')].map(b => b.textContent).join('|')), "
+                         "document.activeElement.closest('.ins-side')?.getAttribute('aria-labelledby')?.endsWith('back-hd')]")
+        check("…the crop shown as it will be saved, card-shaped (1200 × 757), with Choose another, Adjust corners and Take off; a photo with "
+              "no card found says so and is kept whole; focus back in its side",
+              pv[0][0] == [1200, 757, "Front of the card, as it will be saved"] and pv[0][1][:2] == [200, 200] and nocard.startswith("The card's edges weren't found")
+              and pv[1] == ["Choose another…|Adjust corners…|Take off"] * 2 and pv[2], [pv, nocard])
+        pg.click("dialog.ins-dlg button:text('Read the card')")
+        pg.wait_for_selector("dialog.ins-dlg .ins-sug", timeout=15000)
+        pg.wait_for_timeout(200)
+        read = pg.evaluate("""(() => { const d = document.querySelector('dialog.ins-dlg'), v = s => d.querySelector('[id$=-' + s + ']').value;
+          return [[...d.querySelectorAll('.ins-sug b')].map(b => b.textContent), ['name', 'member', 'group', 'rxbin', 'pn1'].map(v),
+            d.querySelector('[id$=-member]').getAttribute('aria-describedby'), d.querySelector('.ins-said').textContent]; })()""")
+        box.query_selector("[id$=-member-sug] .ins-use").click()
+        recs = box.query_selector("fieldset.ins-set button")
+        offered = recs.text_content() if recs else None
+        if recs:
+            recs.click()
+        pg.wait_for_timeout(200)
+        box.query_selector("[id$=-name-sug] .ins-use").click()
+        used = pg.evaluate("(() => { const d = document.querySelector('dialog.ins-dlg'); return [d.querySelector('[id$=-name]').value, d.querySelector('[id$=-member]').value, "
+                           "d.querySelector('[id$=-member]').classList.contains('ins-used'), d.querySelector('[id$=-group]').value, document.activeElement.id.endsWith('-name')]; })()")
+        check("…Read the card sends the cropped photos alone (JPEGs, never the photo taken) and shows what it suggests under each field, none "
+              "filled in; Use fills one in, marked; the records suggest the plan their claims name",
+              len(sent) == 2 and all(b[:3] == b"\xff\xd8\xff" for b in sent) and read[0] == ["FICTIONAL READ PLAN", member, "G-READ-1168", "004336", "Nurse line 1-800-555-0168"]
+              and read[1] == ["", "", "", "", ""] and read[2].endswith("-member-sug") and read[3].startswith("The card suggests 5 fields")
+              and offered and offered.startswith("Example Health Plan") and used == ["Example Health Plan", member, True, "", True],
+              [len(sent), [b[:3] for b in sent], read, offered, used])
+        plan_name = used[0]
         box.query_selector(".sg-ask-acts button:last-child").click()
-        pg.wait_for_function("document.getElementById('insuranceMsg').textContent.startsWith('Added')", timeout=10000)
-        pg.wait_for_selector("#insuranceBody [data-plan]", timeout=10000)
-        pg.set_input_files("#insuranceBody [data-plan] input[id$=-front]",
-                           files=[{"name": "card-front.png", "mimeType": "image/png", "buffer": png_square()}])
-        pg.wait_for_function("document.getElementById('insuranceMsg').textContent.startsWith('Saved the photo of the front')", timeout=15000)
-        pg.wait_for_function("(() => { const i = document.querySelector('#insuranceBody [data-plan] .jpic img'); return i && i.complete && i.naturalWidth > 0; })()", timeout=10000)
+        pg.wait_for_function("document.getElementById('insuranceMsg').textContent.startsWith('Added')", timeout=15000)
+        pg.wait_for_selector("#insuranceBody [data-plan] .jpic img", timeout=10000)
+        pg.wait_for_function("[...document.querySelectorAll('#insuranceBody [data-plan] .jpic img')].every(i => i.complete && i.naturalWidth > 0)", timeout=10000)
+        kept = api("profiles/1/insurance")[1]["plans"][0]
         row = pg.evaluate("(() => { const r = document.querySelector('#insuranceBody [data-plan]'); return [r.querySelector('h3').textContent, r.textContent.includes('Member ID " + member + "'), "
-                          "r.querySelector('img').alt, [...r.querySelectorAll('button, label.btn')].map(b => b.textContent).join('|'), document.activeElement.id.endsWith('-front')]; })()")
-        check("…a plan added there lists its name, member ID and number, and a photo of its front sent is shown, named for its side and plan, "
-              "with Change, Replace, Add back, Take off and Remove; focus back on the front's picker",
-              row[0] == "Fictional Health Plan 1137" and row[1] and row[2] == "Front of the card for Fictional Health Plan 1137"
-              and row[3] == "Change…|Replace front photo…|Add back photo…|Take off front photo|Remove" and row[4], [row, msg()])
+                          "[...r.querySelectorAll('img')].map(i => [i.alt, i.naturalWidth, i.naturalHeight]), [...r.querySelectorAll('button, label.btn')].map(b => b.textContent).join('|'), "
+                          "document.activeElement.id, document.getElementById('insuranceMsg').textContent]; })()")
+        check("…saved with only what was used (not the group or phone it suggested), and both photos as cropped; the row lists its name, "
+              "member ID and photos, with Show at the desk, Change and Remove; focus back on Add",
+              row[0] == plan_name and row[1] and row[2] == [[f"Front of the card for {plan_name}", 1200, 757], [f"Back of the card for {plan_name}", 200, 200]]
+              and row[3] == "Show at the desk|Change…|Remove" and row[4] == "insAdd" and row[5] == f"Added {plan_name}. Saved both photos."
+              and (kept["group"], kept["phones"], kept["rxbin"]) == ("", [], ""), [row, kept])
+        pg.unroute(re.compile(r".*/api/profiles/1/insurance$"))
+        # the card at the desk: full screen, the front then the back, the member ID as text; Escape back
+        api(f"profiles/1/insurance/{kept['id']}", "PUT", {**{k: kept[k] for k in ("name", "member", "group", "phones")}, "group": "G-1168",
+                                                          "kind": "medical", "order": "primary", "rxbin": "004336"})
+        pg.reload()
+        pg.wait_for_selector("#insuranceBody [data-plan] button", timeout=15000)
+        pg.focus("#insuranceBody [data-plan] .acts button")
+        pg.keyboard.press("Enter")
+        pg.wait_for_selector("dialog.ins-desk[open] .dk-card img", timeout=10000)
+        desk = [pg.evaluate("""[document.querySelector('.dk-card img').alt, [...document.querySelectorAll('.dk-ids div')].map(d => d.innerText.replace(/\\s+/g, ' ')),
+          (() => { const r = document.querySelector('dialog.ins-desk').getBoundingClientRect(); return [r.width === innerWidth, r.height === innerHeight]; })(),
+          document.querySelector('.dk-rx').textContent]""")]
+        pg.focus(".dk-card")
+        pg.keyboard.press("Enter")
+        pg.wait_for_function("document.querySelector('.dk-card img')?.alt.startsWith('Back')", timeout=10000)
+        desk.append(pg.evaluate("[document.querySelector('.dk-card img').alt, [...document.querySelectorAll('.ins-desk [aria-pressed]')].map(b => b.textContent + ':' + b.getAttribute('aria-pressed'))]"))
+        fits = {}
+        for w in (320, 412, 1400):
+            pg.set_viewport_size({"width": w, "height": 900})
+            pg.wait_for_timeout(150)
+            fits[w] = pg.evaluate("document.querySelector('dialog.ins-desk').scrollWidth - document.querySelector('dialog.ins-desk').clientWidth") or None
+        big = pg.add_style_tag(content=BIG_TEXT_CSS)
+        pg.set_viewport_size({"width": 412, "height": 900})
+        pg.wait_for_timeout(200)
+        fits["200%"] = pg.evaluate("document.querySelector('dialog.ins-desk').scrollWidth - document.querySelector('dialog.ins-desk').clientWidth") or None
+        big.evaluate("s => s.remove()")
+        pg.set_viewport_size({"width": 1400, "height": 900})
+        axes = []
+        for theme in ("light", "dark"):
+            pg.emulate_media(color_scheme=theme)
+            pg.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+            pg.wait_for_timeout(150)
+            axes += axe_check(pg, f"Insurance card at the desk, {theme}")[0]
+        pg.evaluate("delete document.documentElement.dataset.theme")
+        pg.emulate_media(color_scheme=None)
+        pg.keyboard.press("Escape")
+        pg.wait_for_function("!document.querySelector('dialog.ins-desk')", timeout=10000)
+        desk.append(pg.evaluate("document.activeElement.textContent"))
+        check("…Show at the desk: the card full screen, its front, the member ID and group number as text, the pharmacy numbers; Enter on "
+              "the card shows its back (Front and Back say which); it fits 320–1400 px and 200% text, axe-core finds nothing serious light "
+              "or dark; Escape back on Show at the desk",
+              desk[0] == [f"Front of the card for {plan_name}", [f"Member ID {member}", "Group G-1168"], [True, True], "RxBIN 004336"]
+              and desk[1] == [f"Back of the card for {plan_name}", ["Front:false", "Back:true"]] and desk[2] == "Show at the desk"
+              and not any(fits.values()) and not axes, [desk, fits, axes[:4]])
+        # the dialog and a crop at 320 px and 200% text, by axe light and dark
+        pg.click("#insuranceBody [data-plan] .acts button:nth-child(2)")
+        pg.wait_for_selector("dialog.ins-dlg[open]", timeout=10000)
+        pg.set_input_files("dialog.ins-dlg input[id$=front-file]", files=[{"name": "card.png", "mimeType": "image/png", "buffer": photo}])
+        pg.wait_for_selector("dialog.cc-dlg[open] .cc-h", timeout=15000)
+        dlgfits, dlgaxes = {}, []
+        for name_, sel in (("crop", "dialog.cc-dlg"), ("dialog", "dialog.ins-dlg")):
+            for w in (320, 412):
+                pg.set_viewport_size({"width": w, "height": 800})
+                pg.wait_for_timeout(150)
+                o = pg.evaluate("s => { const d = document.querySelector(s), r = d.getBoundingClientRect(); return [document.documentElement.scrollWidth - innerWidth, "
+                                "[...d.querySelectorAll('*')].filter(e => e.checkVisibility() && e.getBoundingClientRect().right > r.right + 0.5).length]; }", sel)
+                if o != [0, 0]:
+                    dlgfits[f"{name_} {w}"] = o
+            big = pg.add_style_tag(content=BIG_TEXT_CSS)
+            pg.wait_for_timeout(200)
+            o = pg.evaluate("s => document.querySelector(s).scrollWidth - document.querySelector(s).clientWidth", sel)
+            if o:
+                dlgfits[f"{name_} 200%"] = o
+            big.evaluate("s => s.remove()")
+            pg.set_viewport_size({"width": 1400, "height": 900})
+            for theme in ("light", "dark"):
+                pg.emulate_media(color_scheme=theme)
+                pg.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+                pg.wait_for_timeout(150)
+                dlgaxes += axe_check(pg, f"Insurance card's {name_}, {theme}")[0]
+            pg.evaluate("delete document.documentElement.dataset.theme")
+            pg.emulate_media(color_scheme=None, forced_colors="active")
+            pg.wait_for_timeout(150)
+            if name_ == "crop":
+                forced = pg.evaluate("getComputedStyle(document.querySelector('.cc-ring')).stroke")
+            pg.emulate_media(forced_colors="none")
+            if name_ == "crop":
+                pg.keyboard.press("Escape")
+                pg.wait_for_function("!document.querySelector('dialog.cc-dlg')", timeout=10000)
+        pg.keyboard.press("Escape")
+        pg.wait_for_function("!document.querySelector('dialog.ins-dlg')", timeout=10000)
+        check("…its dialog and a photo's crop fit 320 and 412 px and 200% text, axe-core finds nothing serious in either, light or dark, "
+              "and the corners keep an edge in forced colours", not dlgfits and not dlgaxes and forced not in ("", "none"), [dlgfits, dlgaxes[:4], forced])
         # the card at 320–1400 px, text at 200%, light and dark, forced colours
         fits, axes = {}, []
         for w in (320, 412, 768, 1400):
@@ -1762,20 +1914,22 @@ def insurance_check(browser, base, cookies, check):
             sp.goto(base + "/" + made["path"])
             sp.wait_for_selector("#share-visits", timeout=15000)
             if name == "with":
-                sp.wait_for_function("(() => { const i = document.querySelector('#share-insurance img'); return i && i.src.startsWith('data:') && i.naturalWidth > 0; })()", timeout=10000)
+                sp.wait_for_function("[...document.querySelectorAll('#share-insurance img')].every(i => i.src.startsWith('data:') && i.naturalWidth > 0)", timeout=10000)
             seen[name] = sp.evaluate("[document.body.innerText.includes(" + json.dumps(member) + "), /insurance card/i.test(document.body.innerText), "
-                                     "!!document.getElementById('share-insurance'), [...document.querySelectorAll('#share-insurance img')].map(i => i.alt)]")
+                                     "!!document.getElementById('share-insurance'), [...document.querySelectorAll('#share-insurance img')].map(i => i.alt), "
+                                     "[...document.querySelectorAll('#share-insurance dt')].map(d => d.textContent + ' ' + d.nextElementSibling.textContent)]")
             sp.close()
-        check("…offered for a share link; a link without Insurance cards shows nothing about insurance, one with it the plan's member ID "
-              "and the photo of its card's front",
-              "insurance" in offered and seen["without"] == [False, False, False, []]
-              and seen["with"][:3] == [True, True, True] and seen["with"][3] == ["Front of the card for Fictional Health Plan 1137"], [offered, seen])
+        check("…offered for a share link; a link without Insurance cards shows nothing about insurance, one with it the plan's member ID, "
+              "what else its card says (#1168: its type, pharmacy numbers) and the photos of its card as cropped",
+              "insurance" in offered and seen["without"] == [False, False, False, [], []]
+              and seen["with"][:3] == [True, True, True] and seen["with"][3] == [f"Front of the card for {plan_name}", f"Back of the card for {plan_name}"]
+              and seen["with"][4] == ["Plan type Medical, primary", f"Member ID {member}", "Group number G-1168", "RxBIN 004336"], [offered, seen])
     finally:
         try:
             for lid in links:
                 api(f"profiles/1/links/{lid}", "DELETE")
             for plan in (api("profiles/1/insurance")[1] or {}).get("plans") or []:
-                if plan["name"] == "Fictional Health Plan 1137":
+                if plan["member"] == member:
                     api(f"profiles/1/insurance/{plan['id']}", "DELETE")
         finally:
             ctx.close()
@@ -2008,6 +2162,24 @@ def icon_audit(page, label):
     bad += [f"{label}: a symbol in the text, {t}" for t in a["text"]]   # #355
     bad += [f"{label}: an icon neither hidden nor named: {t}" for t in a["hidden"]] + [f"{label}: only an icon, no name: {t}" for t in a["unnamed"]]
     return a["n"], bad
+
+
+def card_photo(w=720, h=540):
+    """(#1168) a fixture photo of a fictional insurance card, turned and in perspective on a busy background
+    (tests/test_cardcrop.py draws it), as a grey PNG, and its corners as shares of the picture's width and height"""
+    import struct, zlib
+    import test_cardcrop as tc
+    was = tc.W, tc.H
+    tc.W, tc.H = w, h
+    try:
+        quad = tc.rect(w / 2, h / 2, w * 0.62, angle=17, tilt=0.12)
+        gray = tc.photo(quad, seed=3)
+    finally:
+        tc.W, tc.H = was
+    chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)  # noqa: E731
+    rows = b"".join(b"\0" + bytes(gray[y * w:(y + 1) * w]) for y in range(h))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 0, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows))
+            + chunk(b"IEND", b"")), [(x / w, y / h) for x, y in quad]
 
 
 def axe_check(page, label):
@@ -32713,6 +32885,14 @@ def main():
             ph.goto(base + "/?profile=1")
             until(LOADED, 20000)
             until(copy_is428([picked424[-1][1], mine428["dates.format"], mine428["units"]["weight"]]), 5000)
+            # (#1168) a plan with its card's photo: kept with the copy, for the card at the desk
+            made1168 = ph.evaluate("""async png => { const j = await (await api('profiles/1/insurance', {method: 'POST', body: JSON.stringify({name: 'Fictional Desk Plan', member: 'FICT-DESK-1168'})})).json();
+              const b = new Blob([Uint8Array.from(atob(png), c => c.charCodeAt(0))], {type: 'image/png'});
+              return (await api('profiles/1/insurance/' + j.id + '/front', {method: 'PUT', body: b, headers: {'Content-Type': 'image/png'}})).status; }""",
+                                   __import__("base64").b64encode(png_square(60)).decode())
+            ph.reload()
+            until(LOADED, 20000)
+            until(COPY + ".then(c => !!c && !!c.cards && Object.keys(c.cards.photos).length === 1)", 10000)
             ctx.set_offline(True)
             ph.reload()
             until(LOADED, 20000)
@@ -32720,6 +32900,22 @@ def main():
             name = ph.evaluate("PROFILE.name")
             check("offline, records on: the last profile opens read-only, with when it was loaded",
                   "Offline · read-only" in text and f"{name}, as loaded on" in text, text)
+            ph.keyboard.press("Control+k")
+            ph.wait_for_selector("dialog.palette[open]", timeout=5000)
+            ph.fill("#palQ", "insurance card")
+            ph.wait_for_timeout(300)
+            ph.keyboard.press("Enter")
+            ph.wait_for_selector("dialog.ins-desk[open] .dk-card img", timeout=10000)
+            ph.wait_for_function("document.querySelector('.dk-card img').naturalWidth > 0", timeout=10000)
+            desk1168 = ph.evaluate("[document.querySelector('.dk-card img').alt, document.querySelector('.dk-ids').innerText.replace(/\\s+/g, ' ')]")
+            ph.keyboard.press("Escape")
+            check("offline, records on (#1168): the command palette's Insurance card at the desk shows the card from the copy, its photo and member ID",
+                  made1168 == 201 and desk1168 == ["Front of the card for Fictional Desk Plan", "Member ID FICT-DESK-1168"], [made1168, desk1168])
+            db = sg_db.connect()
+            for (iid1168,) in db.execute("SELECT id FROM insurance_plans WHERE profile_id=1").fetchall():
+                with sg_db.transaction(db):
+                    __import__("server.insurance", fromlist=["remove"]).remove(db, 1, iid1168)
+            db.close()
             check("…in the theme picked online last (#424), not the one the records were loaded with",
                   ph.evaluate(SHOWN) == picked424[-1][1], [ph.evaluate(SHOWN), picked424])
             # (#439) today's doses, on the Medications tab and the Overview: each button says why it does nothing (its tip,
