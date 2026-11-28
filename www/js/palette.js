@@ -220,12 +220,14 @@ const SgPalette = (() => {
     ["labs", "heatmap", "-heatmap", "Heatmap", "grid colors colours every result table"],
     ["labs", "compare", "-compare", "Compare", "side by side within ranges milestone before after"],
     ["timeline", "journal", "-journal", "Journal", "notes diary entries photos symptoms"],
-    ["costs", "paid", "-paid", "What you paid", "out of pocket spent spending payments total hsa fsa premiums"],
+    // Costs' three views (#1163): Summary its first, the tab itself
+    ["costs", "claims", "-claims", "Claims", "insurance claims billed denied by month year type of care providers prescriptions"],
+    ["costs", "paid", "-paid", "Payments and bills", "what you paid out of pocket spent spending payments total hsa fsa premiums"],
     // (#1127, #1128, #1136) cards of Costs' views, opened with focus on their heading (costs.js costJump)
-    ["costs", "claims", "", "Plan years", "deductible oop maximum max plan year limits family met", "plan"],
+    ["costs", "summary", "", "Plan years", "deductible oop maximum max plan year limits family met", "plan"],
     ["costs", "paid", "-paid", "Bills", "add a bill bills provider statement owe billed due", "bill"],
     ["costs", "paid", "-paid", "Tax-year report", "tax report taxes year deduction itemized receipts zip csv pdf hsa", "tax"]];
-  const FIRST_VIEW = {labs: "home", timeline: "timeline", costs: "claims"};   // (Labs where it opens, here as from another page: #1026)
+  const FIRST_VIEW = {labs: "home", timeline: "timeline", costs: "summary"};   // (Labs where it opens, here as from another page: #1026)
   function tabs(all) {
     if (document.querySelector("header.topbar nav.tabs")?.hidden) return [];
     // on the records page that tab, in that view; elsewhere the records page at its address
