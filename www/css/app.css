@@ -976,18 +976,6 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct .tbl td.acts{display:flex;flex-wrap:wrap;align-items:center;align-content:flex-start;gap:var(--sp-1)}   /* buttons at their own height, not the row's (#258) */
 .acct .activity .tbl td:nth-child(3){overflow-wrap:anywhere}   /* an activity log's what: a long word (a file's name) wraps (#342) */
 .acct .activity .tbl td:nth-child(4){overflow-wrap:break-word}   /* its address only where it doesn't fit (#524: "127.0.0." / "1") */
-.acct .lm-edit{display:flex;flex-wrap:wrap;gap:var(--sp-1);align-items:center}
-.acct .lm-edit input{flex:1 1 140px}
-/* a lab name match a little card wherever its five columns can't fit the card's width (#536: with Change open they
-   ran past it at 762–804 px; the phone's grid began at 640): its name, where it goes, its buttons a line each (#532) */
-#labmapList{container-type:inline-size}
-@container (width < 37rem){
-  .acct .tbl.lm thead{display:none}
-  .acct .tbl.lm tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px var(--sp-2);border-top:1px solid var(--grid);padding:var(--sp-1) 0}
-  .acct .tbl.lm td{border:0;padding:0;overflow-wrap:anywhere}
-  .acct .tbl.lm td[data-label]::before{content:attr(data-label);display:block;color:var(--muted);font-size:var(--fs-2);font-weight:var(--fw-medium);overflow-wrap:normal}
-  .acct .lm :is(td:first-child,.lm-target,.acts){grid-column:1/-1}
-}
 .acct .prof{border-top:1px solid var(--grid);padding:var(--sp-3) 0}
 .acct .prof:first-child{border-top:0}
 .acct .activity-wrap{margin-top:var(--sp-3)}
@@ -2144,7 +2132,7 @@ path.pt.abn{stroke-width:1.5}
 .bk .bk-counts caption{text-align:left;font-size:var(--fs-2);color:var(--muted);padding-bottom:var(--sp-1)}
 .bk .bk-replaced caption{text-align:left;font-size:var(--fs-2);color:var(--muted);padding-bottom:var(--sp-1)}   /* what restores replaced (#595) */
 .bk .bk-counts td{font-variant-numeric:tabular-nums}
-.acct .tag:is(.bk-late,.lm-check){color:var(--ink);background:color-mix(in srgb,var(--c-study) 30%,transparent)}
+.acct .tag.bk-late{color:var(--ink);background:color-mix(in srgb,var(--c-study) 30%,transparent)}
 .menu-item .badge.bk-late{color:var(--ink);border-color:var(--c-study);background:color-mix(in srgb,var(--c-study) 20%,transparent)}
 main[data-group=backups] #backupNotice{display:none}   /* the Backups group says it itself */
 @media (max-width:640px){   /* the counts stay a table with its headings on a phone */

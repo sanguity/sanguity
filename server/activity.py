@@ -69,9 +69,10 @@ Account events (no profile), readable by admins:
   account.remove {"username", "handed_over"}: an account deleted; profiles it alone owned went to someone else
   profile.repair {"name", "username"}: an admin gave a profile with no active owner a new one (also logged on the
                 profile itself, as a share with "repair": true)
-  labmap.change {"name", "importer", "from", "to", ("kept": true)} / labmap.remove {"name", "importer", "target"}: an
-                admin changed (or kept, a match to check, #575) or removed a lab name matched during import (labmap.py;
-                target null: kept as a series of its own)
+  labmap.change {"name", "importer", "from", "to", ("kept": true)} / labmap.remove {"name", "importer", "target"} /
+                labmap.undo {"name", "importer", "target"}: an admin changed (or kept, a match to check, #575) or
+                removed a lab name match for every profile, or undid that from a profile's card (#1114; labmap.py;
+                target null: kept as a series of its own; an undo's: as it was put back)
   connect.source {"name", "issuer", "change"}: an admin set up, changed or removed a connected source's settings
                 (connections.py; change is "add", "edit" or "remove")
   outside       {"host", "purpose"}: Sanguity contacted a vendor with no profile involved (an admin's "Test this
@@ -105,7 +106,7 @@ PROFILE_ACTIONS = ("view", "document", "create", "rename", "share", "unshare", "
 ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "account.enable", "account.admin",
                    "account.unadmin", "account.reset", "2fa.on", "2fa.off", "2fa.codes", "2fa.recovery", "2fa.reset", "2fa.stopped",
                    "settings.require_2fa", "profile.delete", "account.remove", "profile.repair", "labmap.change",
-                   "labmap.remove", "settings.user", "settings.install", "connect.source", "outside",
+                   "labmap.remove", "labmap.undo", "settings.user", "settings.install", "connect.source", "outside",
                    "backup.create", "backup.check", "backup.fail", "backup.schedule", "backup.replaced", "directory.update",
                    "records.rekey", "records.copies")
 COMMAND_LINE, SETUP_BUILD = "command line", "setup build"

@@ -6,7 +6,9 @@
    Lab names (Labs and ranges → Names, settings.js) is another thing: it changes only how a name is shown.
 
    lmPick(o): the one picker, a question (util.js ask) with the profile's tests (unit beside each) and Keep as its
-   own test. drawLabMatches(p): Settings → This person → Labs and ranges, the card #labmatches. lmSameAs(s): Labs' lab
+   own test. drawLabMatches(p): Settings → This person → Labs and ranges, the card #labmatches, with the matches an
+   admin made for every profile before #927 under their own heading (#1114: the one place; Install had a page of
+   them), changed there by admins, read by everyone else. lmSameAs(s): Labs' lab
    panel's Same test as… (lab-panel.js). Plain script; all files share one scope. */
 "use strict";
 const LM_KEEP = "";   // the picker's Keep as its own test: no test has an empty name
@@ -62,11 +64,11 @@ async function drawLabMatches(p, focus) {
   try { d = await lmCall(`profiles/${p.id}/labmaps`); }
   catch (e) { body.replaceChildren(); sayIn(msg, e.message, true); return; }
   if (LM_P !== p) return;
-  const edit = d.can_change, list = d.matches;
+  const edit = d.can_change, list = d.matches, every = d.every || [];
   const again = f => drawLabMatches(p, f);
-  // an Undo for a change just made: put back as it was, drawn again (409: changed since, said)
-  const undoable = (text, change, f) => toast(text, {action: "Undo", onAction: async () => {
-    try { await lmCall(`profiles/${p.id}/labmaps/undo/${change}`, "POST"); sayIn(msg, "Undone: back as it was."); }
+  // an Undo for a change just made: put back as it was, drawn again (409: changed since, said); all: one for every profile's
+  const undoable = (text, change, f, all) => toast(text, {action: "Undo", onAction: async () => {
+    try { await lmCall(all ? `labmaps/undo/${change}?profile=${p.id}` : `profiles/${p.id}/labmaps/undo/${change}`, "POST"); sayIn(msg, "Undone: back as it was."); }
     catch (e) { sayIn(msg, e.message, true); }
     await again(f);
   }});
@@ -96,6 +98,43 @@ async function drawLabMatches(p, focus) {
     return setRow([el("h3", {class: "sub", id: hd}, m.name, lmUnit(m.unit), ...arrow(m)), el("p", {class: "muted", text: who})],
       acts ? el("div", {class: "acts", onclick: () => { LM_AT = i; }}, ...acts) : null, {tag: "section", "aria-labelledby": hd, "data-labmatch": m.id});
   };
+  // one for every profile (#1114): no results counted (whose would they be); an admin's Keep, Change… and Remove,
+  // Install's routes told the profile, for its Undo; the picker's tests the profile's, with the one it goes to now
+  const allRow = (m, i) => {
+    const hd = "lm" + m.id, at = `labmaps/${m.id}?profile=${p.id}`, f = "e" + m.id;
+    const who = [`From ${m.label}, ${fmtD(m.created * 1000)}${m.created_by ? `, by ${m.created_by}` : ""}`,
+      m.changed ? `changed ${fmtD(m.changed * 1000)}${m.changed_by ? ` by ${m.changed_by}` : ""}` : null,
+      m.check ? "to check: not used until an admin keeps it" : null].filter(Boolean).join(" · ");
+    const btn = (text, label, run) => el("button", {class: "btn small", type: "button", text, "aria-label": `${label} for every profile`, onclick: run});
+    const drop = async verb => {
+      try { const r = await lmCall(at, "DELETE");
+        const t = `${verb} the match for “${m.name}” for every profile: the next import with that name asks again.`; sayIn(msg, t); undoable(t, r.change, f, true); }
+      catch (e) { sayIn(msg, e.message, true); }
+      again(f);
+    };
+    const acts = !d.can_change_every ? null : m.check ? [
+      btn("Keep", `Keep the match for ${m.name}`, async () => {
+        try { const r = await lmCall(at, "PATCH", {target: m.target, keep: true});
+          sayIn(msg, `Kept: “${m.name}” is charted with ${m.target ?? "its own test"} for every profile from now on.`); undoable("Kept the match.", r.change, f, true); }
+        catch (e) { sayIn(msg, e.message, true); }
+        again(f); }),
+      btn("Forget", `Forget the match for ${m.name}`, () => drop("Forgot"))] : [
+      btn("Change…", `Change the match for ${m.name}`, async () => {
+        const tests = m.target == null || d.tests.some(t => t.name === m.target) ? d.tests : [...d.tests, {name: m.target, unit: ""}];
+        const got = await lmPick({title: `Change the match for ${m.name}, for every profile`, name: m.name, tests, current: m.target, results: 0});
+        if (!got) return;
+        try { const r = await lmCall(at, "PATCH", {target: got.target});
+          const t = lmSaid(m.name, got.target, 0, false).replace(";", " for every profile;"); sayIn(msg, t); undoable(t, r.change, f, true); }
+        catch (e) { sayIn(msg, e.message, true); }
+        again(f); }),
+      btn("Remove", `Remove the match for ${m.name}`, () => drop("Removed"))];
+    return setRow([el("h3", {class: "sub", id: hd}, m.name, lmUnit(m.unit), ...arrow(m)), el("p", {class: "muted", text: who})],
+      acts ? el("div", {class: "acts", onclick: () => { LM_AT = list.length + i; }}, ...acts) : null, {tag: "section", "aria-labelledby": hd, "data-every": m.id});
+  };
+  const all = every.length ? el("div", {id: "lmEvery"}, el("h3", {class: "sub", id: "lmEveryHd", text: "For every profile on this server"}),
+    el("p", {class: "hint", text: "Made by an admin before each profile had its own; this profile's own is used before them. " +
+      (d.can_change_every ? "A change here is for every profile." : "An admin changes them.")}),
+    ...every.map(allRow)) : null;
   // removed at once, no question: an Undo puts it back as it was
   async function remove(m, verb) {
     try {
@@ -129,12 +168,14 @@ async function drawLabMatches(p, focus) {
     add || find ? el("div", {class: "row"}, add, find ? el("label", {}, "Find a match ", find) : null) : null,
     list.length ? rows : emptyState("None yet. Matches are made when you review an import's lab names" + (add ? ", or here with Add a match." : "."),
       edit ? {href: `import.html?profile=${p.id}`, text: "Import results"} : null, {cls: ""}),
-    none);
+    none, all);
   if (find && LM_FIND) filter();
   if (focus === "lmAdd" && $("#lmAdd")) $("#lmAdd").focus();
   else if (focus != null) {   // back where it was (#493's way): the row's first button, else the one now in its place, else Add or the heading
-    const all = [...rows.querySelectorAll("[data-labmatch]")], at = all.findIndex(r => r.dataset.labmatch === String(focus));
-    focusNear(all, at < 0 ? Math.min(LM_AT, all.length) : at, "button", $("#lmAdd") || $("#labmatchesHd"));
+    // (#1114) the ones for every profile after the profile's own, each by "e" and its id
+    const shown = [...body.querySelectorAll("[data-labmatch], [data-every]")];
+    const at = shown.findIndex(r => (r.dataset.labmatch ?? "e" + r.dataset.every) === String(focus));
+    focusNear(shown, at < 0 ? Math.min(LM_AT, shown.length) : at, "button", $("#lmAdd") || $("#labmatchesHd"));
   }
 }
 

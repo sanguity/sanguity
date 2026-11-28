@@ -95,6 +95,7 @@ const WHAT = {
   "labmap.change": d => d.kept ? `kept the lab name match for “${d.name}” → ${d.to ? `“${d.to}”` : "its own series"}`   // Keep (#575)
     : `changed the lab name match for “${d.name}” from ${d.from ? `“${d.from}”` : "its own series"} to ${d.to ? `“${d.to}”` : "its own series"}`,
   "labmap.remove": d => `removed the lab name match for “${d.name}”${d.target ? ` (to “${d.target}”)` : ""}`,
+  "labmap.undo": d => `undid a change to the lab name match for “${d.name}”, back to ${d.target ? `“${d.target}”` : "its own series"}`,   // (#1114)
   // backups (#200): made (Back up now, or the schedule), checked, failing, the schedule changed
   "backup.create": d => `made a backup, ${d.name}` + (d.removed ? `, removing ${d.removed} older one${d.removed === 1 ? "" : "s"}` : ""),
   "backup.check": d => `checked the backup ${d.name}: ${d.ok ? "good" : "not good"}`,
