@@ -1483,6 +1483,15 @@ def document(pid: int, doc: str, request: Request, s=Depends(user), db=Depends(g
     return _serve(r["path"], r["ext"], DOC_TYPES)
 
 
+@app.head("/api/profiles/{pid}/documents/{doc}")
+def document_size(pid: int, doc: str, s=Depends(user), db=Depends(get_db)):
+    """A document's type and size, without its bytes and not logged as opened (#1113): what the drawer's "Open the
+    PDF" says, where the browser can't show a PDF in a page."""
+    r = _document(db, s, pid, doc)
+    n = len(crypto.read_file(r["path"])) if crypto.file_is_encrypted(r["path"]) else os.path.getsize(r["path"])
+    return Response(headers={"Content-Length": str(n)}, media_type=DOC_TYPES.get(r["ext"]) or "application/octet-stream")
+
+
 @app.get("/api/profiles/{pid}/documents/{doc}/{part:path}")
 def document_part(pid: int, doc: str, part: str, request: Request, s=Depends(user), db=Depends(get_db)):
     """An HTML record by its own file name, or a picture or stylesheet in its folder that it links to."""

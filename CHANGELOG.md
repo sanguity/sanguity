@@ -3949,6 +3949,7 @@ Everything on `main` so far; it becomes the first tagged release.
   date over 24 months away is said in years ("in 72 years", not "in 867 months"); a key-lab tile has no sparkline
   under two results; Type records in puts the open form above the kinds' chips on a phone; and on a phone's bar a tab
   with nothing in it (Body and activity with no phone data) gives its place to Labs, unless the tabs' order was set.
+- **A document's PDF on Android no longer opens a tab on its own** (#1113): a Chromium browser on an Android tablet (Vivaldi) that says it can show a PDF in a page handed the drawer's PDF to a new tab unasked and left the drawer blank. On Android the drawer now always shows the PDF's name and size with **Open the PDF**, which opens it only when pressed; desktop browsers keep it in the drawer.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 
