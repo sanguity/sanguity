@@ -4063,6 +4063,9 @@ Everything on `main` so far; it becomes the first tagged release.
   Health Link (experimental), Sources' Health Link card, its line on the Overview, a link's preview and its import's
   card, and Upload's words on Quest and Labcorp PDFs; a PDF's review says "Experimental: check each value against the
   PDF before adding."
+- **The newest reading is drawn on Body and activity's charts** (#1155): a blood pressure, temperature, oxygen or
+  glucose reading typed in or sent by the phone after its last day ended every period before it (its mark not drawn,
+  its tooltip found at the edge); a long period reaches its first and newest weeks' averages; a week alone is a dot.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

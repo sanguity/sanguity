@@ -173,7 +173,16 @@ function storeSpan() {
   // a follow-up (#1138) or a records request (#1133) alone is a profile's records too: the day it was noted, so its
   // periods have a day to end on
   for (const f of [...DATA.followups || [], ...DATA.requests || []]) { const x = Math.min(f.at * 1000, today); if (isFinite(x)) { if (x < min) min = x; if (x > max) max = x; if (x > last) last = x; } }
+  for (const b of (DATA.oop || {}).bills || []) { const x = Math.min(dayTs(b.service), today); if (isFinite(x)) { if (x < min) min = x; if (x > max) max = x; if (x > last) last = x; } }   // a bill typed in (#1155)
   state.min = min; state.max = max; state.last = last;
+  // the phone's and typed-in readings one by one (blood pressure, temperature, oxygen, a glucose meter's) and the CGM's
+  // days, which are in no series (#1155: a reading typed in today was after every period's end, its mark not drawn,
+  // its tooltip found at the edge), up to today
+  const W = typeof WATCH === "object" && WATCH || {}, wt = s => String(s).length > 10 ? zParse(s) : dayTs(s);
+  const timed = [...["bp_readings", "temp_readings", "spo2_readings", "glucose_readings"].map(k => (W[k] || []).map(r => Array.isArray(r) && r[0])),
+    ...(W.metrics || []).filter(m => m.key.startsWith("glucose_")).map(m => m.pts.map(p => p[0]))];
+  for (const ts of timed) for (const s of ts) { const x = s ? Math.min(wt(s), today) : NaN; if (!isFinite(x)) continue;
+    state.max = Math.max(state.max, x); if (min === Infinity) state.min = Math.min(state.min, x); }
   // the watch's last day, a reading left out among them (#783: All ended at the last kept, the scale's later ones on
   // no period); with no records at all (a phone's readings, or weights typed in, alone), its first day too
   for (const s of SERIES) if (s.watch) for (const p of [s.pts[0], s.pts.at(-1), ...(s.out || [])]) if (p) {
@@ -259,7 +268,7 @@ function storeWatch() {
    the out-of-pocket part whole (#405). Only what follows from it is worked out again, and the part it belongs to gets
    its notice. */
 function storePut(list, reply) {
-  if (list === "oop") { DATA.oop = reply.oop || undefined; storeChanged("costs"); return; }
+  if (list === "oop") { DATA.oop = reply.oop || undefined; YEARS = null; storeSpan(); if (booted && state.preset !== "custom") setPeriod(state.preset); storeChanged("costs"); return; }   // a bill's day in the span (#1155)
   DATA[list] = putRows(DATA[list], list, reply);
   if (list === "journal") {   // the span with it, and a period ending at the latest record with that (#472)
     journalLoad(); YEARS = null; storeSpan();

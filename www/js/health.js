@@ -74,8 +74,9 @@ function hData() {
   const {bp, temp, spo2} = out.vit, {resp, vo2} = out.fit;
   for (const r of [ex, bp.home, bp.clinic, temp.home, temp.clinic, spo2.home, spo2.typed, spo2.clinic, resp.home, resp.clinic, vo2.home].flat()) span(r.t);
   if (G && G.first <= G.last) { span(G.first); span(G.last); }
+  const latest = last;   // the latest reading (hRange)
   if (first <= last) for (const t of [first, last]) span(hMonday(t) + 3 * DAY);   // and the first and last weeks' averages, on their Thursdays (weekly)
-  return Object.assign(out, first <= last ? {first, last} : {first: Date.now(), last: Date.now()});
+  return Object.assign(out, first <= last ? {first, last, latest} : {first: Date.now(), last: Date.now(), latest: Date.now()});
 }
 let H = null;
 /* the charts' window: the records bar's period; with "All", everything Body draws (hData), the lab glucose results
@@ -85,7 +86,11 @@ function hSpan() {
   const l = gOpt.labs && G ? G.lab : [];
   return l.length ? [Math.min(H.first, l[0][0]), Math.max(H.last, l.at(-1)[0])] : [H.first, H.last];
 }
-function hRange() { return periodWindow(hSpan()); }
+/* a long period's charts are of weeks, each on its Thursday (weekly): it starts at its first week's Thursday, if that's
+   before it, and one that reaches the latest reading reaches its week's Thursday too, as All does (hData), so the first
+   and newest weeks are drawn (#1155: they were past its ends, their tooltips found) */
+function hRange() { const [a, b] = periodWindow(hSpan()); if (b - a <= 150 * DAY) return [a, b];
+  return [Math.min(a, hMonday(a) + 3 * DAY), H.latest <= b ? Math.max(b, hMonday(H.latest) + 3 * DAY) : b]; }
 const inR = (pts, a, b) => pts.filter(p => p[0] >= a && p[0] <= b);
 const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
 function rolling(pts, days = 7) {  // trailing mean over the last `days` calendar days with data
@@ -191,11 +196,15 @@ function hChart(host, a, b, {h = 190, layers, fmtY = ckNum, unit = "", zero = fa
       } else if (l.type === "line") {
         // broken where readings are further apart than its gap, each run its first, lowest, highest and last at each pixel (#292)
         let d = "";
+        const lone = [];   // a run of one point (the newest week after a gap, or the only one): a dot, a line of one drawing nothing (#1155); a
+        // trend's (trend: an average over the readings' own dots) none
         for (let i = 0, j; i < pts.length; i = j) {
           for (j = i + 1; j < pts.length && pts[j][0] - pts[j - 1][0] <= (l.gap || 21) * DAY;) j++;
+          if (j - i === 1 && !l.trend && pts[i][1] != null && isFinite(pts[i][1])) { lone.push(pts[i]); continue; }
           d += ckDecimate(pts.slice(i, j), p => x(p[0]), 1, {ends: true}).map((p, k) => `${k ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("");
         }
         if (d) g.push(el("svg:path", {d, fill: "none", stroke: l.color, "stroke-width": l.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round", opacity: l.opacity || 1}));
+        for (const p of lone) g.push(el("svg:circle", {cx: x(p[0]), cy: y(p[1]), r: Math.max(2.5, 1.25 * (l.width || 2)), fill: l.color, opacity: l.opacity || 1}));
       } else if (l.type === "dots") {
         const r = l.r || (pts.length > 200 ? 1.8 : 3);   // the lowest and highest in each half a dot's width, and every flagged one (#292)
         for (const p of ckDecimate(pts, p => x(p[0]), r, {keep: l.flag})) { const f = l.flag && l.flag(p);   // ▲ / ▼ for a reading above or below a target of the person's own (#234)
@@ -361,7 +370,7 @@ function renderHealth() {
     const wTrend = rolling(wAll, 14);
     if (!state.tables.has("#h-body")) hChart(body, a, b, {h: 220, label: "Weight", noun: "reading", nav: wAll, layers: [
       ...(wT ? [tgtLayer(wT)] : []),
-      {type: "line", data: wTrend, color: C.w, width: 2, gap: 45},
+      {type: "line", data: wTrend, color: C.w, width: 2, gap: 45, trend: true},
       {type: "dots", data: H.clinic, color: C.clinic, hollow: true, r: 3},
       {type: "dots", data: H.scale, color: C.w, opacity: .55, flag: wSide}],
       tip: t => { const p = nearest(wAll, t, len > 200 * DAY ? 10 : 4); if (!p) return null; const fat = nearest(H.fat, p[0], .6), lean = nearest(H.lean, p[0], .6);
@@ -377,9 +386,9 @@ function renderHealth() {
       two.append(c1, c2); body.append(two);
       // each reading a dot under its 14-day average, as weight's: not joined into a sawtooth (#298). Its name and the
       // keyboard take the readings, every one: the average leaves out the first and two after a gap (#659)
-      hChart(c1, a, b, {h: 150, label: "Body fat", noun: "reading", nav: H.fat, layers: [{type: "line", data: rolling(H.fat, 14), color: C.fat, width: 2, gap: 45}, {type: "dots", data: H.fat, color: C.fat, opacity: .55}],
+      hChart(c1, a, b, {h: 150, label: "Body fat", noun: "reading", nav: H.fat, layers: [{type: "line", data: rolling(H.fat, 14), color: C.fat, width: 2, gap: 45, trend: true}, {type: "dots", data: H.fat, color: C.fat, opacity: .55}],
         tip: t => { const p = nearest(H.fat, t, 10); return p && {t: p[0], rows: [el("div", {class: "v", text: `${p[1].toFixed(1)}%`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
-      hChart(c2, a, b, {h: 150, label: "Lean mass", noun: "reading", nav: H.lean, layers: [{type: "line", data: rolling(H.lean, 14), color: C.lean, width: 2, gap: 45}, {type: "dots", data: H.lean, color: C.lean, opacity: .55}],
+      hChart(c2, a, b, {h: 150, label: "Lean mass", noun: "reading", nav: H.lean, layers: [{type: "line", data: rolling(H.lean, 14), color: C.lean, width: 2, gap: 45, trend: true}, {type: "dots", data: H.lean, color: C.lean, opacity: .55}],
         tip: t => { const p = nearest(H.lean, t, 10); return p && {t: p[0], rows: [el("div", {class: "v", text: `${p[1].toFixed(1)} lb`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
     }
   }
@@ -406,14 +415,14 @@ function renderHealth() {
       hChart(ht, a, b, {h: 210, label: "Heart rate", noun: "day", nav: day ? H.hr : rest, layers: [
         ...(day ? [{type: "band", data: H.hr.map(p => [p[0], p[2], p[3]]), color: C.hr, opacity: .1},
           {type: "line", data: H.hr, color: C.hr, width: 1.4, opacity: .8, gap: 4}] : []),
-        {type: "line", data: restT, color: C.rest, width: 2, gap: 10},
+        {type: "line", data: restT, color: C.rest, width: 2, gap: 10, trend: true},
         {type: "dots", data: rest, color: C.rest, opacity: .55}],
         tip: t => { const p = (day && nearest(H.hr, t, .6)) || nearest(rest, t, long ? 4 : .6); if (!p) return null; const r = nearest(rest, p[0], .6), h = nearest(H.hr, p[0], .6);
           return {t: p[0], rows: [el("div", {class: "v", text: fmtD(p[0])}), r ? tipRow(C.rest, `Resting ${Math.round(r[1])} bpm`) : null,
             h ? tipRow(C.hr, `Average ${Math.round(h[1])} bpm${h[2] != null ? ` · range ${Math.round(h[2])}–${Math.round(h[3])}` : ""}`) : null]}; }});
       if (H.hrv.length) {
         const hv = el("div", {class: "mt-3"}, el("h4", {class: "sub", text: "Heart rate variability (ms)"})); ht.append(hv);
-        hChart(hv, a, b, {h: 140, label: "Heart rate variability", noun: "day", nav: H.hrv, layers: [{type: "line", data: rolling(H.hrv, 7), color: C.rest, gap: 10}, {type: "dots", data: H.hrv, color: C.rest, opacity: .4}],
+        hChart(hv, a, b, {h: 140, label: "Heart rate variability", noun: "day", nav: H.hrv, layers: [{type: "line", data: rolling(H.hrv, 7), color: C.rest, gap: 10, trend: true}, {type: "dots", data: H.hrv, color: C.rest, opacity: .4}],
           tip: t => { const p = nearest(H.hrv, t, .6); return p && {t: p[0], rows: [el("div", {class: "v", text: `${Math.round(p[1])} ms`}), el("div", {class: "s", text: fmtD(p[0])})]}; }});
       }
     }
@@ -462,7 +471,7 @@ function renderHealth() {
     if (!state.tables.has("#h-activity")) hChart(act, a, b, {h: 190, fmtY: v => v >= 1000 ? ckNum(v / 1000) + "k" : ckNum(v), label: long ? "Steps, weekly averages" : "Steps", noun: long ? "week" : "day", nav: stBars, layers: [
       ...(sT ? [tgtLayer(sT)] : []),
       {type: "bars", data: stBars.map(p => [p[0], p[1]]), keys: ["steps"], colors: [C.steps], opacity: .3, every: long ? 7 * DAY : DAY},
-      {type: "line", data: rolling(H.steps, long ? 30 : 7), color: C.avg, width: 2, gap: 10}],
+      {type: "line", data: rolling(H.steps, long ? 30 : 7), color: C.avg, width: 2, gap: 10, trend: true}],
       tip: t => { const p = nearest(stBars, t, long ? 4 : .6); return p && {t: p[0], rows: [el("div", {class: "v", text: `${Math.round(p[1]).toLocaleString("en-US")} steps${long ? " / day avg" : ""}`}), el("div", {class: "s", text: long ? "Week of " + fmtD(p[0] - 3 * DAY) : fmtD(p[0])}),
         sSide(p) ? el("div", {class: "s", text: tgtWord(sSide(p))}) : null]}; }});
     // workout calendar (in the table instead, with Table, #60)
@@ -1170,7 +1179,7 @@ function bmiChart(card, a, b, {long}) {
   const pts = all.map(r => [r.t, r.v, r]), clinic = pts.filter(p => p[2].w[2]), scale = pts.filter(p => !p[2].w[2]);
   hChart(box, a, b, {h: 150, label: "BMI", noun: "weight", nav: pts, layers: [
     ...(who ? [{type: "ybands", data: [], bands: WHO_BMI.map(([lo, hi, range]) => [lo, hi, "WHO " + range])}] : []),
-    {type: "line", data: rolling(pts, 14), color: C.bmi, width: 2, gap: 45},
+    {type: "line", data: rolling(pts, 14), color: C.bmi, width: 2, gap: 45, trend: true},
     {type: "dots", data: clinic, color: C.clinic, hollow: true, r: 3},
     {type: "dots", data: long && scale.length > 400 ? [] : scale, color: C.bmi, opacity: .55}],
     tip: t => { const p = nearest(pts, t, b - a > 200 * DAY ? 10 : 4); if (!p) return null; const r = p[2];
