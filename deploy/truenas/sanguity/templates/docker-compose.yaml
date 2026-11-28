@@ -35,15 +35,7 @@
 {% do app.set_command(["python3", "-m", "server"]) %}
 {% do app.depends.add_dependency(values.consts.setup_container_name, "service_completed_successfully") %}
 {% do app.healthcheck.set_custom_test(["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/healthz',timeout=3)"]) %}
-{# the app's own settings only when changed from their default (#999): one passed is shown as set by the environment,
-   fixed, and the rest can be changed in the app #}
-{% if values.sanguity.cookie_secure not in ["", "auto"] %}
-  {% do app.environment.add_env("COOKIE_SECURE", values.sanguity.cookie_secure) %}
-{% endif %}
-{% if values.sanguity.public_origins %}
-  {% do app.environment.add_env("PUBLIC_ORIGINS", values.sanguity.public_origins) %}
-{% endif %}
-{% do app.environment.add_env("FORWARDED_ALLOW_IPS", "*") %}
+{# (#1158) the server's settings are the app's, kept in its data (Settings → Install): only the container's own here #}
 {# how it's deployed, named on Settings → General → About (#1004) #}
 {% do app.environment.add_env("SANGUITY_DEPLOYMENT", "truenas") %}
 {# the receiver's published port, for the phone upload address (#1007): the app can't see what's published #}
@@ -81,7 +73,6 @@
 {% do receiver.healthcheck.set_custom_test(["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8080/healthz',timeout=3)"]) %}
 {% do receiver.environment.add_env("DATA", "/watch") %}
 {% do receiver.environment.add_env("SECRET_FILE", "%s/watch_secret" | format(values.consts.key_path)) %}
-{% do receiver.environment.add_env("TZ_DEFAULT", values.TZ) %}
 {% do receiver.add_port(values.network.receiver_port, {"container_port": 8080}) %}
 {% do receiver.add_storage("/tmp", tmp) %}
 {% do receiver.add_storage("/watch", values.storage.watch) %}

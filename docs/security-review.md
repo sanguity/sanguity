@@ -216,7 +216,7 @@ Not opened as issues; written up here for the owner to file or drop:
   - The device cookie (`sg_device`) only separates one browser's sign-in tries from other people's; it's sent
     only to `/api/login` and lets nobody in.
 - **Connected sources are off by default** (#1096): behind the install setting `experimental.connectedSources`
-  (`CONNECTED_SOURCES` in the environment wins). Off, the server refuses every connections, sync and directory route
+  (`CONNECTED_SOURCES` in the environment is taken in once on upgrade, then ignored: #1158). Off, the server refuses every connections, sync and directory route
   (404, after the sign-in's own checks), runs no sync or directory update, and the outside gateway allows none of their
   hosts (`settings.connected_sources()`, one rule); connections and what they pulled are kept.
 - **`PUBLIC_ORIGINS` and `X-Forwarded-Host`:**

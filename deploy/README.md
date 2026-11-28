@@ -36,13 +36,13 @@ sanguity → Package settings → Change visibility, or no catalog can pull it.
   it read-only (its summaries, and its data for backups, #227) with only `keys/` writable;
 - the Unraid container mounts every folder those services do, publishes 8080→8730 and 8081→8731, and sets
   PUID, PGID and TZ;
-- no template passes one of the app's settings (`server/config.py`'s `VARS`) unless it's filled in (#999): both
-  compose files pass each as `${NAME:-}`, TrueNAS only a field changed from its default, Unraid's are empty and
-  CasaOS passes none; except the receiver's published port, which each passes as `RECEIVER_PORT` (the same number)
-  for the phone upload address (#1007);
-- none sets a setting the page owns (one `server/settings.py` defines with `env=`, changed on Settings → Install →
-  General) by default (#1120): `.env.example` has each only commented out, and the all-in-one container and the
-  released image set none, so a fresh install's page can change every one;
+- (#1158) the settings file is the source of truth for every server setting, as in Sonarr and Radarr: no template
+  passes one, nor one an install may opt to manage in its environment (`server/config.py`'s `MANAGED`: the sign-in
+  provider, the notification token); each service gets only the container's own variables (`CONTAINER`, each with
+  why, and `TZ`, the containers' clock), the receiver's published port among them as `RECEIVER_PORT` for the phone
+  upload address (#1007). The compose files hand `.env` to the app as it is (`env_file`, not required), so a setting
+  still in it is taken in once on upgrade and a later change warned about. `.env.example` sets none and shows the
+  opt-in ones only commented out; the all-in-one container and the released image set none;
 - the key folder isn't inside the data folder;
 - the catalogs' own rules: TrueNAS `app.yaml` fields and `questions.yaml` covering every value the template reads;
   CasaOS's validator rules (top-level `name`, reverse-domain `x-casaos.id`, `docker compose config`) and its

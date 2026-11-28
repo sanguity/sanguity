@@ -205,22 +205,29 @@ and aren't read from the file after that (see `corrections.example.json`).
 
 ### The server's settings
 
-The settings that tune the server (how long a sign-in lasts, the public address, upload limits... every one is in
-[`.env.example`](.env.example), with its default) are read where they're used, so a change applies at once. The
-public addresses, the phone upload address, sign-in lengths and idle sign-out, the shortest passwords and the other
-security limits, how long the activity log keeps entries and connected sources are changed on **Settings → Install →
-General**; `.env` is only to pin one there (#1120). Each one's value is, in this order:
+Sanguity is configured the way Sonarr and Radarr are (#1158): **every server setting is changed in the app**, under
+**Settings → Install**, and kept in the data folder (the database, and `server-settings.json` for those that need a
+restart). That's the public addresses, the phone upload address, sign-in lengths and idle sign-out, the shortest
+passwords and the other sign-in limits, the Secure sign-in cookie, how long the activity log keeps entries, connected
+sources, the upload, connected-source and Health Link limits, the password checks at once, the trusted proxies, and
+the phone receiver's time zone and days. Each one's value is the one saved in the app, else its default.
 
-1. **the environment's**, when it's set: a line in `.env`, TrueNAS's Additional Environment Variables, or an Unraid
-   variable. The app shows it as set by the environment, naming the variable, and can't change it; take the line out
-   and run `docker compose up -d` (or update the app) to manage it in the app instead;
-2. else **the value an admin saved in the app** (Admin);
-3. else **the default**.
+`.env` (and the templates' variables) holds only what the container itself needs: the user and group IDs (`PUID`,
+`PGID`), the folders, the published ports (`WEB_PORT`, `RECEIVER_PORT`), the containers' clock (`TZ`) and, for a
+release, the version. Settings → Install shows those as facts, with where they're set. `tests/test_env_audit.py`
+lists every variable the server reads and why each that isn't a setting can't be one.
 
-The compose files pass each one as `${NAME:-}`, empty (unset) unless `.env` sets it; `.env.example` has each as a
-commented-out example; and the TrueNAS, Unraid and CasaOS templates and the all-in-one container pass none unless you
-fill it in. So a fresh install has none set by the environment, and the page can change every one of those above. An
-`.env` copied from an older `.env.example` may set some: comment out the ones you'd rather change in the app.
+**Upgrading from a version that read them from `.env`:** on the first start of this version, each setting still set
+in the environment is copied into the app once. Install activity says which, and Settings → Install → General says so
+once. From then on a change to it in `.env` is ignored, with a warning in the app's log naming it; take those lines
+out at your leisure. (The compose files hand `.env` to the app as it is, so it sees them.)
+
+**Opt-in: managed by the environment.** The sign-in provider's fields (`OIDC_ISSUER`, `OIDC_CLIENT_ID`,
+`OIDC_CLIENT_SECRET`, `OIDC_SCOPES`, `OIDC_BUTTON`, `OIDC_ACR`, `OIDC_ONLY`) and the notification token
+(`NOTIFY_TOKEN`) may be kept in the environment on purpose, as an install that manages its identity provider as code
+or rotates secrets in a secret manager would. While one is set it wins and the app shows its row locked, **Managed by
+the environment**; each may instead be `NAME_FILE`, the path of a file holding it (a Docker secret), read at each use.
+Take it out and the app's own value is used again. See `.env.example`.
 
 Every change to one in the app asks the admin to confirm it's them (the password, a code or a passkey, unless they did
 within the last few minutes), and goes in the install's activity log with who made it and its old and new value.
@@ -230,25 +237,26 @@ that ends at once), there are two ways back in without the page:
 
 | Command | What it does |
 |---|---|
-| `docker compose exec app python -m server.manage config show` | Each setting's value, and whether the environment sets it, it was saved in the app or it's the default |
-| `docker compose exec app python -m server.manage config reset SETTING` | Takes away the value saved in the app for one (its variable, like `PUBLIC_ORIGINS`, or a key like `sync.staleDays`); the running app uses the environment's or the default within seconds |
+| `docker compose exec app python -m server.manage config show` | Each setting's value, and whether it was saved in the app or it's the default |
+| `docker compose exec app python -m server.manage config reset SETTING` | Takes away the value saved in the app for one (its variable, like `PUBLIC_ORIGINS`, or a key like `sync.staleDays`); the running app uses the default within seconds |
 | `docker compose exec app python -m server.manage config reset --all` | The same for every one |
+| `docker compose exec app python -m server.manage config set SETTING VALUE` | Saves a value for one, checked as the page checks it (one that needs a restart: at the next start) |
 
 Or start the app with `SANGUITY_SAVED_SETTINGS=off` in `.env` (TrueNAS: Additional Environment Variables; Unraid: add
-the variable): every value saved in the app is left out, each setting the environment's or its default, until it's
+the variable): every value saved in the app is left out, each setting its default, until it's
 taken out again. Sign in, put the setting right in the app, then take the line out and `docker compose up -d`.
 
 **Settings that need a restart.** Some are read only as the server starts: the upload limits (`UPLOAD_MAX_FILE_MB`,
-`UPLOAD_MAX_TOTAL_MB`, `UPLOAD_MAX_FILES`, `JOURNAL_PHOTO_MAX_MB`), connected sources' (`SYNC_HOURS`,
+`UPLOAD_MAX_TOTAL_MB`, `UPLOAD_MAX_FILES`, `UPLOAD_MAX_ZIP_RATIO`, `JOURNAL_PHOTO_MAX_MB`), connected sources' (`SYNC_HOURS`,
 `SYNC_MAX_RESOURCES`, `SYNC_MAX_ATTACHMENT_MB`, `CONNECT_TIMEOUT`) and Health Links' (`SHL_MAX_MB`, `SHL_MAX_FILES`,
 `SHL_TIMEOUT`) limits, the password checks at once (`HASH_PARALLEL`), the trusted proxies (`FORWARDED_ALLOW_IPS`:
-addresses or networks, or `*`), the phone receiver's time zone (`TZ`) and unclaimed data's days (`SLOT_GRACE_DAYS`),
+addresses or networks, or `*`; `*` by default under Sanguity's templates, where only nginx can reach the app, else
+`127.0.0.1`), the phone receiver's time zone (`TZ`) and unclaimed data's days (`SLOT_GRACE_DAYS`),
 and how long what a restore replaced is kept (`RESTORE_KEEP_DAYS`). Ports and the bind address stay Docker's. An admin
 changes them on Settings → Install → General → Needs a restart: each is checked against its bounds, saved to
 `server-settings.json` in the data folder (readable only by the app's user), and shown as **Restart needed** until
 **Restart now** (the same confirmation as any server setting; logged) stops the app, which Docker's restart policy
-(`unless-stopped`, in every template) starts again. The receiver restarts itself when its own change. The environment
-still wins where it sets one.
+(`unless-stopped`, in every template) starts again. The receiver restarts itself when its own change.
 
 A new value never leaves the server unable to start: it's tried at the next start and kept once the server has
 been up and serving for 30 seconds. If the server stops before that, or isn't healthy within 3 minutes (then it
@@ -805,8 +813,9 @@ contacted until it's set up.
    ES256. Its **redirect URI** is your Sanguity's sign-in page, exactly as Accounts and sign-in → Sign-in provider shows it:
    `https://health.example.com/login.html` (made from the first address under General → Host, `PUBLIC_ORIGINS`).
 2. In Sanguity, give the **issuer** (exactly as the provider shows it), the **client ID** and the **client secret**,
-   and press **Test connection**. The secret is kept encrypted and never shown again; or set `OIDC_CLIENT_SECRET` in
-   `.env` (or the app's environment), which then wins.
+   and press **Test connection**. The secret is kept encrypted and never shown again. Or keep the provider in the
+   environment on purpose (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` or `OIDC_CLIENT_SECRET_FILE`...: see
+   The server's settings), which then wins, shown locked.
 3. Each person links their identity under **Settings → You → Sign-in and security → Sign-in provider** (with their
    password, as for adding a passkey), or an admin links one for an account under **Settings → Install →
    Accounts**, by its subject (the provider's ID for the person, the `sub` of its ID tokens). No account is made

@@ -7,15 +7,13 @@ Every template must parse, use the released image, and run the same services wit
 compose.release.yaml: TrueNAS and CasaOS as the same four services, Unraid as the all-in-one container
 (docker/allinone.py), which has every folder those services mount and both published ports.
 
-No template passes one of the server's settings (server/config.py's VARS) unless it was given (#999): a setting the
-environment sets is shown in the app as set there, fixed, so a default filled in would fix every setting on every
-install. Both compose files pass each one as "${NAME:-}" (empty unless .env sets it), and TrueNAS, Unraid and CasaOS
-none of them, unless changed from its default.
-
-None sets one the page owns (#1120: the install settings settings.py defines with env=NAME, which Settings → Install →
-General changes) by default, so a fresh install's page can change every one; setting one still pins it. The compose
-files pass each as "${NAME:-}" (empty is unset), .env.example has each only as a commented-out example, and the
-all-in-one container and the released image set none.
+(#1158) The settings file is the source of truth for every server setting, as Sonarr's and Radarr's: the templates
+pass only the container's own variables (server/config.py's CONTAINER, each with why, plus TZ, the containers' clock),
+never a setting the page owns nor one an install may opt to manage in its environment (MANAGED: the sign-in provider,
+the notification token). The compose files hand .env to the app as it is (env_file, not required), so a setting still
+there is taken in once on the first start of a version that keeps them in the settings file, and a later change to it
+is warned about. .env.example sets none of them and shows the opt-in ones only commented out; the all-in-one container
+and the released image set none.
 
 --truenas-lib DIR       also render the TrueNAS app with TrueNAS's app library (library/<version> of
                         github.com/truenas/apps), as their CI does, and compare the rendered compose file
@@ -42,15 +40,23 @@ TRUENAS_SAME = {("app", "/watch"): ("/watch", "/watch/keys")}
 failed, passed = [], []
 
 
-def _settings():
-    """The names of the server's settings: server/config.py's VARS (it needs nothing but the standard library)."""
+def _config():
+    """server/config.py (it needs nothing but the standard library)."""
     spec = importlib.util.spec_from_file_location("sanguity_config", os.path.join(ROOT, "server", "config.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return set(mod.VARS)
+    return mod
 
 
-SETTINGS = _settings()
+CONFIG = _config()
+SETTINGS = set(CONFIG.VARS)
+with open(os.path.join(ROOT, "server", "server_settings.py"), encoding="utf-8") as _f:   # (#1121: read as text, as below)
+    RESTART = set(re.findall(r'^define\("(\w+)"', _f.read(), re.M))
+# (#1158) what a template may pass: the container's own, and TZ (each container's clock; the receiver's time zone is
+# the page's, taken in from it once), and what Python itself reads
+TEMPLATE_ENV = set(CONFIG.CONTAINER) | {"TZ", "PYTHONDONTWRITEBYTECODE"}
+MANAGED = set(CONFIG.MANAGED) | {n + "_FILE" for n in CONFIG.MANAGED}
+NOT_PASSED = ((SETTINGS - set(CONFIG.CONTAINER)) | RESTART | MANAGED) - {"TZ"}
 
 
 def _page_owned():
@@ -61,8 +67,6 @@ def _page_owned():
 
 
 PAGE_OWNED = _page_owned()
-# passed whatever it is (#1007): the receiver's published port, which the app can't see, for the phone upload address
-ALWAYS_PASSED = {"RECEIVER_PORT"}
 
 
 def env_of(svc):
@@ -146,62 +150,66 @@ def image_ok(label, image):
     check(f"{label}: uses the released image {IMAGE}", str(image).split("@")[0].rsplit(":", 1)[0] == IMAGE, image)
 
 
-def receiver_values(label, services):
-    """(#998, the owner's decision) the app is given the receiver's TZ (the receiver's TZ_DEFAULT) and SLOT_GRACE_DAYS
-    as the receiver is, so Settings → General → Phone receiver shows what the receiver uses."""
+def container_only(label, services, extra=()):
+    """(#1158) Every service gets only the container's own variables (and extra: what an admin added), and the app and
+    the receiver the same clock (TZ)."""
+    for name, svc in services.items():
+        env = env_of(svc)
+        if extra is None:   # (TrueNAS rendered: its library adds variables of its own) none of the server's settings
+            check(f"{label}: {name} gets none of the server's settings (#1158)", not set(env) & NOT_PASSED, sorted(set(env) & NOT_PASSED))
+            continue
+        check(f"{label}: {name} gets only the container's own variables (#1158)", set(env) <= TEMPLATE_ENV | set(extra),
+              sorted(set(env) - TEMPLATE_ENV - set(extra)))
     app, rx = env_of(services["app"]), env_of(services["receiver"])
-    check(f"{label}: the app gets the receiver's time zone, for General → Phone receiver (#998)",
-          "TZ" in app and app["TZ"] == rx.get("TZ_DEFAULT"), (app.get("TZ"), rx.get("TZ_DEFAULT")))
-    check(f"{label}: the app gets the receiver's SLOT_GRACE_DAYS as the receiver does, for General → Phone receiver (#998)",
-          app.get("SLOT_GRACE_DAYS") == rx.get("SLOT_GRACE_DAYS"), (app.get("SLOT_GRACE_DAYS"), rx.get("SLOT_GRACE_DAYS")))
+    check(f"{label}: the app and the receiver keep the same clock (TZ)", app.get("TZ") == rx.get("TZ"), (app.get("TZ"), rx.get("TZ")))
 
 
 # ---------------------------------------------------------------- compose.release.yaml
 
 def compose_settings(name):
-    """compose.yaml or compose.release.yaml: the app gets every setting, each as ${NAME:-}, so .env can set any of
-    them and one it doesn't set is empty (#999); a service that gets one at all gets it the same way."""
+    """compose.yaml or compose.release.yaml (#1158): the container's own variables only; the app is handed .env as it is
+    (env_file, not required), so a setting still in .env is taken in once and a later change to it warned about; the
+    receiver's published port and the way back in only as .env sets them."""
     compose = load_yaml(os.path.join(ROOT, name))
-    app = env_of(compose["services"]["app"])
-    missing = sorted((SETTINGS | {"SANGUITY_SAVED_SETTINGS"}) - set(app))   # and the way back in (#1006)
-    check(f"{name}: the app gets every one of the server's settings, so .env can set it", not missing, missing)
-    check(f"{name}: the app gets SANGUITY_SAVED_SETTINGS only as .env sets it (#1006)",
-          app.get("SANGUITY_SAVED_SETTINGS") == "${SANGUITY_SAVED_SETTINGS:-}", app.get("SANGUITY_SAVED_SETTINGS"))
-    receiver_values(name, compose["services"])
-    set_by_default = sorted(k for k in PAGE_OWNED if app.get(k) != "${" + k + ":-}")
-    check(f"{name}: sets none of the settings the page owns by default, each only as .env sets it (#1120)",
-          not set_by_default, set_by_default)
-    for svc_name, svc in compose["services"].items():
-        for k, v in env_of(svc).items():
-            if k in SETTINGS:
-                check(f"{name}: {svc_name} gets {k} only as .env sets it (${{{k}:-}}, no default filled in)",
-                      v == "${" + k + ":-}", v)
+    app = compose["services"]["app"]
+    container_only(name, compose["services"])
+    files = app.get("env_file")
+    check(f"{name}: the app is handed .env as it is, not required (#1158)",
+          files == [{"path": ".env", "required": False}], files)
+    env = env_of(app)
+    for k in ("RECEIVER_PORT", "SANGUITY_SAVED_SETTINGS"):
+        check(f"{name}: the app gets {k} only as .env sets it", env.get(k) == "${" + k + ":-}", env.get(k))
 
 
 def env_example():
-    """(#1120) .env.example has each setting the page owns as a commented-out example ("# NAME=..."), and sets none."""
+    """(#1158) .env.example sets none of the server's settings nor of the ones an install may manage, and shows the latter
+    only commented out ("# NAME=..."); it names no page setting at all (they're changed on the page)."""
     with open(os.path.join(ROOT, ".env.example"), encoding="utf-8") as f:
         lines = f.read().splitlines()
     set_ = {m.group(1) for m in (re.match(r"\s*(\w+)\s*=", l) for l in lines) if m}
     examples = {m.group(1) for m in (re.match(r"#\s?(\w+)=", l) for l in lines) if m}
-    check(".env.example: sets none of the settings the page owns (#1120)", not (PAGE_OWNED & set_), sorted(PAGE_OWNED & set_))
-    check(".env.example: has each setting the page owns as a commented-out example (#1120)",
-          PAGE_OWNED <= examples, sorted(PAGE_OWNED - examples))
+    check(".env.example: sets only the container's own (#1158)", set_ <= TEMPLATE_ENV | {"WEB_PORT", "RECORDS_DIR", "DATA_DIR",
+          "BACKUP_DIR", "WATCH_DIR", "AUTH_DIR", "CONFIG_DIR", "COMPOSE_PROJECT_NAME", "SANGUITY_VERSION"}, sorted(set_ - TEMPLATE_ENV))
+    page = (SETTINGS - set(CONFIG.CONTAINER)) | RESTART
+    check(".env.example: no page setting, not even commented out (#1158)", not (page - {"TZ"}) & (set_ | examples),
+          sorted((page - {"TZ"}) & (set_ | examples)))
+    check(".env.example: each setting an install may manage, commented out (#1158)",
+          set(CONFIG.MANAGED) <= examples and not MANAGED & set_, sorted(set(CONFIG.MANAGED) - examples))
 
 
 def image_and_allinone():
-    """(#1120) Neither the all-in-one container (docker/allinone.py, beyond its docstring) nor the released image (an ENV
-    of docker/app.Dockerfile) sets a setting the page owns."""
+    """Neither the all-in-one container (docker/allinone.py, beyond its docstring) nor the released image (an ENV of
+    docker/app.Dockerfile) sets a server setting, or one an install may manage (#1120, #1158)."""
     import ast
     tree = ast.parse(open(os.path.join(ROOT, "docker", "allinone.py"), encoding="utf-8").read())
     doc = ast.get_docstring(tree, clean=False)
     named = sorted({n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)
-                    and n.value != doc and n.value in PAGE_OWNED})
-    check("the all-in-one container sets none of the settings the page owns (#1120)", not named, named)
+                    and n.value != doc and n.value in NOT_PASSED})
+    check("the all-in-one container sets no server setting (#1120, #1158)", not named, named)
     docker = open(os.path.join(ROOT, "docker", "app.Dockerfile"), encoding="utf-8").read()
     env = " ".join(re.findall(r"^ENV\s+((?:.*\\\n)*.*)$", docker, re.M))
-    named = sorted(k for k in PAGE_OWNED if re.search(r"\b" + k + r"\s*=", env))
-    check("the released image sets none of the settings the page owns (#1120)", not named, named)
+    named = sorted(k for k in NOT_PASSED if re.search(r"\b" + k + r"\s*=", env))
+    check("the released image sets no server setting (#1120, #1158)", not named, named)
 
 
 def release_shape():
@@ -281,16 +289,10 @@ def truenas(want, lib_dir):
     template = open(os.path.join(app_dir, "templates", "docker-compose.yaml"), encoding="utf-8").read()
     need = set(re.findall(r"values\.storage\.(\w+)", template))
     check("truenas: questions.yaml asks for every storage the template mounts", need <= have, sorted(need - have))
-    depth, plain = 0, []   # (#999) a setting's add_env outside any {% if %}: passed with its default, so fixed
-    for line in template.splitlines():
-        depth += len(re.findall(r"{%-?\s*(?:if|for)\b", line)) - len(re.findall(r"{%-?\s*end(?:if|for)\b", line))
-        plain += [k for k in re.findall(r'add_env\("(\w+)"', line) if k in SETTINGS - ALWAYS_PASSED and depth <= 0]
-    check("truenas: the app's settings are passed only when changed from their default (each add_env inside an if)", not plain, plain)
+    given = sorted(set(re.findall(r'add_env\("(\w+)"', template)) - TEMPLATE_ENV)   # (#1158) the container's own only
+    check("truenas: the template passes only the container's own variables (#1158)", not given, given)
     sanguity = next(q for q in files["questions.yaml"]["questions"] if q["variable"] == "sanguity")
     defaults = {a["variable"]: a["schema"].get("default") for a in sanguity["schema"]["attrs"]}
-    filled = sorted(k for k, field in re.findall(r'add_env\("(\w+)",\s*values\.sanguity\.(\w+)\)', template)
-                    if k in PAGE_OWNED and defaults.get(field) not in ("", None))
-    check("truenas: a field for a setting the page owns is empty by default (#1120)", not filled, filled)
     check("truenas: Additional Environment Variables is empty by default", defaults.get("additional_envs") == [],
           defaults.get("additional_envs"))
     if not lib_dir:
@@ -311,16 +313,9 @@ def truenas(want, lib_dir):
             if name != "setup":   # (ix_values.yaml's setup_container_name; it runs once)
                 check(f"truenas ({t}): {name} restarts unless stopped (#1121)", svc.get("restart") == "unless-stopped", svc.get("restart"))
         compare(f"truenas ({t})", want, shape(rendered), TRUENAS_SAME)
-        env = rendered["services"]["receiver"]["environment"]
-        check("truenas: the receiver gets the time zone", env.get("TZ_DEFAULT") == "Etc/UTC", env.get("TZ_DEFAULT"))
-        receiver_values(f"truenas ({t})", rendered["services"])
         tv = load_yaml(os.path.join(app_dir, "templates", "test_values", t))
         app_env = env_of(rendered["services"]["app"])
-        given = {k: v for k, v in app_env.items() if k in SETTINGS - ALWAYS_PASSED}
-        want_env = {k: str(v) for k, v in (("COOKIE_SECURE", tv["sanguity"]["cookie_secure"]),
-                                            ("PUBLIC_ORIGINS", tv["sanguity"]["public_origins"])) if v not in ("", "auto")}
-        check(f"truenas ({t}): the app gets a setting only when it was changed from its default", given == want_env,
-              (given, want_env))
+        container_only(f"truenas ({t})", rendered["services"], None)
         ports = {p["published"] for s in rendered["services"].values() for p in s.get("ports", [])}
         want_ports = {tv["network"]["web_port"]["port_number"], tv["network"]["receiver_port"]["port_number"]}
         check(f"truenas ({t}): published on its web and receiver ports", ports == want_ports, (ports, want_ports))
@@ -370,9 +365,7 @@ def unraid(want):
           rp is not None and rp.get("Default") == str(ports.get(8081)) and rp.get("Required") == "true", rp is not None and rp.attrib)
     variables = {c.get("Target") for c in configs if c.get("Type") == "Variable"}
     check("unraid: sets PUID, PGID and TZ", {"PUID", "PGID", "TZ"} <= variables, sorted(variables))
-    filled = sorted(c.get("Target") for c in configs if c.get("Type") == "Variable" and c.get("Target") in SETTINGS - ALWAYS_PASSED
-                    and (c.get("Default") or (c.text or "")))
-    check("unraid: the app's settings are empty unless filled in (#999: a value given is fixed in the app)", not filled, filled)
+    check("unraid: sets only the container's own variables (#1158)", variables <= TEMPLATE_ENV, sorted(variables - TEMPLATE_ENV))
     key = next((c for c in configs if c.get("Target") == "/run/secrets/sanguity"), None)
     data = next((c for c in configs if c.get("Target") == "/data"), None)
     if key is not None and data is not None:
@@ -421,11 +414,8 @@ def casaos(want):
     rx = {str(p["published"]) if isinstance(p, dict) else str(p).split(":")[0] for p in compose["services"]["receiver"].get("ports", [])}
     got = str(env_of(compose["services"]["app"]).get("RECEIVER_PORT"))
     check("casaos: the app gets the receiver's published port, for the phone upload address (#1007)", {got} == rx, (got, rx))
-    check("casaos: the receiver gets the time zone",
-          compose["services"]["receiver"].get("environment", {}).get("TZ_DEFAULT") == "$TZ")
-    receiver_values("casaos", compose["services"])
-    given = sorted(k for s in compose["services"].values() for k in env_of(s) if k in SETTINGS - ALWAYS_PASSED)
-    check("casaos: no service is given one of the app's settings (#999: they're changed in the app)", not given, given)
+    check("casaos: the receiver keeps the containers' clock", env_of(compose["services"]["receiver"]).get("TZ") == "$TZ")
+    container_only("casaos", compose["services"])
     vols = {target(v): source(v) for s in compose["services"].values() for v in s.get("volumes", [])}
     key, data = vols.get("/run/secrets/sanguity", ""), vols.get("/data", "")
     check("casaos: the key folder isn't inside the data folder", key and data and not key.startswith(data + "/"), (key, data))
@@ -492,6 +482,8 @@ def main():
     try:
         check("every setting the page owns is one of the server's settings (server/config.py's VARS)",
               bool(PAGE_OWNED) and PAGE_OWNED <= SETTINGS, sorted(PAGE_OWNED - SETTINGS))
+        check("no container's own variable is a page setting or a managed one (#1158)",
+              not set(CONFIG.CONTAINER) & (RESTART | MANAGED | PAGE_OWNED), sorted(set(CONFIG.CONTAINER) & (RESTART | MANAGED | PAGE_OWNED)))
         for name in ("compose.yaml", "compose.release.yaml"):
             compose_settings(name)
         env_example()

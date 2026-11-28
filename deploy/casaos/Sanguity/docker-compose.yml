@@ -35,12 +35,10 @@ services:
       setup:
         condition: service_completed_successfully
     environment:
-      # the app's own settings (COOKIE_SECURE, PUBLIC_ORIGINS, SESSION_DAYS...: .env.example in the repository): none
-      # here, so those Settings → Install → General changes are the page's; one added here is pinned there (#999, #1120)
-      FORWARDED_ALLOW_IPS: "*"
+      # (#1158) the server's settings are the app's, kept in its data (Settings → Install): only the container's own here
       SANGUITY_DEPLOYMENT: casaos   # how it's deployed, named on Settings → General → About (#1004)
       RECEIVER_PORT: "8731"   # the receiver's published port below, for the phone upload address: change both together (#1007)
-      TZ: $TZ   # the receiver's time zone, shown on Settings → General → Phone receiver (#998)
+      TZ: $TZ   # the containers' clock (the receiver's time zone is the app's: taken from this once, #1158)
     read_only: true
     tmpfs:
       - /tmp
@@ -91,7 +89,7 @@ services:
     environment:
       DATA: /watch
       SECRET_FILE: /run/secrets/sanguity/watch_secret
-      TZ_DEFAULT: $TZ
+      TZ: $TZ
     ports:
       - "8731:8080"
     read_only: true
