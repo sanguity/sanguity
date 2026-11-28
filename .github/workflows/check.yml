@@ -380,8 +380,9 @@ jobs:
           r = urllib.request.Request("http://127.0.0.1:8731/ingest", data=body, headers={"X-Signature": sig})
           assert urllib.request.urlopen(r, timeout=10).status == 200
           PY
-          for i in $(seq 1 30); do [ -f watch-data/watch.db ] && break; sleep 1; done
-          test -f watch-data/watch.db && test -n "$(find watch-data/raw -type f)"
+          # the first profile's own folder (watch-data/profiles/<id>/, #46), its secret being its own (#1103)
+          for i in $(seq 1 30); do [ -n "$(find watch-data -name watch.db)" ] && break; sleep 1; done
+          test -n "$(find watch-data -name watch.db)" && test -n "$(find watch-data -path '*/raw/*' -type f)"
           find watch-data -type f | while read -r f; do
             [ "$(head -c 4 "$f")" = SGE1 ] || { echo "$f is not encrypted"; exit 1; }
           done

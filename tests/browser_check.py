@@ -11036,6 +11036,10 @@ def main():
                 for k in js("[...document.querySelectorAll('#sections input')].map(i => i.value)"):
                     (page.check if k == "medlog" else page.uncheck)(f"#sections input[value={k}]")
                 page.wait_for_selector("#preview:not([hidden]):not([aria-busy]) h3", timeout=10000)   # drawn as the choices change (#288)
+                try:   # (drawn again for the last choice: on a busy runner its first heading is still the one before)
+                    page.wait_for_function("document.querySelector('#preview h3')?.textContent.startsWith('Medication log')", timeout=10000)
+                except Exception:
+                    pass
                 pv = page.inner_text("#preview")
                 # (with #162's reminder, its schedule: the Overview's Skipped one of it; the drawer's taken late one of it within two hours, else another, #1095)
                 check("…ticked, the preview lists each dose with what happened and the count of its schedule's doses taken",
@@ -19859,6 +19863,10 @@ def main():
             was_home = home()
             page.click(tile)
             page.wait_for_function(f"{ov_msg}.startsWith('Saved')", timeout=10000)
+            try:   # (its toast follows the save; on a busy runner a moment after the line)
+                page.wait_for_function(f"({toasts_said}).length > 0", timeout=5000)
+            except Exception:
+                pass
             inst = [home(), js("document.getElementById('setBar').hidden"), js("!!document.querySelector('#sections > [data-dirty], .set-changed')"),
                     js(toasts_said), js("document.activeElement.id"), js("!document.querySelector('#sec-overview .set-hd > button').hidden")]
             page.click(undo_toast)
@@ -27838,8 +27846,13 @@ def main():
             for _ in range(2):
                 if not js("!!document.querySelector('#userMenuList:popover-open')"):
                     page.click("#userMenuBtn")
+                was_t = theme_item[-1][0]
                 page.click("#theme")
                 page.wait_for_selector("#userMenuList:not(:popover-open)", state="attached", timeout=5000)   # (closed once picked, a task later)
+                try:   # (its words change once the theme is saved and drawn: on a busy runner, after the menu closes)
+                    page.wait_for_function("t => document.getElementById('theme').textContent.trim() !== t", arg=was_t, timeout=5000)
+                except Exception:
+                    pass
                 theme_item.append(js(item))
             if js("!!document.querySelector('#userMenuList:popover-open')"):
                 page.keyboard.press("Escape")
