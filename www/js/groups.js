@@ -81,10 +81,12 @@ const SG_PAGES = {
   /* Settings (#991): one page in three parts, This person (the profile shown), You (the Account page's two groups,
      and Display) and Install (the Admin page's groups, for admins only), General first (#998) */
   settings: {page: "settings.html", title: "Settings", icon: "settings", profile: true, words: "preferences options", groups: [
-    // sec-summary (#186) is set on Sharing → Visit summary (#402): kept here out of sight, for Start from a condition
-    {id: "dashboard", title: "Dashboard", icon: "layout-dashboard", part: "This person", has: ["sec-overview", "sec-tabs", "sec-trends", "sec-summary"],
+    // sec-summary (#186) is set on Sharing → Visit summary (#402): kept here out of sight, for Start from a condition.
+    // (#1165) a section per tab it changes, named by it: Workouts (#43, its own group from #409) is Body and activity's
+    {id: "dashboard", title: "Dashboard", icon: "layout-dashboard", part: "This person", has: ["sec-overview", "sec-trends", "sec-health", "sec-costs", "sec-tabs", "sec-summary"],
      finds: [["Overview tiles", "sec-overview", "key labs home readings start from a condition choose conditions preset use most measured add"], ["Tabs", "sec-tabs", "edit order hide show", "editor"],
-       ["Lab charts", "sec-trends", "labs selected at first saved views add view no default"]]},
+       ["Labs", "sec-trends", "lab charts labs selected at first saved views add view no default"],
+       ["Body and activity", "sec-health", "workouts visits exercise title contains count"], ["Costs", "sec-costs", "tax year month report"]]},
     {id: "about", title: "About this person", icon: "user", part: "This person", has: ["about", "targets"],   // #194, #234; on Sharing before #267
      finds: [["Birth date, sex and height", "about", "age birthday date of birth dob born child baby due date growth tall cm inches maximum heart rate measured bpm early add blood type group abo rh emergency contacts ice phone number relationship optional"], ["Targets of your own", "targets", "goals"]]},   // (an emergency contact's fields, #524)
     {id: "insurance", title: "Insurance cards", icon: "wallet-cards", part: "This person", has: ["insurance"],   // #1137
@@ -95,7 +97,6 @@ const SG_PAGES = {
        ["Lab name matches", "labmatches", "same test match matched charted with keep separate own test move results add change remove forget aliases import results " +
         "mapping server install admin"]]},   // Names on Dashboard before #402; matches #1097, with Install's for every profile (#1114)
     {id: "milestones", title: "Milestones", icon: "flag", part: "This person", has: ["sec-milestones"], words: "diagnosis surgery treatment named dates"},
-    {id: "activity", title: "Workouts", icon: "dumbbell", part: "This person", has: ["sec-health"], words: "visits exercise body and activity title contains count"},   // visits counted as workouts (#43)
     {id: "profile", title: "Rename or delete", icon: "user-pen", part: "This person", has: ["profileCard"], needs: "owner",   // on Sharing before #402
      why: "Only a profile's owners can rename or delete it.", words: "profile name rename change delete remove", finds: [["Delete this profile", "profileCard", "remove erase"]]},
     // You: the Account page's groups (#169: account.js, and pwa.js's two cards), then Display
