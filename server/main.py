@@ -467,9 +467,9 @@ def need(db, u, pid, at_least):
 
 def _secure(request):
     secure = config.setting("COOKIE_SECURE")
-    if secure in ("1", "true", "yes", "on"):
+    if secure in ("always", "1", "true", "yes", "on"):
         return True
-    if secure in ("0", "false", "no", "off"):
+    if secure in ("never", "0", "false", "no", "off"):
         return False
     return request.url.scheme == "https"
 

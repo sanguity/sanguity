@@ -67,7 +67,8 @@ const WHAT = {
   "watch.secret": d => d.ended ? `took away the watch receiver secret ${d.maker || "someone"} made, as they can no longer change this profile (their phone can't upload)`   // (#929)
     : d.rotated ? "made a new watch receiver secret (the old one stopped working)" : "made the watch receiver secret",
   "settings.user": d => d.section ? `reset their own ${d.label || d.section} settings` : `changed their own setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}`,
-  "settings.install": d => d.section ? `reset the server's ${d.label || d.section} settings` + (d.changes?.length ? ` (${d.changes.map(c => `“${c.label}” from ${setVal(c.from)} to ${setVal(c.to)}`).join("; ")})` : "")
+  "settings.install": d => d.taken ? `took these settings from the environment, once, into the settings: ${d.changes.map(c => `“${c.label}”`).join(", ")} (from now on they're changed here)`   // (#1158)
+    : d.section ? `reset the server's ${d.label || d.section} settings` + (d.changes?.length ? ` (${d.changes.map(c => `“${c.label}” from ${setVal(c.from)} to ${setVal(c.to)}`).join("; ")})` : "")
     : `${d.reset ? "put" : "changed"} the server setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}` + ("to" in d ? ` (from ${setVal(d.from)} to ${setVal(d.to)})` : ""),   // (#1006: its values)
   "server.restart": d => (d.fell_back ? "started with the settings before: the new ones didn't run healthy" : "restarted the server")   // (#1121)
     + (d.changes?.length ? ` (${d.changes.map(c => `“${c.label}” from ${setVal(c.from)} to ${setVal(c.to)}`).join("; ")})` : ""),

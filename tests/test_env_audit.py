@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""(#1158) Every environment variable the server, the receiver and docker/ read is either a setting the page owns (the
-settings file is its source of truth: the environment's value is taken in once, on the first start of this version)
-or a container-level one in server/config.py's CONTAINER, with why it can't be a setting. The code is read for every
+"""(#1158) Every environment variable the server, the receiver and docker/ read is one of three: a setting the page
+owns (the settings file is its source of truth: the environment's value is taken in once, on the first start of this
+version); one an install may opt to manage in its environment (server/config.py's MANAGED, each with why: while set,
+NAME or NAME_FILE, it keeps winning, locked on the page); or a container-level one in CONTAINER, with why it can't be a
+setting. The code is read for every
 os.environ / os.getenv read, so a new one fails here until it's one or the other.
 
   python3 tests/test_env_audit.py
@@ -26,13 +28,19 @@ KNOWN = {
     ("server/config.py", "v.name"): set(config.VARS),   # each of VARS, read by its name
     ("server/server_settings.py", "name"): set(server_settings.DEFS),   # each restart setting, by its name
     ("server/server_settings.py", "n"): set(server_settings.DEFS),
-    ("server/settings_import.py", "n"): set(config.VARS) - set(config.CONTAINER) | set(config.SECRETS),   # taken in once
+    ("server/settings_import.py", "n"): set(config.VARS) - set(config.CONTAINER),   # taken in once
+    ("server/config.py", "name"): set(config.MANAGED) | {n + "_FILE" for n in config.MANAGED},   # managed(): NAME, NAME_FILE
 }
 
 
 def page_owned():
-    """The variables whose value is the settings file's: VARS (but the container's), the restart settings, the secrets."""
-    return (set(config.VARS) - set(config.CONTAINER)) | set(server_settings.DEFS) | set(config.SECRETS)
+    """The variables whose value is the settings file's: VARS (but the container's) and the restart settings."""
+    return (set(config.VARS) - set(config.CONTAINER)) | set(server_settings.DEFS)
+
+
+def env_managed():
+    """(opt-in) The variables an install may keep in its environment, each also as NAME_FILE."""
+    return set(config.MANAGED) | {n + "_FILE" for n in config.MANAGED}
 
 
 def reads():
@@ -64,9 +72,9 @@ def reads():
 class EnvironmentAudit(unittest.TestCase):
     def test_every_variable_read_is_page_owned_or_the_containers(self):
         found, _ = reads()
-        owned = page_owned()
-        neither = {n: at for n, at in found.items() if n not in owned and n not in config.CONTAINER}
-        self.assertEqual(neither, {}, "read in the code, but neither a page setting nor in config.CONTAINER (with why)")
+        owned, managed = page_owned(), env_managed()
+        neither = {n: at for n, at in found.items() if n not in owned and n not in managed and n not in config.CONTAINER}
+        self.assertEqual(neither, {}, "read in the code, but not a page setting, nor in config.MANAGED or config.CONTAINER (with why)")
 
     def test_every_read_names_its_variable(self):
         """A read whose name the code makes up (os.environ.get(x)) is one of the known ones, for a registry's names."""
@@ -76,9 +84,11 @@ class EnvironmentAudit(unittest.TestCase):
     def test_the_allowlist_is_read_and_says_why(self):
         found, _ = reads()
         self.assertEqual(sorted(n for n in config.CONTAINER if n not in found), [], "in CONTAINER but read nowhere")
-        self.assertEqual(sorted(n for n, why in config.CONTAINER.items() if len(why) < 20), [], "each says why")
-        self.assertEqual(sorted(set(config.CONTAINER) & (set(server_settings.DEFS) | set(config.SECRETS))), [],
-                         "a page setting can't be the container's too")
+        self.assertEqual(sorted(n for n in config.MANAGED if n not in found), [], "in MANAGED but read nowhere")
+        self.assertEqual(sorted(n for n, why in {**config.CONTAINER, **config.MANAGED}.items() if len(why) < 20), [], "each says why")
+        self.assertEqual(sorted(set(config.CONTAINER) & (set(server_settings.DEFS) | env_managed())), [],
+                         "a page setting or a managed one can't be the container's too")
+        self.assertEqual(sorted(env_managed() & page_owned()), [], "one managed by the environment is never taken in once")
 
     def test_no_setting_is_the_environments_alone(self):
         """(#1158) Each page setting has a home on the page: an install setting that stands for it (applies at once) or
@@ -86,7 +96,8 @@ class EnvironmentAudit(unittest.TestCase):
         home = {s.env for s in settings.SETTINGS.values() if s.env} | set(server_settings.DEFS)
         self.assertEqual(sorted(n for n in config.VARS if n not in config.CONTAINER and n not in home), [])
         self.assertEqual(sorted(config.RESTART - set(server_settings.DEFS)), [])
-        self.assertEqual((oidc.SECRET_ENV in config.SECRETS, notify.TOKEN_ENV in config.SECRETS), (True, True))
+        self.assertEqual({oidc.SECRET_ENV, notify.TOKEN_ENV, *oidc.ENV.values()} - set(config.MANAGED), set(),
+                         "every write-only secret and every sign-in provider field may be managed")
 
     def test_the_receiver_reads_no_setting_of_its_own(self):
         """(#1158) Its time zone and days are the app's copy (receiver-settings.json), never its environment's."""

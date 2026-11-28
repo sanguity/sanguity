@@ -651,6 +651,21 @@ USER_MENU = {"#logout", "#theme", "#settingsLink", "#guideLink"}   # (#991: Sett
 PROFILE_MENU = {"#sharingLink", "#sourcesLink", "#emergencyLink", "#newProfileLink"}   # #264 (#991: its settings are Settings' This person)
 
 
+def public_origins(value):
+    """(#1158) The public addresses as saved in the app (the environment sets them no more: the run's PUBLIC_ORIGINS was
+    taken in as the server started): value, a list to save, [] or None for none. Returns the list saved before."""
+    import contextlib as _cl
+    from server import db as _dbm, settings as _settings
+    with _cl.closing(_dbm.connect()) as db:
+        before = _settings.stored(db, "install").get("host.publicOrigins", [])
+        if value:
+            _settings.put(db, "host.publicOrigins", list(value))
+        else:
+            _settings.clear(db, ["host.publicOrigins"], "install")
+    _settings.forget_saved()
+    return before
+
+
 def menu_click(pg, item):
     """Click an item of the top bar's menus (nav.js): open its menu first, as a person would."""
     pg.click("#userMenuBtn" if item in USER_MENU else "#profileMenuBtn" if item in PROFILE_MENU else "#addMenuBtn")
@@ -1010,22 +1025,6 @@ def general_backups_check(browser, base, cookies, check, db_path, pw=None):
         check("…and more days asks nothing; saved by Enter in the field, through the fresh check, focus back in the field, in sight (#1077: on the page)",
               pg.evaluate(days) == 365 and foc1077 == ["genActDays", True], foc1077)
 
-        def env(route):   # as when ACTIVITY_DAYS is set in the app's environment
-            got = route.fetch()
-            j = got.json()
-            for sec in j["sections"]:
-                for st in sec["settings"]:
-                    if st["key"] == "activity.days":
-                        st.update(value=400, **{"from": "environment", "can_change": False})
-            route.fulfill(response=got, json=j)
-        pg.route("**/api/settings/install", env)
-        pg.reload()
-        pg.wait_for_selector("#genBk .kv", timeout=15000)
-        fixed = pg.evaluate("""(r => [!!document.getElementById('genActDays'), !!r.querySelector('input'), r.querySelector('.set-row-ctl > p').textContent,
-          r.querySelector('.set-row-lbl .tag:not(.set-unsaved)')?.textContent, r.querySelector('.set-row-lbl').textContent, r.querySelector('.set-row-ctl').textContent])(document.querySelector('#genBk .set-row'))""")
-        check("…set by the environment, it's its value as text, never a field, with its variable's tag, its own help, and where it's "
-              "changed (#1119)", fixed[:4] == [False, False, "400 days", "Set in .env: ACTIVITY_DAYS"] and "older entries are deleted once a day" in fixed[4]
-              and "or take it out there to change it here:" in fixed[5], fixed)
     except Exception as e:
         check("Backups → Folder and key and Logs and activity → Logging (#1002, #1153) ran", False, stopped(e))
     finally:
@@ -1073,26 +1072,27 @@ def general_about_check(browser, base, cookies, check):
 
 
 def general_env_check(browser, base, cookies, check, db_path):
-    """(#1119) Settings → Install → General with its settings set by the server's environment (each variable set here
-    for the while, as #1000's PUBLIC_ORIGINS is, the values as they are so nothing else changes): what can't be
-    changed never looks changeable. No disabled or readonly control anywhere in General, nor in the parts that were
-    General's (#1119, #1153); each environment-set row (Host's, Sign-in rules', the Sign-in provider's secret, Logging's,
-    the Phone receiver's, Connected sources' switch) its
-    value as text (the secret never), a "Set in .env: VAR" tag on its name's line, its own help, and where this install's
-    settings are; Host and Security hold no read-only fact (About does), and About tags a limit only where the
-    environment set it. With passkeys made, Host's Passkey names says each name and its count. 320 px and 200% text
-    fit, keyboard and screen reader (no serious axe finding). Puts everything back as it was. Returns script errors."""
+    """(#1119, #1158) Settings → Install with every server setting the page has set in the server's environment as well
+    (each variable set here for the while, to values the page doesn't hold): the environment changes nothing, so each
+    of them is a plain editable row at the page's own value, but the secrets an install may opt to manage there
+    (OIDC_CLIENT_SECRET, NOTIFY_TOKEN: locked, "Managed by the environment", never shown). No disabled or readonly control anywhere in General, nor in
+    the parts that were General's (#1119, #1153); no "Set in .env" tag but on the container's own (the receiver's
+    published port, on Phone receiver); the secrets never in the page; Host and Sign-in rules hold no read-only fact
+    of the server's setup (About does), and About tags no limit. With passkeys made, Host's Passkey names says each
+    name and its count. 320 px and 200% text fit, keyboard and screen reader (no serious axe finding). Puts everything
+    back as it was. Returns script errors."""
     import sqlite3
     ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
     ctx.add_cookies(cookies)
     pg, errs = ctx.new_page(), []
     pg.on("pageerror", lambda e: errs.append(str(e)))
     inst = {st["key"]: st for sec in ctx.request.get(base + "/api/settings/install").json()["sections"] for st in sec["settings"]}
-    files = {x["name"]: x for g in ctx.request.get(base + "/api/settings/install/about").json()["limits"] for x in g["limits"]}["UPLOAD_MAX_FILES"]["value"]
-    env = {"WATCH_UPLOAD_URL": "https://phones.example.test/ingest", "SESSION_DAYS": str(inst["security.sessionDays"]["value"]),
-           "ACTIVITY_DAYS": str(inst["activity.days"]["value"]), "CONNECTED_SOURCES": "1" if inst["experimental.connectedSources"]["value"] else "0",
-           "OIDC_CLIENT_SECRET": "a fictional client secret from the environment", "UPLOAD_MAX_FILES": str(files),
-           "NOTIFY_TOKEN": "tk_fictional_1119_from_the_environment"}
+    files = {st["name"]: st for st in ctx.request.get(base + "/api/settings/install/restart").json()["settings"]}["UPLOAD_MAX_FILES"]
+    files = str(files.get("next", files["value"]))
+    env = {"WATCH_UPLOAD_URL": "https://phones.example.test/ingest", "SESSION_DAYS": str(inst["security.sessionDays"]["value"] - 1),
+           "ACTIVITY_DAYS": str(inst["activity.days"]["value"] + 1), "CONNECTED_SOURCES": "0" if inst["experimental.connectedSources"]["value"] else "1",
+           "OIDC_CLIENT_SECRET": "a fictional client secret from the environment", "UPLOAD_MAX_FILES": "123", "COOKIE_SECURE": "0",
+           "PUBLIC_ORIGINS": "https://env1158.example.test", "NOTIFY_TOKEN": "tk_fictional_1119_from_the_environment"}
     had = {k: os.environ.get(k) for k in env}
     con = sqlite3.connect(db_path)
     uid = con.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()[0]
@@ -1102,50 +1102,46 @@ def general_env_check(browser, base, cookies, check, db_path):
     os.environ.update(env)
     try:
         pg.goto(base + "/settings.html?profile=1#general")
-        for sel in ("#gen-host [data-env]", "#gen-phone [data-env]", "#genSecBody [data-env]", "#genExpBody [data-env]", "#genBk [data-env]",
-                    "#signin-provider [data-env]", "#genAbout .kv"):
-            pg.wait_for_selector(sel, state="attached", timeout=20000)   # (the sign-in parts: Accounts and sign-in's, #1119)
+        for sel in ("#hostOrigins", "#phoneUrl", "#genAbout .kv", "#rs-upload-max-files"):
+            pg.wait_for_selector(sel, state="attached", timeout=20000)
         were = ':is(section[id^="gen-"], #signin-rules, #signin-provider, #bk-files, #logging, #cs-switch, #install-about)'   # (General's, #1119, #1153)
         fixed_js = """[...document.querySelectorAll('""" + were + """ :is(input, textarea, select, button, [role=switch])')]
             .filter(e => e.checkVisibility() && (e.disabled || e.readOnly || e.getAttribute('aria-disabled') === 'true')).map(e => e.id || e.textContent.trim())"""
-        got = pg.evaluate("""(at => ({
-          fixed: """ + fixed_js + """,
-          rows: Object.fromEntries([...document.querySelectorAll('""" + were + """ [data-env]')].map(r => [r.dataset.env, {
-            value: r.querySelector('.set-row-ctl > p').textContent, tag: r.querySelector('.set-row-lbl .tag')?.textContent,
-            tagOnName: !!r.querySelector('.set-row-lbl > :first-child .tag'), help: r.querySelector('.set-row-lbl .hint')?.textContent || '',
-            where: r.querySelector('.set-row-ctl > p.hint:last-child')?.textContent, controls: r.querySelectorAll('input, textarea, select').length}])),
+        tags_js = """[...document.querySelectorAll('""" + were + """ .tag.env')].filter(t => t.checkVisibility()).map(t => t.textContent)"""
+        got = pg.evaluate("""(() => ({
+          fixed: """ + fixed_js + """, tags: """ + tags_js + """,
+          values: {host: document.getElementById('hostOrigins').value, phone: document.getElementById('phoneUrl').value,
+                   files: document.getElementById('rs-upload-max-files').value},
           host: document.getElementById('gen-host').textContent, sec: document.getElementById('signin-rules').textContent,
           passkeys: [...document.querySelectorAll('#gen-host .set-row')].find(r => r.textContent.startsWith('Passkey names'))?.querySelector('.set-row-ctl').textContent,
           limits: [...document.querySelectorAll('#genAbout li')].filter(l => l.querySelector('.tag')).map(l => l.querySelector('.tag').textContent),
-          page: document.documentElement.outerHTML}))""", None)
+          page: document.documentElement.outerHTML}))""")
         # (#1119) Sign-in rules and Sign-in provider, Accounts and sign-in's, and (#1153) Backups' Folder and key, Logging,
-        # Connected sources' switch and About: no disabled or readonly control there either
-        for grp, sel in (("accounts", "#signin-rules [data-env]"), ("backups", "#bkFiles .kv"), ("logs", "#genBk [data-env]"),
-                         ("connected", "#genExpBody [data-env]"), ("install-about", "#genAbout .kv")):
+        # Connected sources' switch and About: no disabled or readonly control there either, each a control of its own
+        seen = {}
+        for grp, sel in (("accounts", "#gs-sessionDays"), ("backups", "#bkFiles .kv"), ("logs", "#genActDays"),
+                         ("connected", "#genExpBody [role=switch]"), ("install-about", "#genAbout .kv")):
             pg.click(f"#setNav a[data-group={grp}]")
             pg.wait_for_selector(sel, state="visible", timeout=10000)
             got["fixed"] += pg.evaluate(fixed_js)
-        at = ctx.request.get(base + "/api/settings/install").json()["settings_at"]
-        machine = {st["name"] for st in ctx.request.get(base + "/api/settings/install/restart").json()["settings"]   # (Needs a restart's
-                   if not st["can_change"]}   # the machine's own environment sets, as TZ here: #1121)
-        rows = got["rows"]
-        want = {"PUBLIC_ORIGINS": "".join(inst["host.publicOrigins"]["value"]), "WATCH_UPLOAD_URL": env["WATCH_UPLOAD_URL"], "SESSION_DAYS": env["SESSION_DAYS"],
-                "ACTIVITY_DAYS": f"{env['ACTIVITY_DAYS']} days", "CONNECTED_SOURCES": "On" if env["CONNECTED_SOURCES"] == "1" else "Off",
-                "OIDC_CLIENT_SECRET": "Set there (never shown here)", "UPLOAD_MAX_FILES": f"{files:,} files",   # (Needs a restart's, #1121)
-                "NOTIFY_TOKEN": "Set there (not sent to this server)" if ctx.request.get(base + "/api/settings/install/notify").json()["token_elsewhere"]
-                else "Set there (never shown here)"}   # (#1130's, never its value)
-        check("General with its settings set by the environment (#1119): no disabled or readonly control anywhere in it, nor in what was "
-              "General's (#1153)",
-              not got["fixed"] and all(r["controls"] == 0 for r in rows.values()), [got["fixed"], {k: r["controls"] for k, r in rows.items()}])
-        check("…each row the environment sets: its value as text (the client secret's never), its variable's tag on its name's line, "
-              "its own help, and where this install's settings are, to change it or take it out",
-              set(rows) == set(want) | machine and all((rows[k]["value"] == want[k] if k in want else rows[k]["value"]) and rows[k]["tag"] == "Set in .env: " + k
-                                                       and rows[k]["tagOnName"] and len(rows[k]["help"]) > 20 and rows[k]["where"] == "Change it where this server's "
-                                                       f"settings are, or take it out there to change it here: {at}." for k in rows)
-              and env["OIDC_CLIENT_SECRET"] not in got["page"] and env["NOTIFY_TOKEN"] not in got["page"], {k: [r, want.get(k)] for k, r in rows.items()})
-        check("…Host and Sign-in rules hold no read-only fact of the server's setup (About does); About tags a limit only where the "
-              "environment set it", not re.search(r"Trusted proxies|Internal port|COOKIE_SECURE|HASH_PARALLEL|Secure session cookie|Password checks at once",
-                                                  got["host"] + got["sec"]) and got["limits"] == ["Set in .env: UPLOAD_MAX_FILES"],
+            got["tags"] += pg.evaluate(tags_js)
+        seen["days"] = [pg.evaluate("document.getElementById('gs-sessionDays')?.value"), pg.evaluate("document.getElementById('genActDays')?.value")]
+        seen["cookie"] = pg.evaluate("[...document.querySelectorAll('#genSecBody input[name=gs-cookieSecure]')].map(i => [i.value, i.checked])")
+        seen["switch"] = pg.evaluate("document.querySelector('#genExpBody [role=switch]')?.checked")
+        check("Install with the environment setting every server setting (#1158): no disabled or readonly control anywhere in what was "
+              "General's (#1119, #1153); no \"Set in .env\" tag but on the container's own published receiver port, and the two "
+              "secrets the environment may manage (#1158, opt-in) locked as \"Managed by the environment\"",
+              not got["fixed"] and set(got["tags"]) - {"Set in .env: RECEIVER_PORT"} == {"Managed by the environment: OIDC_CLIENT_SECRET",
+                                                                          "Managed by the environment: NOTIFY_TOKEN"}, [got["fixed"], got["tags"]])
+        check("…each a plain editable row at the page's own value, the environment's changing none of them; the secrets never in the page",
+              got["values"] == {"host": "\n".join(inst["host.publicOrigins"]["value"]), "phone": inst["phone.uploadUrl"]["value"], "files": files}
+              and seen["days"] == [str(inst["security.sessionDays"]["value"]), str(inst["activity.days"]["value"])]
+              and dict(seen["cookie"]).get(inst["security.cookieSecure"]["value"]) is True and len(seen["cookie"]) == 3
+              and seen["switch"] is bool(inst["experimental.connectedSources"]["value"])
+              and env["OIDC_CLIENT_SECRET"] not in got["page"] and env["NOTIFY_TOKEN"] not in got["page"], [got["values"], seen])
+        check("…Host holds no read-only fact of the server's setup (About does), Sign-in rules only its Secure cookie's choice; About "
+              "tags no limit", not re.search(r"Trusted proxies|Internal port|COOKIE_SECURE|HASH_PARALLEL|Secure session cookie|Password checks at once",
+                                             got["host"] + got["sec"]) and "Secure sign-in cookie" in got["sec"] and got["limits"] == [],
               [got["limits"], re.findall(r"Trusted proxies|Internal port|COOKIE_SECURE|HASH_PARALLEL", got["host"] + got["sec"])])
         check("…and Host's Passkey names says each name the passkeys were made at, with its count (never “[object …]”)",
               got["passkeys"] == "records.example.test: 2 passkeys", got["passkeys"])
@@ -1156,19 +1152,19 @@ def general_env_check(browser, base, cookies, check, db_path):
             pg.evaluate("document.adoptedStyleSheets = []")
             pg.click(f"#setNav a[data-group={grp}]")
             pg.wait_for_timeout(300)
-            serious += axe_check(pg, f"{name}, set by the environment")[0]
+            serious += axe_check(pg, f"{name}, the environment setting it too")[0]
             pg.set_viewport_size({"width": 320, "height": 800})
             pg.wait_for_timeout(200)
-            fits += phone_fits(pg, f"{name}, set by the environment, at 320 px")
+            fits += phone_fits(pg, f"{name}, at 320 px")
             pg.set_viewport_size({"width": 412, "height": 900})
             pg.evaluate("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = [s]; }", BIG_TEXT_CSS)
             pg.wait_for_timeout(300)
-            fits += phone_fits(pg, f"{name}, set by the environment, at 200% text")
+            fits += phone_fits(pg, f"{name}, at 200% text")
             fits += [f"{name} at 200% text scrolls sideways by {n} px" for n in [pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")] if n > 0]
         check("…no serious axe finding, there and in Accounts and sign-in, Logs and activity and Connected sources", not serious, serious)
         check("…and fits at 320 px and at 200% text", not fits, fits)
     except Exception as e:
-        check("General with its settings set by the environment (#1119) ran", False, stopped(e))
+        check("Install with the environment setting every server setting (#1158) ran", False, stopped(e))
     finally:
         for k, v in had.items():
             if v is None:
@@ -1179,6 +1175,69 @@ def general_env_check(browser, base, cookies, check, db_path):
         con.commit()
         con.close()
         ctx.close()
+    return errs
+
+def settings_taken_check(browser, base, cookies, check, db_path):
+    """(#1158) What the first start of this version took from the environment is said once, above Host: each setting by
+    its label and variable, that it's changed here from now on; Got it says it's been read, for good (focus to Host's
+    heading). And the Secure sign-in cookie, a choice of Sign-in rules now: Never is asked first, typed to confirm, and
+    cancelled leaves Automatic as it was. Puts everything back as it was. Returns script errors."""
+    import json as _json, sqlite3
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900})
+    ctx.add_cookies(cookies)
+    pg, errs, got = ctx.new_page(), [], {}
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    con = sqlite3.connect(db_path)
+    mark = "settings.taken_from_environment"
+    was = con.execute("SELECT v FROM meta WHERE k=?", (mark,)).fetchone()
+    con.execute("INSERT INTO meta(k, v) VALUES(?, ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+                (mark, _json.dumps({"at": 1, "names": ["PUBLIC_ORIGINS", "UPLOAD_MAX_FILES"], "shown": False, "seen": {}})))
+    con.commit()
+    try:
+        pg.goto(base + "/settings.html?profile=1#general")
+        pg.wait_for_selector("#hostTaken", timeout=20000)
+        got["said"] = pg.inner_text("#hostTaken")
+        got["first"] = pg.evaluate("document.querySelector('#gen-host .set-hd').nextElementSibling?.id")
+        for w in (412, 1400) if os.environ.get("SANGUITY_SHOTS") else ():
+            pg.set_viewport_size({"width": w, "height": 900})
+            pg.locator("#gen-host").screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"1158-taken-{w}.png"))
+        pg.set_viewport_size({"width": 1400, "height": 900})
+        pg.locator("#hostTaken").get_by_role("button", name="Got it").click()
+        pg.wait_for_selector("#hostTaken", state="detached", timeout=10000)
+        got["focus"] = pg.evaluate("document.activeElement.id")
+        pg.reload()
+        pg.wait_for_selector("#hostOrigins", timeout=20000)
+        got["again"] = pg.evaluate("!!document.getElementById('hostTaken')")
+        pg.click("#setNav a[data-group=accounts]")
+        pg.wait_for_selector("#gs-cookieSecure-never", state="visible", timeout=10000)
+        got["choices"] = pg.evaluate("[...document.querySelectorAll('#genSecBody input[name=gs-cookieSecure]')].map(i => [i.value, i.checked, i.labels[0].textContent])")
+        pg.click("#gs-cookieSecure-never")
+        pg.wait_for_selector("dialog.sg-ask input", timeout=10000)
+        got["asked"] = pg.inner_text("dialog.sg-ask")
+        pg.keyboard.press("Escape")
+        pg.wait_for_selector("dialog.sg-ask", state="detached", timeout=10000)
+        pg.wait_for_function("document.getElementById('genSecMsg').textContent.length > 0", timeout=10000)
+        got["after"] = [pg.evaluate("document.getElementById('gs-cookieSecure-auto').checked"), pg.inner_text("#genSecMsg"),
+                        {st["key"]: st for sec in ctx.request.get(base + "/api/settings/install").json()["sections"]
+                         for st in sec["settings"]}["security.cookieSecure"]["value"]]
+    except Exception as e:
+        got["stopped"] = stopped(e)
+    finally:
+        if was is None:
+            con.execute("DELETE FROM meta WHERE k=?", (mark,))
+        else:
+            con.execute("UPDATE meta SET v=? WHERE k=?", (was[0], mark))
+        con.commit()
+        con.close()
+        ctx.close()
+    check("What the first start took from the environment, said once above Host (#1158): each by its label and variable, changed "
+          "here from now on; Got it says it's read, for good, focus to Host's heading", "stopped" not in got
+          and got["first"] == "hostTaken" and "Public addresses (PUBLIC_ORIGINS)" in got["said"] and "Files in one upload (Uploads) (UPLOAD_MAX_FILES)" in got["said"]
+          and "changed here" in got["said"] and got["focus"] == "gen-host-hd" and got["again"] is False, got)
+    check("…the Secure sign-in cookie a choice of Sign-in rules: Never asked first, typed to confirm; cancelled, Automatic stays",
+          "stopped" not in got and [c[:2] for c in got.get("choices", [])] == [["auto", True], ["always", False], ["never", False]]
+          and "plain HTTP" in got.get("asked", "") and "Type never secure to confirm" in got.get("asked", "")
+          and got.get("after", [None])[0] is True and "wasn't confirmed" in got["after"][1] and got["after"][2] == "auto", got)
     return errs
 
 
@@ -3374,13 +3433,12 @@ def connected_sources_switch_check(check, browser, base, cookies):
 
     def host_and_log(pg):
         """General → Host's hint and what changing the public addresses says (asked, then left unsaved), and the profile
-        activity log's kinds. (The run's PUBLIC_ORIGINS, the environment's, locks the list: left out meanwhile, as #1000's)"""
-        env = os.environ.pop("PUBLIC_ORIGINS", None)
+        activity log's kinds. (The run's public address left out meanwhile, as #1000's)"""
+        env = public_origins([])
         try:
             return host_and_log_(pg)
         finally:
-            if env is not None:
-                os.environ["PUBLIC_ORIGINS"] = env
+            public_origins(env)
 
     def host_and_log_(pg):
         pg.goto(base + "/settings.html?profile=1")   # (loaded afresh: the address's own #general may be open already)
@@ -4278,7 +4336,7 @@ def main():
               "Backups are drawn, and no script fails", drawn1028 is True and not errs1028, [drawn1028, errs1028])
         # #1048: with no public address, Connected-source apps says to set one in General → Host (where it's set since
         # #1000, at once: not .env and a restart), a link there; at 320 px with 200% text its example address breaks
-        env1048 = os.environ.pop("PUBLIC_ORIGINS")
+        env1048 = public_origins([])   # (#1158: as saved in the app)
         ctx1048 = browser.new_context(viewport={"width": 320, "height": 760}, bypass_csp=True)
         ctx1048.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
         p1048, got1048 = ctx1048.new_page(), {}
@@ -4294,7 +4352,7 @@ def main():
         except Exception as e:
             got1048["stopped"] = stopped(e)
         finally:
-            os.environ["PUBLIC_ORIGINS"] = env1048
+            public_origins(env1048)
             ctx1048.close()
         check("Connected-source apps with no public address (#1048): says to set it in Settings → Install → General → Host, a link there, not .env "
               "and a restart; at 320 px with 200% text the page no wider than the screen", "stopped" not in got1048
@@ -4305,7 +4363,7 @@ def main():
         # the server gives (source apps to register again, phones with a secret), then asks for it typed; saved, the
         # server uses it at once, and the bar's gone
         from server import config as config1000
-        env1000 = os.environ.pop("PUBLIC_ORIGINS")
+        env1000 = public_origins([])   # (#1158: as saved in the app)
         ctx1000 = browser.new_context(viewport={"width": 1400, "height": 900})
         ctx1000.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
         p1000, errs1000, got1000, eff1000 = ctx1000.new_page(), [], {}, {}
@@ -4335,7 +4393,7 @@ def main():
         except Exception as e:
             got1000["stopped"] = stopped(e)
         finally:
-            os.environ["PUBLIC_ORIGINS"] = env1000
+            public_origins(env1000)
             ctx1000.close()
         apps1000, phones1000 = eff1000.get("apps", 0), eff1000.get("phones", 0)
         check("General → Host (#1000): the public addresses' change says what it does, with the server's counts, asks for it typed, "
@@ -4354,7 +4412,7 @@ def main():
         # focus to its heading and the bar's words with it; Security is Accounts and sign-in's since #1119, and Backups and
         # logging's days of activity kept, after it, Logs and activity's since #1153: so Needs a restart's first number,
         # whose save takes focus to its heading). Discarded and put back after
-        env1049 = os.environ.pop("PUBLIC_ORIGINS")
+        env1049 = public_origins([])   # (#1158: as saved in the app)
         ctx1049 = browser.new_context(viewport={"width": 1400, "height": 900})
         ctx1049.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
         p1049, errs1049, got1049 = ctx1049.new_page(), [], {}
@@ -4379,7 +4437,7 @@ def main():
         except Exception as e:
             got1049["stopped"] = stopped(e)
         finally:
-            os.environ["PUBLIC_ORIGINS"] = env1049
+            public_origins(env1049)
             ctx1049.close()
         check("General → Host and Needs a restart saved together (#1049; Security's before #1119, Backups and logging's before #1153): focus "
               "stays in Host's typed confirmation, the bar's words name it, and the other's saved is said after them", "stopped" not in got1049 and not errs1049
@@ -4434,9 +4492,8 @@ def main():
         try:
             p1121.goto(base + "/settings.html?profile=1#gen-restart")
             p1121.wait_for_selector("#rs-upload-max-file-mb", timeout=20000)
-            got1121["env"] = p1121.evaluate("""(r => [r.querySelector('.tag').textContent, r.querySelector('.set-row-ctl > p').textContent, !!r.querySelector('input'),
-                r.querySelector('.set-row-ctl > .hint:last-child')?.textContent.startsWith('Change it where this server\\'s settings are')])(
-                document.querySelector('#gen-restart [data-name=SHL_TIMEOUT]'))""")
+            got1121["env"] = p1121.evaluate("""(r => [!!r.querySelector('.tag.env'), r.querySelector('input')?.value, r.querySelector('input')?.disabled])(
+                document.querySelector('#gen-restart [data-name=SHL_TIMEOUT]'))""")   # (#1158: the environment's 25 changes nothing)
             p1121.fill("#rs-upload-max-file-mb", "99999")
             p1121.click("#setBar button:has-text('Save')")
             p1121.locator("#setBar .msg", has_text="Not saved").wait_for(timeout=10000)
@@ -4468,9 +4525,9 @@ def main():
             ss1121.forget()
             ctx1121.close()
         check("General → Needs a restart (#1121): saved from the bar it waits for a restart (Restart needed, the server's value unchanged), "
-              "past its bound refused and kept as typed, the environment's plain text with its variable; Restart now asks, restarts, "
-              "and the card read again has it in force", "stopped" not in got1121 and not errs1121
-              and got1121["env"] == ["Set in .env: SHL_TIMEOUT", "25 seconds", False, True]   # (#1119: util.js envRow)
+              "past its bound refused and kept as typed, one the environment sets a plain field at the page's value (#1158); Restart now "
+              "asks, restarts, and the card read again has it in force", "stopped" not in got1121 and not errs1121
+              and got1121["env"] == [False, "20", False]
               and got1121["refused"][0].startswith("Not saved: One file must be a whole number from 1 to 4,096") and got1121["refused"][1] == "99999"
               and got1121["dirty"] == "1" and got1121["saved"][1:] == [4096, "Restart needed", False] and "apply once the server restarts" in got1121["saved"][0]
               and got1121["after"][:3] == [[1], 2048, False] and "checking them" in got1121["after"][3], [got1121, errs1121])
@@ -4509,6 +4566,9 @@ def main():
         errs1119 = general_env_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check,
                                      os.path.join(TMP, "sanguity.db"))   # (#1119) General with its settings set by the environment
         check("…nor with its settings set by the environment (#1119)", not errs1119, errs1119)
+        errs1158 = settings_taken_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check,
+                                        os.path.join(TMP, "sanguity.db"))   # (#1158) what was taken from the environment, said once
+        check("…nor where what was taken from the environment is said (#1158)", not errs1158, errs1158)
         errs1119m = signin_moved_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check)   # (#1119) Accounts and sign-in
         check("…nor in Accounts and sign-in (#1119)", not errs1119m, errs1119m)
         errs1153 = install_moved_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check)   # (#1153) Install in order

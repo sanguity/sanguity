@@ -537,7 +537,7 @@ define("security.reauthMinutes", "security", "The fresh check lasts (minutes)", 
        whole(1, 5, "The fresh check's minutes"), scope="install", private=False, kind="number", env="REAUTH_MINUTES",
        help="Before the most powerful changes, like these, Sanguity asks for the password, a code or a passkey again, "
             "unless one was given within this long.")
-COOKIE_CHOICES = {"auto": "Automatic", "1": "Always", "0": "Never"}
+COOKIE_CHOICES = {"auto": "Automatic", "always": "Always", "never": "Never"}
 
 
 def cookie_goes(db, before, after, request, s):
@@ -547,7 +547,7 @@ def cookie_goes(db, before, after, request, s):
     if after == before or after == "auto":
         return None
     https = request is not None and request.url.scheme == "https"
-    if after == "1":
+    if after == "always":
         if https:
             return None
         return {"count": 1, "type": "always secure", "title": "Always mark the sign-in cookie Secure?", "action": "Always Secure",

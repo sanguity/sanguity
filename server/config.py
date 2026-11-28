@@ -32,7 +32,7 @@ CONNECT_ALLOW_HTTP = os.environ.get("CONNECT_ALLOW_HTTP", "") == "1"
 
 # ---------------------------------------------------------------- what only the container sets (#1158)
 # Every variable the server, the receiver and docker/ read is either a setting the page owns (VARS below, the restart
-# settings of server_settings.py, the secrets of SECRETS) or one of these: what the container itself needs to start,
+# settings of server_settings.py), one an install may opt to manage there (MANAGED, below), or one of these: what the container itself needs to start,
 # or a fact of how it's built and deployed, each with why it can't be a setting. tests/test_env_audit.py reads the
 # code for every variable read and fails on one that's neither; deploy/check.py lets the templates set only these.
 _MOUNT = "a folder inside the container, which the template mounts there: moving it is the template's"
@@ -74,8 +74,51 @@ CONTAINER = {
     "SECRET_FILE": "the receiver's first secret (from before #46): " + _MOUNT,
     "KEYS_FILE": "the receiver's secrets, written by the app: " + _MOUNT,
 }
-# secrets the page keeps write-only (encrypted in the database, never shown): taken in from the environment once (#1158)
-SECRETS = {"NOTIFY_TOKEN": "Notifications' access token", "OIDC_CLIENT_SECRET": "Sign-in provider's client secret"}
+# (#1158, the owner's decision: env-managed, opt-in) settings an install may choose to keep in its environment, as a
+# secret manager or Docker secrets do: while one is set (NAME, or NAME_FILE: the path of a file holding it, read at each
+# use, so a rotated secret applies), it wins and the page shows its row locked, "Managed by the environment"; unset,
+# the page owns it like any other. Never taken in. Each with why it's offered. Read through managed().
+_SSO = "the sign-in provider, kept with the identity provider's own configuration where an install manages that as code"
+MANAGED = {
+    "OIDC_ISSUER": "Sign-in provider's issuer: " + _SSO,
+    "OIDC_CLIENT_ID": "Sign-in provider's client ID: " + _SSO,
+    "OIDC_CLIENT_SECRET": "Sign-in provider's client secret: a secret a secret manager rotates (or OIDC_CLIENT_SECRET_FILE, "
+                          "a Docker secret)",
+    "OIDC_SCOPES": "Sign-in provider's scopes: " + _SSO,
+    "OIDC_BUTTON": "Sign-in provider's button name: " + _SSO,
+    "OIDC_ACR": "Sign-in provider's acr that counts as two factors: " + _SSO,
+    "OIDC_ONLY": "Sign in with OIDC only: " + _SSO + " (taken out, the page's switch again)",
+    "NOTIFY_TOKEN": "Notifications' access token: a secret a secret manager rotates (or NOTIFY_TOKEN_FILE)",
+    # (#1159) the outbound proxy's password joins here, as OUTBOUND_PROXY_PASSWORD (and _FILE), read with managed()
+}
+_managed_warned = set()
+
+
+def managed(name):
+    """(#1158) The value the environment manages for name (one of MANAGED), or None: NAME's text, else the contents of
+    the file NAME_FILE names (a Docker secret), read at each use; stripped. A file that can't be read is None, said once
+    (its path, never its contents)."""
+    text = os.environ.get(name, "").strip()
+    if text:
+        return text
+    path = os.environ.get(name + "_FILE", "").strip()
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip() or None
+    except (OSError, ValueError) as e:
+        if (name, path) not in _managed_warned:
+            _managed_warned.add((name, path))
+            print(f"{name}_FILE names {path}, which can't be read ({type(e).__name__}): it's as if unset.", flush=True)
+        return None
+
+
+def managed_by(name):
+    """The variable that manages name now (NAME or NAME_FILE), or None."""
+    if os.environ.get(name, "").strip():
+        return name
+    return name + "_FILE" if managed(name) is not None else None
 
 
 # ---------------------------------------------------------------- the settings that tune the server (#999, #1158)
@@ -142,12 +185,12 @@ var("SESSION_HOURS_WITHOUT_2FA", 12, about="...or this many hours after it, whil
 var("SESSION_IDLE_MINUTES", 0, about="also end it after this long unused (0 = off)")
 def _cookie(text):
     v = text.strip().lower()
-    if v == "auto":
+    if v in ("auto", "always", "never"):
         return v
-    return "1" if _yes(v) else "0"
+    return "always" if _yes(v) else "never"
 
 
-var("COOKIE_SECURE", "auto", _cookie, about="auto = Secure when the request came over HTTPS; 1 always, 0 never")
+var("COOKIE_SECURE", "auto", _cookie, about="auto = Secure when the request came over HTTPS; always (1), never (0)")
 var("TEMP_PASSWORD_DAYS", 7, about="a one-time password from an admin stops working after this")
 var("REAUTH_MINUTES", 5, about="the fresh check before the most powerful admin actions: the password, a code or a "
                                "passkey within this many minutes (signing in counts)")
