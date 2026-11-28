@@ -76,7 +76,10 @@ async function notifySave(msg, had) {
   const value = $("#notifyUrl").value.trim(), token = $("#notifyToken").value.trim(), saved = [];
   try {
     if (notifyUrlDirty()) {
-      await fresh(() => call(`settings/install/${NOTIFY.st.key}`, "PUT", {value, was: NOTIFY.st.value}), notifyReauth());
+      if (!await confirmed(typed => fresh(() => call(`settings/install/${NOTIFY.st.key}`, "PUT", {value, was: NOTIFY.st.value, confirm: typed}), notifyReauth()))) {
+        sayIn(msg, "The notification server isn't saved.");
+        return;
+      }
       saved.push("the notification server");
     }
     if (token && !notifyEnv()) {

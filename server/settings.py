@@ -470,7 +470,9 @@ section("notify", "Notifications", "Sent only to a notification server you run y
         "anything else of the records. Tapping one opens Sanguity, where its person signs in to see what it is.")
 define("notify.url", "notify", "Notification server", "", notify_url, scope="install", private=False, kind="url",
        help="Your ntfy server's address, like https://ntfy.example.com. https:// only, unless the server is on your "
-            "local network (like http://192.168.1.20, or http://ntfy.lan). Empty: nothing is sent.")
+            "local network (like http://192.168.1.20, or http://ntfy.lan). Empty: nothing is sent.\nChanging it to "
+            "another server (another scheme, name or port) makes every person's topic new: each sees the new address "
+            "under Settings, Notifications, and subscribes to it again.")
 
 
 # ---------------------------------------------------------------- General → Security (#1001)

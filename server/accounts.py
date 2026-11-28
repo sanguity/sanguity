@@ -57,8 +57,10 @@ def sign_out_everywhere(db, uid, feeds=True):
     """End every session and forget every known browser of an account (disabled, given a new password, signed in with
     a recovery code, or its second factors reset). feeds: its calendar feeds go too (#590), whose addresses a lost
     phone's calendar app holds; not when the person turns off their own authenticator app."""
+    from . import notify
     db.execute("DELETE FROM sessions WHERE user_id=?", (uid,))
     db.execute("DELETE FROM devices WHERE user_id=?", (uid,))
+    notify.renew(db, uid)   # (#1130) their notification topic too, whose address a lost phone's ntfy app holds
     if feeds:
         calendar.drop_for(db, uid)
 
