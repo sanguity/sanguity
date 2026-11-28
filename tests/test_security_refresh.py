@@ -131,6 +131,11 @@ ROUTES = {
     ("POST", "/api/profiles/{pid}/labmaps/undo/{cid}"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/same"): (USER, "editor"), ("DELETE", "/api/profiles/{pid}/same/{rid}"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/manual"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/costs/mark"): (USER, "editor"),
+    ("POST", "/api/profiles/{pid}/costs/plans"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/costs/plans/{eid}"): (USER, "editor"),   # (#1127)
+    ("DELETE", "/api/profiles/{pid}/costs/plans/{eid}"): (USER, "editor"),
+    ("POST", "/api/profiles/{pid}/costs/bills"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/costs/bills/{eid}"): (USER, "editor"),   # (#1128)
+    ("DELETE", "/api/profiles/{pid}/costs/bills/{eid}"): (USER, "editor"),
+    ("GET", "/api/profiles/{pid}/costs/tax-report"): (USER, "viewer"),   # (#1136) nothing a viewer can't open on Costs
     ("POST", "/api/profiles/{pid}/journal"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/journal/{jid}"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/journal/{jid}"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/journal/group"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/journal/photos"): (USER, "editor"),   # #161
@@ -421,6 +426,7 @@ PLAIN = {
     "med_doses": {"created_name", "changed_name"},   # #161: a random file name, jpeg/png/webp
     "med_entries": {"created_name", "changed_name"},   # #1091
     "family_entries": {"created_name", "changed_name"},   # #1134
+    "cost_plans": {"created_name", "changed_name"}, "cost_bills": {"created_name", "changed_name"},   # #1127, #1128: as med_entries'
     "labmaps": {"lookup", "importer", "created_name", "changed_name"},
     "memberships": {"role"}, "meta": {"k", "v"}, "outside_contacts": {"purpose"},
     "passkeys": {"credential_id", "public_key", "rp_id", "name", "transports"},
@@ -443,7 +449,8 @@ PLAIN_SETTINGS = {"sync.attachAuto", "sync.attachMaxMB", "sync.attachTypes", "sy
                   "security.passwordMin2fa", "security.tempPasswordDays", "security.reauthMinutes", "security.triesHere",
                   "security.triesAddress", "security.triesAccount",
                   "directory.weekly",   # on or off (#992)
-                  "experimental.connectedSources"}   # (#1096) on or off
+                  "experimental.connectedSources",   # (#1096) on or off
+                  "costs.taxStart"}   # (#1136) a month, 1 to 12, for Costs' tax-year report: nothing about anyone's health
 
 
 class AtRest(unittest.TestCase):

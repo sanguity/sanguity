@@ -101,9 +101,8 @@ def _oop(db, pid, response):
 
 
 def _entry(db, s, pid, request, of, change, do):
-    """A plan year's or a bill's change (do(db) -> its id, or None when there's no such entry), logged; the reply's
-    {"oop"}. A refusal (costplan.PlanError) is a 400 saying why."""
-    need(db, s, pid, "editor")
+    """A plan year's or a bill's change (do(db) -> its id, or None when there's no such entry), logged, once the route
+    has checked the role itself (need). A refusal (costplan.PlanError) is a 400 saying why."""
     try:
         with dbm.transaction(db):
             if do(db) is None:
@@ -123,18 +122,21 @@ class Plan(BaseModel):
 
 @router.post("/api/profiles/{pid}/costs/plans", status_code=201)
 def add_plan(pid: int, body: Plan, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
     _entry(db, s, pid, request, "plan", "add", lambda db: costplan.save_plan(db, pid, s, body.model_dump()))
     return _oop(db, pid, response)
 
 
 @router.put("/api/profiles/{pid}/costs/plans/{eid}")
 def change_plan(pid: int, eid: int, body: Plan, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
     _entry(db, s, pid, request, "plan", "change", lambda db: costplan.save_plan(db, pid, s, body.model_dump(), eid))
     return _oop(db, pid, response)
 
 
 @router.delete("/api/profiles/{pid}/costs/plans/{eid}")
 def remove_plan(pid: int, eid: int, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
     _entry(db, s, pid, request, "plan", "remove", lambda db: costplan.drop_plan(db, pid, eid) or None)
     return _oop(db, pid, response)
 
@@ -184,12 +186,14 @@ def _bill_reply(db, pid, body, response, status=200):
 
 @router.post("/api/profiles/{pid}/costs/bills", status_code=201)
 def add_bill(pid: int, body: Bill, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
     _entry(db, s, pid, request, "bill", "add", lambda db: costplan.save_bill(db, pid, s, _bill(db, pid, body)))
     return _bill_reply(db, pid, body, response, 201)
 
 
 @router.put("/api/profiles/{pid}/costs/bills/{eid}")
 def change_bill(pid: int, eid: int, body: Bill, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
     _entry(db, s, pid, request, "bill", "change", lambda db: (b := _bill(db, pid, body, eid)) and costplan.save_bill(db, pid, s, b, eid))
     return _bill_reply(db, pid, body, response)
 
@@ -210,5 +214,6 @@ def tax_report(pid: int, year: int, request: Request, preview: bool = False, s=D
 
 @router.delete("/api/profiles/{pid}/costs/bills/{eid}")
 def remove_bill(pid: int, eid: int, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
     _entry(db, s, pid, request, "bill", "remove", lambda db: costplan.drop_bill(db, pid, eid) or None)
     return _oop(db, pid, response)

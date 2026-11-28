@@ -67,6 +67,8 @@ check changes without updating the list, and it exercises this table against a l
 | The journal's spots (#1139): a photo tagged as its entry is saved; `PUT …/journal/spots/{sid}` (rename), `POST …/spots/{sid}/merge`, `DELETE …/spots/photos/{id}` (untag) | Read (in the records) | Tag, rename, merge, untag | Tag, rename, merge, untag | No | No (a link's photos never say their spot) | No |
 | The medication log (#235): `…/medications/doses` | Read | Log, correct, remove | Log, correct, remove | No | Only if its owner ticks "Medication log" (unticked by default), in the link's dates, notes included | No |
 | Your own medications and your changes to the records' (#1091): `…/medications/own`, `…/listed`, `…/hidden` | Read | Add, change, remove, hide, show again | Add, change, remove, hide, show again | No | No | No |
+| Costs' plan years and bills (#1127, #1128): `…/costs/plans`, `…/costs/bills` | Read | Add, change, remove | Add, change, remove | No | No | No |
+| Costs' tax-year report (#1136): `GET …/costs/tax-report?year=` (a preview, or the zip) | Download | Download; set the tax year's first month | Download; set the tax year's first month | No | No | No |
 | Medication reminders (#162): `…/medications/reminders` | Read | Set, change, turn off, remove | Set, change, turn off, remove | No | No | Each time as a recurring event, "Medication" unless the feed is set to full details; on unless the feed's person turns them off |
 | The phone's and watch's measures in a visit summary or a share link (#225): home blood pressure, glucose, temperature, blood oxygen, respiratory rate, VO2 max, immunizations, BMI and growth | Read (summary) | Read (summary) | Read (summary; ticks them for a link) | No | Only the measures its owner ticked (each unticked by default), in the link's dates; cycle tracking never | No |
 | About this person: birth date, sex used for reference ranges, height history (#194) | Read | Change; add and remove heights | Change; add and remove heights | No | Only if its owner ticks About this person (unticked by default) | No |
@@ -586,6 +588,14 @@ What each added, and how it keeps to the rules above. Each file named has its ow
   relative, their conditions, ages and note, or the hidden entry's key) encrypted; changed by owners and editors only
   (`POST …/family/own`, `PUT`/`DELETE …/family/own/{eid}`, `PUT …/family/hidden`); the activity log says only what was
   done ("family"), never the relative or a condition.
+- Costs' plan years and bills (#1127, #1128, `cost_plans`, `cost_bills`): the same again, the body (dates, amounts,
+  the provider, the claim's and the file's keys) encrypted, who typed it and when plain as `med_entries`'; the activity
+  log says only what was done ("of": plan or bill, add, change or remove). A bill's file is a document typed in (hand
+  entry's checks and storage), never read for numbers.
+- Costs' tax-year report (#1136): a zip streamed to anyone who can read the profile (nothing in it they can't open on
+  Costs), logged as an export with its year. Its names hold only row numbers and dates (`receipts/003-2026-03-21.pdf`),
+  never a payee's or a file's name; a CSV cell that would start a formula is written as text. The tax year's first
+  month is a plain profile setting (`costs.taxStart`, 1–12).
 
 ### About this person (#194)
 - Birth date, sex used for reference ranges and height history are three profile settings (`person.*`), sealed like
