@@ -416,7 +416,7 @@ dialog.palette>.sg-toasts{max-height:25dvh;overflow:auto}
 @layer pages {
 header{display:flex;align-items:center;gap:var(--sp-4);padding:var(--sp-4) var(--sp-5);border-bottom:1px solid var(--grid);background:var(--surface);position:sticky;top:0;z-index:20;flex-wrap:wrap}
 /* the brand: a paragraph, so each page's one h1 is its own title (#331) */
-header .brand-name{font-size:var(--fs-5);margin:0;font-weight:var(--fw-semibold);letter-spacing:-.01em;display:flex;align-items:center;gap:var(--sp-2)}
+header .brand-name{font:var(--fw-semibold) var(--fs-6)/1.2 var(--font-display);margin:0;letter-spacing:-.025em;display:flex;align-items:center;gap:var(--sp-2)}   /* the name as the wordmark sets it */
 header .brand-name .brand{width:19px;height:23px;flex:none}
 .brand-drop{fill:var(--brand)}.brand-line{stroke:var(--brand-ink)}.brand-dot{fill:var(--brand-ink)}
 header .meta{color:var(--muted);font-size:var(--fs-2)}
@@ -923,7 +923,7 @@ details.res > div{padding:0 var(--sp-3) var(--sp-2)}
 .ftoggle{display:none}
 @media (max-width:700px){
   header{gap:var(--sp-2) var(--sp-2);padding:var(--sp-2) var(--sp-3) var(--sp-2)}
-  header .brand-name{font-size:var(--fs-4);flex:1}
+  header .brand-name{font-size:var(--fs-5);flex:1}
   header .meta{display:none}
   .tabs{order:5;width:100%;overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
   .tabs::-webkit-scrollbar{display:none}
