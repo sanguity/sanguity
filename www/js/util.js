@@ -830,8 +830,10 @@ function liveFollow() {
 }
 function wireDialog(d) {
   d.sgWired = true;
+  // what every page shares back out first, before the dialog's own close handlers: one may take the dialog out of
+  // the page (ins-desk.js's), and the toasts with it, for good
+  d.addEventListener("close", liveFollow, {capture: true});
   d.addEventListener("close", () => {
-    liveFollow();
     if (d.open) return;   // opened again the other way
     const back = d.sgBack;
     d.sgBack = null;
