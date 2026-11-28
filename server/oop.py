@@ -36,6 +36,7 @@ before):
              the payment counted instead), receipt (event id), marked}]
   claims    [{id (event id), key, owe, by ([i] matched), paid, counted, hsa, marked}]   claim shares over zero
   plans     the plan years typed in (costplan.plans, #1127)
+  bills     the bills typed in, each lined up against a claim (costplan.lined_up, #1128)
   years     the deductible and out-of-pocket sums per plan year, or calendar year outside them (costplan.years)
 Never stored from an import (records.SERVED): an export's data.json has it, worked out again when loaded.
 """
@@ -143,8 +144,8 @@ def annotate(db, pid, data, imps=()):
     pays = ((data.get("outOfPocket") or {}).get("payments")) if isinstance(data.get("outOfPocket"), dict) else None
     pays = pays if isinstance(pays, list) else []
     said = marks(db, pid)
-    typed = costplan.plans(db, pid)
-    if not pays and not said and not typed and not any(isinstance(c, dict) for c in data.get("costs") or []):
+    typed, kept = costplan.plans(db, pid), costplan.bills(db, pid)
+    if not pays and not said and not typed and not kept and not any(isinstance(c, dict) for c in data.get("costs") or []):
         return data
     imports = data.get("imports") or {}
     events = {e.get("id"): e for e in data.get("events") or [] if isinstance(e, dict)}
@@ -233,5 +234,6 @@ def annotate(db, pid, data, imps=()):
 
     data["oop"] = {"payments": [{k: v for k, v in p.items() if not k.startswith("_")} for p in out_p],
                    "claims": [{k: v for k, v in c.items() if not k.startswith("_")} for c in claims],
-                   "plans": typed, "years": costplan.years(data, typed)}
+                   "plans": typed, "years": costplan.years(data, typed),
+                   "bills": costplan.lined_up(data, kept, {c["id"]: (c["paid"], c["by"]) for c in claims}, edits.key_of)}
     return data
