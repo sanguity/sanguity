@@ -637,6 +637,12 @@ const SgNav = (() => {
         c.removeAttribute("data-none");
         for (const e of document.querySelectorAll("[data-cs]")) e.hidden = false;
       }
+      // the records page's foot: the version this server runs, a link to General's About for an admin, else its words
+      const fv = document.getElementById("footVer");
+      if (fv && me?.user) {
+        const v = "Sanguity" + (me.version ? " " + me.version : "");
+        fv.replaceChildren(me.user.is_admin ? el("a", {href: "settings.html#gen-about", text: v}) : v);
+      }
       if (me && (!own || me.profiles?.length === 0) && !locked) profiles(me.profiles);
       if (me && !me.offline) {
         saveLater();   // a theme picked offline (#414)

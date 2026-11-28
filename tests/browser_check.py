@@ -5519,6 +5519,40 @@ def main():
                       page.is_visible("#notice") and "Not medical advice." in page.inner_text("#notice")
                       and "your care team interprets them" in page.inner_text("#notice"))
 
+            # ---- the page ends at its footer (the owner's report: on a tablet, Labs' charts scrolled ~900 px past it,
+            # the footer at the screen's top): scrolled to the end, nothing under the footer but a phone's tab bar's
+            # room, on Labs' charts and the Overview, at a tablet's and a phone's size, a toast's stack (util.js sgFoot)
+            # not drawn (in a closed popover) counted as nothing; the notice centred as the lines under it are; the
+            # foot's version (General's About for an admin), the source and where to report a problem
+            foot_end = """(() => { const se = document.scrollingElement; window.scrollTo(0, se.scrollHeight);
+                const f = document.querySelector('body>footer'), t = document.querySelector('header.topbar>.tabs');
+                const room = t && getComputedStyle(t).position === 'fixed' ? innerHeight - t.getBoundingClientRect().top : 0;   // (a phone's bar)
+                return Math.round(se.scrollHeight - (f.getBoundingClientRect().bottom + scrollY) - room); })()"""
+            ends = {}
+            for w, h in ((1000, 700), (412, 900)):
+                page.set_viewport_size({"width": w, "height": h})
+                for tab in ("labs", "overview"):
+                    open_tab(tab)
+                    settle(300)
+                    ends[f"{tab} {w}"] = js(foot_end)
+                js("() => { toast('A toast in a closed stack', {timeout: 60000}); document.getElementById('sgToasts').hidePopover(); sgFoot(); }")
+                settle(200)
+                ends[f"closed toasts {w}"] = js(foot_end)
+                js("() => { const t = document.getElementById('sgToasts'); t.querySelectorAll('.sg-toast').forEach(x => x.remove()); t.showPopover(); sgFoot(); }")
+                settle(200)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            settle(200)
+            foot = js("""(() => { const v = document.querySelector('#footVer'), a = v.querySelector('a'),
+                ls = [...document.querySelectorAll('.pagefoot a[target]')].map(l => [l.getAttribute('href'), l.target, l.rel]);
+                return [getComputedStyle(document.getElementById('notice')).textAlign, v.textContent.startsWith('Sanguity'),
+                        a ? a.getAttribute('href') : null, ME.user.is_admin, ls]; })()""")
+            check("the page ends at its footer, past it only a phone's tab bar's room (Labs' charts and the Overview at 1000 and 412 px, "
+                  "a closed toast stack not counted); the notice centred; the foot's version, General's About for an admin, Source "
+                  "code and Report a problem in a new tab with no referrer",
+                  all(abs(v) <= 2 for v in ends.values()) and foot[:2] == ["center", True] and foot[2] == ("settings.html#gen-about" if foot[3] else None)
+                  and foot[4] == [["https://github.com/sanguity/sanguity", "_blank", "noopener noreferrer"],
+                                  ["https://github.com/sanguity/sanguity/issues", "_blank", "noopener noreferrer"]], [ends, foot])
+
             # ---- next to out-of-range highlighting (#57): a caption on each tab that colours it, in light and dark, at 375 px
             flagged = {   # the tab's out-of-range highlighting, and its caption (Labs has one for both its views)
                 "overview": "#view-overview .tile .st.hi, #view-overview .tile .st.lo",
@@ -24308,7 +24342,7 @@ def main():
                   all(not adds and not set(acts) & ADDS for adds, acts in offered.values()), offered)
             zb.goto(base + "/?profile=1")   # back on the records page, for the checks below
             zb.wait_for_function("typeof booted !== 'undefined' && booted && PROFILE.id === 1", timeout=20000)
-            check("…and the header", " built 20" in zb.evaluate("document.getElementById('meta').textContent"), zb.evaluate("document.getElementById('meta').textContent"))
+            check("…and the header", "records imported 20" in zb.evaluate("document.getElementById('meta').textContent"), zb.evaluate("document.getElementById('meta').textContent"))
             check("…a journal entry's time is theirs too: 11:30 pm in Auckland, not in this browser's Chicago",
                   zb.evaluate("jTime('2026-03-10T23:30') === Date.parse('2026-03-10T10:30:00Z') && isoDay(jTime('2026-03-10')) === '2026-03-10'"),
                   zb.evaluate("new Date(jTime('2026-03-10T23:30')).toISOString()"))

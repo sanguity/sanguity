@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import accounts, activity, alerts, atrest, backup, backup_jobs, calendar, config, crypto, db as dbm, demo, edits, export, fhir_export, hrzones, jobs, milestones, oidc, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, units, uploads, watch_keys, watch_store
+from . import accounts, activity, alerts, atrest, backup, backup_jobs, calendar, config, crypto, db as dbm, demo, edits, export, fhir_export, general, hrzones, jobs, milestones, oidc, passkeys, profiles as prof, records, security as sec, settings, sync, twofactor, units, uploads, watch_keys, watch_store
 
 log = logging.getLogger("sanguity")
 # security events (sign-ins, refused second steps and access): one JSON line each on the app's output, so
@@ -869,6 +869,7 @@ def me(s=Depends(any_user), db=Depends(get_db)):
             "password_min": _password_min(db, s), "session_ends": _session_ends(db, s),
             "connected_sources": settings.connected_sources(),   # (#1096) whether any page offers them: on or off, no more
             "sign_in_provider": oidc.brief(db),   # (#1109) the provider's button name and whether it's the only way in, or None
+            "version": general.version()["version"],   # the records page's foot (None: a checkout or a build without one)
             "calendar_feeds": calendar.count_for(db, s["id"]),   # what changing the password or removing a passkey ends (#597)
             # the install's HTTPS address (PUBLIC_ORIGINS), for "install from this address" on a plain-HTTP page (#56)
             "https_address": next((o for o in sorted(config.setting("PUBLIC_ORIGINS")) if o.startswith("https://")), None),
