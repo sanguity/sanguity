@@ -797,6 +797,53 @@ class LabMapping(unittest.TestCase):
         for x in (j, j2):
             self.robin.post(f"/api/profiles/{pid}/jobs/{x['id']}/discard", headers=H)
 
+    def test_installs_on_each_profiles_card(self):
+        """(#1114) Install's matches, for every profile, are listed on each profile's card ("every"), who made them said
+        to admins alone, changed there by an admin (can_change_every) with an Undo kept with that profile's changes:
+        Change and Remove undone put them back as they were; neither Undo takes the other's change."""
+        pid = self.with_hemoglobin("Every 1114")
+        db = dbm.connect()
+        try:
+            for who in ("vera", "ada"):
+                db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES(?, ?, 'viewer')", (self.uids[who], pid))
+        finally:
+            db.close()
+        mid = self.remembered_as("HGB-E", "Hemoglobin", checked=1, unit="g/dL")
+        listed = lambda c: next(x for x in c.get(f"/api/profiles/{pid}/labmaps").json()["every"] if x["id"] == mid)  # noqa: E731
+        for c, admin in ((self.robin, False), (self.vera, False), (self.ada, True)):
+            got = c.get(f"/api/profiles/{pid}/labmaps").json()
+            m = next(x for x in got["every"] if x["id"] == mid)
+            self.assertEqual((m["name"], m["target"], "results" in m, "created_by" in m, got["can_change_every"]),
+                             ("HGB-E", "Hemoglobin", False, admin, admin), c)
+            self.assertNotIn(mid, [x["id"] for x in got["matches"]])
+        self.assertEqual(self.robin.patch(f"/api/labmaps/{mid}?profile={pid}", json={"target": None}, headers=H).status_code, 403)
+        r = self.ada.patch(f"/api/labmaps/{mid}?profile={pid}", json={"target": None}, headers=H)
+        self.assertEqual((r.status_code, r.json()["target"]), (200, None), r.text)
+        cid = r.json()["change"]
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/labmaps/undo/{cid}", headers=H).status_code, 404)   # (not the profile's own)
+        self.assertEqual(self.robin.post(f"/api/labmaps/undo/{cid}?profile={pid}", headers=H).status_code, 403)
+        self.assertEqual(self.ada.post(f"/api/labmaps/undo/{cid}?profile={pid}", headers=H).status_code, 200)
+        self.assertEqual(listed(self.ada)["target"], "Hemoglobin")
+        self.assertEqual(self.ada.post(f"/api/labmaps/undo/{cid}?profile={pid}", headers=H).status_code, 404)   # once
+        r = self.ada.delete(f"/api/labmaps/{mid}?profile={pid}", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertFalse([x for x in self.ada.get("/api/labmaps").json() if x["id"] == mid])
+        self.assertEqual(self.ada.post(f"/api/labmaps/undo/{r.json()['change']}?profile={pid}", headers=H).status_code, 200)
+        self.assertEqual((listed(self.ada)["target"], listed(self.ada)["created_by"]), ("Hemoglobin", "robin"))   # as it was
+        own = self.previewed(pid, csv(["2026-02-04", "HGB-E own", "12.0", "g/dL", "13.5 - 17.5", "L", "CBC", ""]))
+        self.save(pid, own, {self.entry(own, "HGB-E own")["ref"]: "Hemoglobin"})
+        m = next(x for x in self.own(pid) if x["name"] == "HGB-E own")
+        r = self.robin.delete(f"/api/profiles/{pid}/labmaps/{m['id']}", headers=H)
+        self.assertEqual(self.ada.post(f"/api/labmaps/undo/{r.json()['change']}?profile={pid}", headers=H).status_code, 404)   # (the profile's)
+        self.assertEqual(self.robin.post(f"/api/profiles/{pid}/labmaps/undo/{r.json()['change']}", headers=H).status_code, 200)
+        r = self.ada.delete(f"/api/labmaps/{mid}?profile={pid}", headers=H)
+        db = dbm.connect()
+        try:
+            log = [r["action"] for r in db.execute("SELECT action FROM activity WHERE action LIKE 'labmap.%' AND profile_id IS NULL ORDER BY id")]
+        finally:
+            db.close()
+        self.assertEqual(log[-5:], ["labmap.change", "labmap.undo", "labmap.remove", "labmap.undo", "labmap.remove"])
+
     # ---------------------------------------------------------------- a profile's own, on Settings (#1097)
 
     def test_a_profiles_own_for_its_owners_and_editors(self):

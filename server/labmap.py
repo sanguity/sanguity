@@ -39,7 +39,7 @@ lookup, a keyed hash of the normalised identity (security.pepper_mac), never by 
 Before #546 a look-alike (Vitamin B6 for Vitamin B1) could be filled in as sure and remembered on Add. A choice
 remembered then (checked NULL, schema version 38) that #546's rule wouldn't make (fits: not the same name, an alias,
 the list's LOINC code or the same name written another way) is "to check" (#569): never applied, a review that would
-use it shows it as a "Maybe", and Admin, Lab name matches lists it first with Keep and Forget. A choice made since,
+use it shows it as a "Maybe", and Lab name matches lists it first with Keep and Forget. A choice made since,
 by hand or by the rule, and one an admin keeps or changes, is checked; so is one an admin had changed before the
 upgrade (#575), and a review's choice for a name whose match is to check replaces it. A preview planned before a
 match was to check, forgotten or changed doesn't apply it when it's saved, and plans again when it's read (#583:
@@ -885,20 +885,42 @@ def _record(db, pid, who, before, moved):
     return cid
 
 
+def every_before(db, mid):
+    """(#1114) A match for every profile as it is, for every_record, before an admin changes or removes it."""
+    return [_state(db.execute("SELECT * FROM labmaps WHERE id=? AND profile_id IS NULL", (mid,)).fetchone())]
+
+
+def every_record(db, pid, who, before):
+    """(#1114) An admin's change to a match for every profile, made from profile pid's card: kept with pid's changes
+    for that card's Undo, marked every (so neither Undo takes the other's: undo). Returns its id."""
+    after = [_state(db.execute("SELECT * FROM labmaps WHERE lookup=?", (b["lookup"],)).fetchone()) or {"lookup": b["lookup"], "gone": True}
+             for b in before]
+    now = dbm.now()
+    cid = db.execute("INSERT INTO labmap_changes(profile_id, series, value, created_by, at) VALUES(?, 0, ?, ?, ?)",
+                     (pid, crypto.enc(json.dumps({"series": {}, "before": before, "after": after, "every": True}, ensure_ascii=False)),
+                      who["id"], now)).lastrowid
+    db.execute("DELETE FROM labmap_changes WHERE profile_id=? AND series=0 AND at<?", (pid, now - KEEP_FOR))
+    return cid
+
+
 def _settled(db, pid):
     from . import records
     _changed(db)             # a review waiting since plans again (#583)
     records._bump(db, pid)   # the records as charted changed
 
 
-def undo(db, pid, cid):
+def undo(db, pid, cid, every=False):
     """Undo profile pid's change cid, inside a transaction: its matches as they were before it, its results charted
     where they were. Raises LookupError if there's no such change, Refused if a match it left has been changed since
-    (by another change, an import's review or its Undo)."""
+    (by another change, an import's review or its Undo). every: an admin's change to a match for every profile, made
+    from pid's card (every_record, #1114), the only kind it undoes then and never without it; for those it returns
+    the match as it was put back, {"name", "importer", "target"}."""
     r = db.execute("SELECT value FROM labmap_changes WHERE id=? AND profile_id=?", (cid, pid)).fetchone()
     if r is None:
         raise LookupError(cid)
     v = json.loads(crypto.dec(r["value"]))
+    if bool(v.get("every")) != every:
+        raise LookupError(cid)
     for a in v["after"]:
         now = _state(db.execute("SELECT * FROM labmaps WHERE lookup=?", (a["lookup"],)).fetchone())
         if (now is None) != bool(a.get("gone")) or (now is not None and now != a):
@@ -915,3 +937,6 @@ def undo(db, pid, cid):
             db.execute(f"INSERT INTO labmaps({', '.join(cols)}) VALUES({', '.join('?' * len(cols))})", [b[c] for c in cols])
     db.execute("DELETE FROM labmap_changes WHERE id=?", (cid,))
     _settled(db, pid)
+    if every:
+        b = v["before"][0]
+        return {"name": json.loads(b["source"]).get("name"), "importer": b["importer"], "target": b["target"]}

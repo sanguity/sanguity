@@ -75,7 +75,10 @@
         each still keeps the name its lab gave it. Removing one leaves the results where they are; the next import with
         that name asks again. Every change can be undone.</p>
       <p>Names, above, only changes how a name is shown. Owners and editors change matches; everyone the profile is
-        shared with sees them. A match an admin made for every profile is on Install's Lab name matches.</p>
+        shared with sees them.</p>
+      <p>Before matches were each profile's own, an admin's applied to every profile, and still do: they're under For
+        every profile on this server, changed there by admins, and this profile's own is used before them. They name
+        tests, never anyone's results or profiles, and a change to one applies to later imports.</p>
     </div>
     <div id="labmatchesBody"></div>
     <span class="msg" id="labmatchesMsg" role="status"></span>
@@ -351,18 +354,6 @@
     <p class="hint" id="dirOffline"></p>
   </section>
 
-  <section class="card conn adm" id="labmaps" hidden>
-    <h2>Lab name matches</h2>
-    <p class="hint">The matches an admin made for every profile on this server. A change applies to later imports only.</p>
-    <div class="about-words" hidden>
-      <p>Before matches were each profile's own, an admin's applied to every profile, and still do (a profile's own is
-        used before it). Each profile's own matches are its owners' and editors', on its Settings, This person, Labs and
-        ranges. The matches here name tests, never anyone's results or profiles. Results already saved keep their series.</p>
-    </div>
-    <div id="labmapList"></div>
-    <span class="msg" id="labmapMsg" role="status"></span>
-  </section>
-
   <!-- Outside connections (outside.js) -->
   <section class="card out conn adm" id="outside" aria-labelledby="outsideTitle" hidden>
     <h2 id="outsideTitle">Outside connections</h2>
@@ -385,7 +376,6 @@
 
   <datalist id="labNames"></datalist>
   <datalist id="labShown"></datalist>
-  <datalist id="labmapNames"></datalist>
 </main>
 <script src="js/moved.js"></script>
 <script src="js/util.js"></script>
