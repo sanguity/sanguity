@@ -186,7 +186,7 @@
       edit && watch ? way({id: "phone", ...phone(watch)}) : null,
       edit || imports.some(x => x.origin === "upload") ? way({id: "upload", title: edit ? null : "Uploads", link: edit, ...uploads(imports)}) : null,
       edit || imports.some(x => x.origin === "manual") ? way({id: "manual", title: edit ? null : "Typed in", link: edit, ...typed(imports)}) : null,
-      edit ? way({id: "link", state: "", last: "A SMART Health Link or its QR code, from a provider, insurer or app."}) : null,
+      edit ? way({id: "link", state: "", last: "Experimental: a SMART Health Link or its QR code, from a provider, insurer or app."}) : null,
       way({id: "history", state: total ? "ok" : "off", status: total ? plural(total, "import", "imports") : "Nothing imported yet",
            last: total ? `Latest: ${done[0].name || done[0].label} · ${when(done[0].at)}` : null})].filter(Boolean);   // (the setup build's too)
     const nothing = !live.length && !total && !set;

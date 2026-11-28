@@ -1,6 +1,6 @@
 /* Sanguity · importing an upload in the background (#20), in one card from the first file sent to the records saved
    (#281). The upload's drop target (import.js) makes the card (frame, below), sends the files with it, then calls
-     window.sanguityImport.uploaded({profileId, uploadId[, frame][, container][, importer][, title]})
+     window.sanguityImport.uploaded({profileId, uploadId[, frame][, container][, importer][, title][, size: said beside it]})
    once the upload is finished; a Health Link (import-shl.js) calls it too, and follow() shows an import started
    elsewhere (a connected source's first pull, one waiting for you). This starts the import, polls it (about once a
    second, slower the longer it runs), shows the stage, then its review (#22, #282: jobReview): what it would add by kind, the dates it covers, and the
@@ -134,7 +134,7 @@
   }
   // an import started from files already on the server: in the upload's card (frame), else in a card of its own
   // from Recognising on
-  const own = opts => opts.frame || frame({container: opts.container, title: opts.title, steps: ["find", "review", "saved"], pid: opts.profileId});
+  const own = opts => opts.frame || frame({container: opts.container, title: opts.title, size: opts.size, steps: ["find", "review", "saved"], pid: opts.profileId});
   /* a mark on the card for Sources (#283), on its job's own part, which its scripts look for, and on the whole card */
   const tag = (card, k, v) => { card.dataset[k] = v; const f = FRAMES.get(card); if (f) f.card.dataset[k] = v; };
 
@@ -544,6 +544,7 @@
           node("p", {class: "hint", text: j.new ? `Nothing is saved until you ${saveVerb(j)} with the button at the foot.`
             : sgNothing(j) ? "Nothing in this upload is left to add to this profile. Cancel it to remove the upload."
             : "Everything in this upload is in this profile already. Tick a duplicate to add it again anyway, or cancel."}),
+          j.importer === "pdf-labs" ? node("p", {class: "howto", text: "Experimental: check each value against the PDF before adding."}) : null,   // (#1122)
           j.new ? tiles(j) : null, restoredLine(j.restores, false), split(j), labs.part, same.part, dups.part, copiesLine(j), updatesLine(j), changedLine(j), changes.part, notes(j),
           node("div", {class: "sg-bar imp-actions", role: "region", "aria-label": "Add or cancel this import"},
             node("span", {class: "sg-bar-what"}, node("span", {class: "sg-bar-n", text: "Not saved yet"}), msg),

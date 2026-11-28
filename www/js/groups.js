@@ -53,10 +53,10 @@ const SG_PAGES = {
     {id: "phone", title: "Phone and watch", icon: "watch", part: "Connected", has: ["watch", "cycle"], needs: "editor",   // cycle tracking (#183)
      words: "health connect android watch phone steps sleep iphone apple health auto export upload address header key make new secret qr code",
      finds: [["Cycle tracking", "cycle", "period menstrual turn off stop delete data"]]},   // (#495: an iPhone's words; #499: its danger zone's)
-    {id: "upload", title: "Upload files", icon: "upload", part: "One-off", has: ["importer"], needs: "editor", words: "import zip folder files export takeout"},
+    {id: "upload", title: "Upload files", icon: "upload", part: "One-off", has: ["importer"], needs: "editor", words: "import zip folder files export takeout pdf lab report quest labcorp"},
     {id: "manual", title: "Type records in", icon: "keyboard", part: "One-off", has: ["typeIn"], needs: "editor",
      words: "manual enter lab result home reading blood pressure weight payment cost"},
-    {id: "link", title: "Paste a Health Link", icon: "link", part: "One-off", has: ["healthLink"], needs: "editor", words: "smart health link shl qr code"},
+    {id: "link", title: "Paste a Health Link", icon: "link", part: "One-off", has: ["healthLink"], needs: "editor", words: "smart health link shl qr code experimental"},
     {id: "history", title: "Import history", icon: "history", part: "History", has: ["history"], words: "imports undo remove"},
   ]},
   sharing: {page: "sharing.html", title: "Sharing", icon: "share-2", profile: true, words: "share who sees", groups: [
