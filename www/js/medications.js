@@ -103,7 +103,8 @@ function renderMedications() {
     el("summary", {}, el("h2", {text: `Past (${past.length})`})),
     medRows("Past medications", ["When", "Last listed as", "Pharmacy fills"], past, m => {
       const s = m.spans.at(-1), f = medLastFill(m);
-      return [s ? `${fmtD(m.spans[0].ts)} – ${s.te != null && s.to !== s.from ? fmtD(s.te) : "listed as " + (s.status || "stopped").toLowerCase()}`
+      return [s ? [`${fmtD(m.spans[0].ts)} – ${s.te != null && s.to !== s.from ? fmtD(s.te) : "listed as " + (s.status || "stopped").toLowerCase()}`,
+          ...(s.reason ? [el("br"), `Why it stopped: ${s.reason}`] : [])]   // (#1161) in the person's own words
           : `pharmacy fills, ${fmtD(m.fills[0].ts)} – ${fmtD(f.ts)}`,
         medListed(m) || "Not given", m.fills.length ? String(m.fills.length) : "None"];
     })) : null;

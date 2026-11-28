@@ -5,9 +5,9 @@
    the fresh check in the card) or puts them back (genRsDiscard); saved, the card says Restart needed with Restart now,
    which stops the app (its question says it starts again only where its container restarts it: the server's
    restart_says), then waits for it to answer and reads the card again. A new value is
-   tried and kept once the server has run healthy with it; one that didn't is said here, with why. One the server's
-   environment sets is plain text with its variable (no control: util.js envRow, #1119). call(), sayIn(), ask() and
-   plural() are the page's. */
+   tried and kept once the server has run healthy with it; one that didn't is said here, with why. The environment
+   sets none of them (#1158): what it set was taken in once, which this card says until it's been read (rsTaken).
+   call(), sayIn(), ask() and plural() are the page's. */
 "use strict";
 let RS = null;   // the server's answer: {settings: [...], restart_needed, trying, fell_back, unreadable, settings_at}
 const rsId = name => "rs-" + name.toLowerCase().replace(/_/g, "-");
@@ -27,11 +27,6 @@ function rsDraw(note, typed = {}) {
     const id = rsId(st.name), waits = "next" in st, hint = [st.help,
       st.kind === "number" ? `From ${st.min.toLocaleString("en-US")} to ${st.max.toLocaleString("en-US")}; ${rsShown(st, st.default)} unless changed.` : `${st.default} unless changed.`,
       waits ? `In force now: ${rsShown(st, st.value)}; ${rsShown(st, st.next)} after a restart.` : ""].filter(Boolean).join(" ");
-    if (!st.can_change) {   // the environment's: its value as text, its variable, where to change it (util.js envRow, #1119)
-      rows.push(envRow({...st, key: st.name, env: st.name}, RS.settings_at, {value: rsShown(st, st.value), help: hint,
-        head: ["p", {class: "set-row-name", id: id + "-lbl"}], attrs: {"data-name": st.name}}));
-      continue;
-    }
     const row = setRow([el("label", {for: id}, st.label, waits ? el("span", {class: "tag", text: "Restart needed"}) : null,
       el("span", {class: "tag set-unsaved", text: "not saved"})), el("p", {class: "hint", id: id + "-h", text: hint})], null, {"data-name": st.name});
     const input = el("input", st.kind === "number"

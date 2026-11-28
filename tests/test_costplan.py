@@ -50,7 +50,10 @@ CLAIMS = [claim(10, "2025-06-30", 90.0, 90.0),     # the day before the plan yea
 BUILT = {"built": "2026-11-01T00:00:00+00:00", "source": "fictional", "events": [e for e, _ in CLAIMS], "details": {},
          "labs": [], "costs": [c for _, c in CLAIMS], "upcoming": [], "problems": [], "milestones": [],
          "outOfPocket": {"payments": [   # paid the claim of 2025-07-01 (oop.py matches it)
-             {"d": "2025-07-20", "payee": "Lakeside Clinic", "group": "Medical bills", "amount": 120.0, "account": "Visa", "memo": "", "est": False}]}}
+             {"d": "2025-07-20", "payee": "Lakeside Clinic", "group": "Medical bills", "amount": 120.0, "account": "Visa", "memo": "", "est": False},
+             # (#1163) a premium, paid with an HSA card, and a payment for care that pays no claim
+             {"d": "2026-02-03", "payee": "Example Health (fictional)", "group": "Health insurance premiums", "amount": 186.0, "account": "HSA card", "memo": "", "est": False},
+             {"d": "2026-02-10", "payee": "Corner Pharmacy (fictional)", "group": "Pharmacy", "amount": 15.0, "account": "", "memo": "", "est": False}]}}
 
 
 def client():
@@ -98,10 +101,23 @@ class PlanYears(unittest.TestCase):
         self.assertEqual(o["plans"], [])
         self.assertEqual(sorted(ys), ["2025-01-01", "2026-01-01"])
         y25, y26 = ys["2025-01-01"], ys["2026-01-01"]
-        self.assertEqual((y25["towardDeductible"], y25["outOfPocket"], y25["deductible"], y25["plan"]), (190.0, 210.0, None, None))
+        self.assertEqual((y25["towardDeductible"], y25["share"], y25["deductible"], y25["plan"]), (190.0, 210.0, None, None))
         # 55 with no deductible part counts toward out of pocket; the adjustment's -20 counts as it is
-        self.assertEqual((y26["towardDeductible"], y26["outOfPocket"], y26["noSplit"]), (230.0, 375.0, 1))
+        self.assertEqual((y26["towardDeductible"], y26["share"], y26["noSplit"]), (230.0, 375.0, 1))
         self.assertEqual(len(y26["claims"]), 4)
+
+    def test_1b_premiums_apart_and_one_out_of_pocket(self):
+        """#1163: a year's out of pocket is the claims' shares with no payment matched plus the payments for care;
+        premiums are their own figure, never in it (nor matched to a claim), and an HSA's total counts what it paid"""
+        o, ys, ids = self.years()
+        y25, y26 = ys["2025-01-01"], ys["2026-01-01"]
+        # 2025: the 90 share unpaid, the 120 one paid by its payment (counted once, as the payment)
+        self.assertEqual((y25["unpaidShares"], y25["paid"], y25["premiums"], y25["outOfPocket"], y25["notPaid"]), (90.0, 120.0, 0.0, 210.0, 90.0))
+        # 2026: 55 + 300 + 40 unpaid (the -20 adjustment lists no share to pay), 15 paid for care; the 186 premium apart
+        self.assertEqual((y26["unpaidShares"], y26["paid"], y26["premiums"], y26["outOfPocket"]), (395.0, 15.0, 186.0, 410.0))
+        self.assertEqual((y26["hsa"], y26["fsa"], y26["insurancePaid"], y26["claimCount"]), (186.0, 0.0, 800.0, 4))
+        prem = next(p for p in o["payments"] if p["premium"])
+        self.assertEqual((prem["claim"], prem["hsa"], sum(p["premium"] for p in o["payments"])), (None, "HSA", 1))
 
     def test_2_plan_years_at_their_boundaries_and_family(self):
         self.send("POST", "plans", {"start": "2025-07-01", "deductible": 3000, "oop": 7500, "familyDeductible": 6000, "familyOop": 15000}, 201)
@@ -111,10 +127,10 @@ class PlanYears(unittest.TestCase):
                          ("2025-07-01", "2026-06-30", 3000.0, 7500.0, 6000.0, 15000.0))
         y = ys["2025-07-01"]
         self.assertEqual(sorted(y["claims"]), sorted(ids[f"fict:CL-{n}"] for n in (11, 12, 13, 14)))   # first and last day in
-        self.assertEqual((y["towardDeductible"], y["outOfPocket"], y["noSplit"], y["plan"]), (330.0, 455.0, 1, p["id"]))
+        self.assertEqual((y["towardDeductible"], y["share"], y["noSplit"], y["plan"]), (330.0, 455.0, 1, p["id"]))
         self.assertEqual((y["familyDeductible"], y["familyOop"]), (6000.0, 15000.0))
         # outside it, by calendar year: the day before (2025) and the day after (2026)
-        self.assertEqual((ys["2025-01-01"]["claims"], ys["2025-01-01"]["outOfPocket"]), ([ids["fict:CL-10"]], 90.0))
+        self.assertEqual((ys["2025-01-01"]["claims"], ys["2025-01-01"]["share"]), ([ids["fict:CL-10"]], 90.0))
         self.assertEqual((ys["2026-01-01"]["claims"], ys["2026-01-01"]["towardDeductible"]), ([ids["fict:CL-15"]], 0.0))
         self.assertEqual(list(ys), ["2026-01-01", "2025-07-01", "2025-01-01"], "newest first")
 

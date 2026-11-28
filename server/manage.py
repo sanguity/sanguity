@@ -29,12 +29,16 @@
                                          while the app runs: the live data isn't touched
   oidc-only off                          turn off Settings → Install → Accounts and sign-in → Sign-in provider's "Sign in with OIDC
                                          only", so passwords and passkeys sign in again (a provider that keeps everyone out)
-  config show                            the server's settings: each one's value, and whether the environment sets
-                                         it, an admin saved it in the app (or on Needs a restart, applied at start:
-                                         data/server-settings.json, #1121) or it's the default (#1006)
+  config show                            the server's settings: each one's value, and whether an admin saved it
+                                         in the app (or on Needs a restart, applied at start: data/server-settings.json,
+                                         #1121) or it's the default (#1006); the settings file is their one source of
+                                         truth, and the environment sets none of them (#1158)
+  config set SETTING VALUE               save a value for a setting (its name, like SESSION_DAYS, COOKIE_SECURE or
+                                         sync.staleDays), checked as the page checks it, in the running app within
+                                         seconds; one that needs a restart (like HASH_PARALLEL) at the next start
   config reset SETTING|--all             take away the value saved in the app for a setting (its name, like
-                                         SESSION_DAYS or sync.staleDays), or for all of them: each goes back to the
-                                         environment's or its default, in the running app within seconds. With
+                                         SESSION_DAYS or sync.staleDays), or for all of them: each goes back to its
+                                         default, in the running app within seconds. With
                                          SANGUITY_SAVED_SETTINGS=off in the app's environment, they're left out at
                                          start instead, until it's taken away (README, The server's settings).
                                          A setting that needs a restart (like UPLOAD_MAX_FILE_MB, FORWARDED_ALLOW_IPS
@@ -47,7 +51,7 @@
                                          The phone and watch data in it goes to the receiver, which puts it back when
                                          it next starts (#227)
 """
-import os, shutil, sys, tempfile, zipfile
+import json, os, shutil, sys, tempfile, zipfile
 
 from . import accounts, activity, atrest, backup, config, crypto, db as dbm, export, main, oidc, profiles as prof, server_settings, settings, watch_store
 
@@ -145,7 +149,7 @@ def _say_access(a, created, aside):
         print(f"Profile {pid} ({name}) was made after the backup and isn't in it: its records are in {aside}.")
 
 
-WHERE = {"environment": "set by the environment", "install": "saved in the app", "file": "changed on the page, applied at start",
+WHERE = {"environment": "set by the container", "install": "saved in the app", "file": "changed on the page, applied at start",
          "default": "the default"}
 
 
@@ -193,6 +197,8 @@ def _config(db, args):
         if st["fell_back"]:
             print(f"The last start fell back to the settings before: {st['fell_back']['why']}")
         return
+    if args[:1] == ["set"] and len(args) == 3:
+        return _config_set(db, args[1].strip(), args[2])
     if args[:1] != ["reset"] or len(args) != 2:
         sys.exit(__doc__)
     restart = []
@@ -230,9 +236,7 @@ def _config(db, args):
     for name in restart:
         src, value = server_settings.lookup(name)
         print(f"{name}: back to {_shown(server_settings.DEFS[name].default)}"
-              + (f" once the app starts again (docker compose restart app, or restart it where it's deployed); "
-                 f"{WHERE['environment']} as {_shown(value)}, which wins" if src == "environment" else
-                 " once the app starts again (docker compose restart app, or restart it where it's deployed)") + ".")
+              + " once the app starts again (docker compose restart app, or restart it where it's deployed).")
     if not gone and chosen and not restart:
         print("Nothing to reset: " + ("no setting has a value saved in the app." if args[1] == "--all"
                                       else f"{chosen[0].key} has no value saved in the app."))
@@ -242,6 +246,47 @@ def _config(db, args):
               f"it's {_shown(value)} now, {WHERE[src]}.")
     if gone:
         print("The running app uses it within a few seconds; nothing needs restarting.")
+
+
+def _config_set(db, name, text):
+    """(#1158) config set NAME VALUE: the page's own checks, then saved and logged by the command line. A variable's name
+    or an install setting's key; one that needs a restart is saved for the next start (Needs a restart's way)."""
+    if name in config.CONTAINER:
+        sys.exit(f"{name} is the container's own, not a setting: {config.CONTAINER[name]}.")
+    d = settings.SETTINGS.get((config.VARS[name].setting if name in config.VARS else name) or "")
+    if d is not None and d.scope == "install":
+        try:
+            if d.env:
+                raw = config.VARS[d.env].read(text.strip())
+            else:   # a number, a list or true/false as JSON; else the text itself
+                try:
+                    raw = json.loads(text)
+                except ValueError:
+                    raw = text
+            value = d.clean(list(raw) if isinstance(raw, tuple) else raw)
+        except (ValueError, TypeError) as e:
+            sys.exit(f"Not saved: {e}")
+        old = settings.stored(db, "install").get(d.key, d.default)
+        with dbm.transaction(db):
+            settings.put(db, d.key, value)
+            activity.log(db, "settings.install", detail={"setting": d.key, "label": d.label,
+                         **({} if d.private else {"from": old, "to": value})}, actor=activity.COMMAND_LINE)
+        print(f"{d.env or d.key}: {_shown(value)}, saved in the app. The running app uses it within a few seconds.")
+        return
+    if name in server_settings.DEFS:
+        dd = server_settings.DEFS[name]
+        try:
+            changed = server_settings.change({name: text.strip()}, by="the command line")
+        except server_settings.Refused as e:
+            sys.exit(f"Not saved: {e}")
+        with dbm.transaction(db):
+            for n, old, new in changed:
+                activity.log(db, "settings.install", detail={"setting": n, "label": f"{dd.label} ({dd.group}), at the next restart",
+                             "from": old, "to": new}, actor=activity.COMMAND_LINE)
+        print(f"{name}: {_shown(server_settings.next_values().get(name, dd.default))} once the app starts again (docker "
+              "compose restart app, or restart it where it's deployed)." if changed else f"{name} has that value already.")
+        return
+    sys.exit(f"There's no server setting called {name!r}. python -m server.manage config show lists them.")
 
 
 def _backup_command(cmd, args):
@@ -450,6 +495,9 @@ def _command(db, argv):
         _config(db, args)
     elif cmd == "oidc-only" and args == ["off"]:   # (#1109) the way back in when the sign-in provider keeps everyone out
         cfg = oidc.load(db)
+        if "only" in oidc.managed():   # (#1158, opt-in) the environment's: changed there alone
+            sys.exit(f"Sign in with OIDC only is managed by the server's environment ({config.managed_by('OIDC_ONLY')}): take it "
+                     "out there (or set it to 0) and start the app again.")
         if not cfg["only"]:
             print("Sign in with OIDC only is off already: passwords and passkeys sign in.")
         else:

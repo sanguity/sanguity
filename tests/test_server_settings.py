@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """The settings that need a restart (#1121, server/server_settings.py): changed on General → Needs a restart, kept in
 data/server-settings.json (0600), and read as the server starts, a restart simulated by calling the start-up path
-(server_settings.start) in-process. Each applies only after a restart, the environment's wins, a value past its
+(server_settings.start) in-process. Each applies only after a restart, the environment's is taken in once and
+ignored after (#1158), a value past its
 bounds is refused, a pending value that doesn't come up healthy falls back to the last good one and says so,
 Restart now asks for the fresh check, is logged and copies the receiver's for it, and server.manage config reset puts
 the defaults back. Fictional data only.
@@ -13,10 +14,11 @@ from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp(prefix="sanguity-server-settings-test-")
-RESTARTS = ("UPLOAD_MAX_FILE_MB", "UPLOAD_MAX_TOTAL_MB", "UPLOAD_MAX_FILES", "JOURNAL_PHOTO_MAX_MB", "SYNC_HOURS",
+RESTARTS = ("UPLOAD_MAX_FILE_MB", "UPLOAD_MAX_TOTAL_MB", "UPLOAD_MAX_FILES", "UPLOAD_MAX_ZIP_RATIO", "JOURNAL_PHOTO_MAX_MB", "SYNC_HOURS",
             "SYNC_MAX_RESOURCES", "SYNC_MAX_ATTACHMENT_MB", "CONNECT_TIMEOUT", "SHL_MAX_MB", "SHL_MAX_FILES", "SHL_TIMEOUT",
-            "HASH_PARALLEL", "FORWARDED_ALLOW_IPS", "TZ", "SLOT_GRACE_DAYS", "RESTORE_KEEP_DAYS")
-for name in RESTARTS + ("SANGUITY_SAVED_SETTINGS", "TZ_DEFAULT", "PUBLIC_ORIGINS"):
+            "HASH_PARALLEL", "FORWARDED_ALLOW_IPS", "TZ", "SLOT_GRACE_DAYS", "RESTORE_KEEP_DAYS", "OIDC_TIMEOUT", "NOTIFY_TIMEOUT",
+            "DIRECTORY_TIMEOUT", "DOWNLOAD_TIMEOUT")
+for name in RESTARTS + ("SANGUITY_SAVED_SETTINGS", "TZ_DEFAULT", "PUBLIC_ORIGINS", "SANGUITY_DEPLOYMENT"):
     os.environ.pop(name, None)
 os.environ["CONNECTED_SOURCES"] = "1"
 KEYS = os.path.join(TMP, "watch-rx", "keys")
@@ -37,14 +39,16 @@ H = {"X-Sanguity": "1"}
 PW = "an admin of the fictional install"
 QUIET = lambda *a, **k: None   # noqa: E731
 # a value for each that isn't its default, and one past its bounds (or not one it takes)
-GOOD = {"UPLOAD_MAX_FILE_MB": 2048, "UPLOAD_MAX_TOTAL_MB": 8192, "UPLOAD_MAX_FILES": 5000, "JOURNAL_PHOTO_MAX_MB": 10,
+GOOD = {"UPLOAD_MAX_FILE_MB": 2048, "UPLOAD_MAX_TOTAL_MB": 8192, "UPLOAD_MAX_FILES": 5000, "UPLOAD_MAX_ZIP_RATIO": 100, "JOURNAL_PHOTO_MAX_MB": 10,
         "SYNC_HOURS": 6, "SYNC_MAX_RESOURCES": 5000, "SYNC_MAX_ATTACHMENT_MB": 100, "CONNECT_TIMEOUT": 60, "SHL_MAX_MB": 32,
         "SHL_MAX_FILES": 20, "SHL_TIMEOUT": 40, "HASH_PARALLEL": 4, "FORWARDED_ALLOW_IPS": "172.16.0.0/12, 10.0.0.5",
-        "TZ": "America/Chicago", "SLOT_GRACE_DAYS": 14, "RESTORE_KEEP_DAYS": 60}
-BAD = {"UPLOAD_MAX_FILE_MB": 5000, "UPLOAD_MAX_TOTAL_MB": 0, "UPLOAD_MAX_FILES": 10**6, "JOURNAL_PHOTO_MAX_MB": 26,
+        "TZ": "America/Chicago", "SLOT_GRACE_DAYS": 14, "RESTORE_KEEP_DAYS": 60, "OIDC_TIMEOUT": 30, "NOTIFY_TIMEOUT": 20,
+        "DIRECTORY_TIMEOUT": 120, "DOWNLOAD_TIMEOUT": 90}
+BAD = {"UPLOAD_MAX_FILE_MB": 5000, "UPLOAD_MAX_TOTAL_MB": 0, "UPLOAD_MAX_FILES": 10**6, "UPLOAD_MAX_ZIP_RATIO": 5, "JOURNAL_PHOTO_MAX_MB": 26,
        "SYNC_HOURS": 0, "SYNC_MAX_RESOURCES": 10, "SYNC_MAX_ATTACHMENT_MB": 2048, "CONNECT_TIMEOUT": 1, "SHL_MAX_MB": 1000,
        "SHL_MAX_FILES": 0, "SHL_TIMEOUT": 600, "HASH_PARALLEL": 64, "FORWARDED_ALLOW_IPS": "proxy.example.test",
-       "TZ": "Mars/Olympus_Mons", "SLOT_GRACE_DAYS": 0, "RESTORE_KEEP_DAYS": 1.5}
+       "TZ": "Mars/Olympus_Mons", "SLOT_GRACE_DAYS": 0, "RESTORE_KEEP_DAYS": 1.5, "OIDC_TIMEOUT": 61, "NOTIFY_TIMEOUT": 2,
+       "DIRECTORY_TIMEOUT": 9, "DOWNLOAD_TIMEOUT": 301}
 
 
 def restart(**kw):
@@ -133,24 +137,51 @@ class RestartSettings(unittest.TestCase):
         ss.promote(say=QUIET)
         self.assertEqual({n: ss.lookup(n) for n in ss.DEFS}, {n: ("default", d.default) for n, d in ss.DEFS.items()})
 
-    def test_c_the_environment_wins(self):
-        """A variable set in the environment is the one in force whatever the file holds, and isn't changed here (409)."""
-        self.put({"UPLOAD_MAX_FILE_MB": 2048, "FORWARDED_ALLOW_IPS": "10.0.0.5", "TZ": "Europe/Paris"})
-        restart()
-        env = {"UPLOAD_MAX_FILE_MB": "1024", "FORWARDED_ALLOW_IPS": "*", "TZ": "Asia/Tokyo"}
+    def test_c_the_environment_taken_in_once(self):
+        """(#1158) The first start of this version copies what the environment sets into the file, as it was in force
+        (over the file's own, pending ones too), records it, and says so; a value these checks don't take isn't copied
+        (said). After that the environment changes nothing: the page changes each one, a later change to it is ignored
+        with a warning naming it, and the file is never overwritten by it again."""
+        self.put({"UPLOAD_MAX_FILE_MB": 2048, "TZ": "Europe/Paris"})   # pending, before the upgrade
+        doc = json.load(open(ss.path()))
+        doc.pop("taken")   # as a file from before this version
+        ss.write_doc(doc)
+        env = {"UPLOAD_MAX_FILE_MB": "1024", "FORWARDED_ALLOW_IPS": "10.0.0.0/8", "TZ": "Asia/Tokyo", "SHL_TIMEOUT": "forty",
+               "HASH_PARALLEL": "2"}
+        said = []
         with mock.patch.dict(os.environ, env):
-            self.assertEqual(ss.lookup("UPLOAD_MAX_FILE_MB"), ("environment", 1024))
-            self.assertEqual(config.setting("UPLOAD_MAX_FILE_MB"), 1024)
-            self.assertEqual(ss.uvicorn_options()["forwarded_allow_ips"], "*")
+            ss.forget()
+            ss.start(say=said.append)
+            ss.promote(say=QUIET)   # (it ran healthy)
+            self.assertEqual(ss.lookup("UPLOAD_MAX_FILE_MB"), ("file", 1024))
+            self.assertEqual(ss.uvicorn_options()["forwarded_allow_ips"], "10.0.0.0/8")
             self.assertEqual(self.c.get("/api/settings/phone").json()["tz"], "Asia/Tokyo")
+            self.assertEqual(ss.lookup("SHL_TIMEOUT"), ("default", 20))
+            self.assertEqual(ss.taken()["names"], ["UPLOAD_MAX_FILE_MB", "FORWARDED_ALLOW_IPS", "TZ"], "the default isn't one taken")
+            self.assertTrue(any("SHL_TIMEOUT" in s and "couldn't be taken in" in s and "forty" in s for s in said), said)
+            self.assertTrue(any("UPLOAD_MAX_FILE_MB, FORWARDED_ALLOW_IPS, TZ" in s for s in said), said)
+            with open(ss.receiver_path()) as f:
+                self.assertEqual(json.load(f), {"TZ": "Asia/Tokyo"}, "the receiver's copy, as it starts")
+            self.assertNotIn("1024", json.dumps(json.load(open(ss.path()))["taken"]), "a fingerprint, not the text")
             row = self.row("UPLOAD_MAX_FILE_MB")
-            self.assertEqual((row["value"], row["from"], row["can_change"]), (1024, "environment", False))
-            for name in env:
-                r = self.put({name: GOOD[name]})
-                self.assertEqual(r.status_code, 409, name)
-                self.assertIn(name, r.json()["detail"])
-        with mock.patch.dict(os.environ, {"UPLOAD_MAX_FILE_MB": ""}):   # compose's ${NAME:-}, unset in .env
-            self.assertEqual(ss.lookup("UPLOAD_MAX_FILE_MB"), ("file", 2048))
+            self.assertEqual((row["value"], row["from"], row["can_change"]), (1024, "file", True))
+            self.assertEqual(self.put({"UPLOAD_MAX_FILE_MB": 3000}).status_code, 200, "the page changes it")
+        later = {**env, "UPLOAD_MAX_FILE_MB": "512", "SYNC_HOURS": "3"}   # .env changed later
+        said = []
+        with mock.patch.dict(os.environ, later):
+            ss.forget()
+            ss.start(say=said.append)
+            ss.promote(say=QUIET)
+            self.assertEqual(ss.lookup("UPLOAD_MAX_FILE_MB"), ("file", 3000), "the page's, never the environment's again")
+            self.assertEqual(ss.lookup("SYNC_HOURS"), ("default", 12))
+            warned = sorted(n for n in later if any(f"{n} is set in the environment" in s and "ignored" in s for s in said))
+            self.assertEqual(warned, ["SYNC_HOURS", "UPLOAD_MAX_FILE_MB"], said)
+            self.assertFalse(ss.take_late(say=QUIET), "once")
+        ss.reset(["UPLOAD_MAX_FILE_MB"])
+        with mock.patch.dict(os.environ, env):
+            ss.forget()
+            restart()
+            self.assertEqual(ss.lookup("UPLOAD_MAX_FILE_MB"), ("default", 4096), "a reset isn't undone by the environment")
 
     def test_d_bounds_refused(self):
         """A value past its bounds (or not one it takes) is refused, 400, and nothing is saved."""
@@ -271,8 +302,8 @@ class RestartSettings(unittest.TestCase):
         self.assertEqual(rows[-4:], ["settings.install"] * 3 + ["server.restart"])
 
     def test_i_the_receiver_reads_its_copy(self):
-        """The receiver takes the app's copy as it starts, the environment's winning, a zone it doesn't know left at
-        UTC; and it sees the copy change (then restarts)."""
+        """The receiver takes the app's copy as it starts, never its own environment's (#1158), a zone it doesn't know
+        left at UTC; and it sees the copy change (then restarts)."""
         ss.write_receiver({"TZ": "Europe/Paris", "SLOT_GRACE_DAYS": 10, "RESTORE_KEEP_DAYS": 60}, say=QUIET)
 
         def receiver(**env):
@@ -284,8 +315,8 @@ class RestartSettings(unittest.TestCase):
         rx = receiver()
         self.assertEqual((rx.DEFAULT_TZ, rx.SLOT_GRACE, rx.RESTORE_KEEP), ("Europe/Paris", 10 * 86400, 60 * 86400))
         self.assertFalse(rx.settings_changed())
-        rx2 = receiver(TZ_DEFAULT="Asia/Tokyo", SLOT_GRACE_DAYS="3")
-        self.assertEqual((rx2.DEFAULT_TZ, rx2.SLOT_GRACE), ("Asia/Tokyo", 3 * 86400))
+        rx2 = receiver(TZ_DEFAULT="Asia/Tokyo", TZ="Asia/Tokyo", SLOT_GRACE_DAYS="3", RESTORE_KEEP_DAYS="5")
+        self.assertEqual((rx2.DEFAULT_TZ, rx2.SLOT_GRACE, rx2.RESTORE_KEEP), ("Europe/Paris", 10 * 86400, 60 * 86400))
         ss.write_receiver({"SLOT_GRACE_DAYS": 11, "HASH_PARALLEL": 4}, say=QUIET)
         self.assertTrue(rx.settings_changed())
         with open(ss.receiver_path()) as f:
@@ -322,31 +353,37 @@ class RestartSettings(unittest.TestCase):
             manage.run(["config", "reset", "SHL_TIMEOUT"])
         self.assertIn("nothing to reset", out.getvalue())
 
-    def test_k_the_environment_always_wins(self):
-        """#1131's review: a variable the environment sets is in force even where these checks wouldn't take it (more
-        than 20 proxies, as Cloudflare's 22 ranges, a "unix:" one, * among others, a zone this machine doesn't know, a
-        number it can't read): never dropped for the file's or the default's in silence. Locked on the page, given to
-        uvicorn as it's set, and a warning logged."""
-        self.put({"FORWARDED_ALLOW_IPS": "10.0.0.5", "SLOT_GRACE_DAYS": 30, "UPLOAD_MAX_FILE_MB": 2048})
-        restart()
-        cloudflare = ", ".join(f"198.51.{i}.0/24" for i in range(22))
-        for env, want in ((cloudflare, cloudflare), ("unix:/run/proxy.sock", "unix:/run/proxy.sock"), ("*, 10.0.0.1", "*, 10.0.0.1")):
-            with mock.patch.dict(os.environ, {"FORWARDED_ALLOW_IPS": env}), self.assertLogs("sanguity", "WARNING") as said:
-                ss._warned.clear()
-                self.assertEqual(ss.lookup("FORWARDED_ALLOW_IPS"), ("environment", want))
+    def test_k_what_the_page_wouldnt_take_is_never_taken_weaker(self):
+        """(#1158's review, #1131's) A value the environment sets that these checks wouldn't take is never taken in weaker
+        than it was set: a number past its bounds is the nearest bound; the trusted proxies keep the entries that pass (a
+        network with host bits set, which uvicorn trusted nobody for, more than 20, or * among others, left out: never
+        widened), and with none this machine's own, never * (a template's default); a zone or a number it can't read at
+        all isn't taken. Each is said, left out of "seen" and named with what was used, and said again at every start."""
+        cloudflare = [f"198.51.{i}.0/24" for i in range(22)]
+        d = ss.DEFS["FORWARDED_ALLOW_IPS"]
+        for env, want in ((", ".join(cloudflare), ", ".join(cloudflare[:20])), ("172.18.0.5/16", "127.0.0.1"),
+                          ("172.18.0.5/16, 10.0.0.1", "10.0.0.1"), ("*, 10.0.0.1", "10.0.0.1"), ("unix:/run/proxy.sock", "127.0.0.1")):
+            os.unlink(ss.path())
+            said = []
+            with mock.patch.dict(os.environ, {"FORWARDED_ALLOW_IPS": env, "TZ": "Mars/Olympus_Mons", "SLOT_GRACE_DAYS": "soon",
+                                              "UPLOAD_MAX_FILE_MB": "99999", "SHL_TIMEOUT": "2"}), mock.patch.object(d, "default", "*"):
+                ss.forget()
+                ss.start(say=said.append)
+                self.assertEqual(ss.lookup("FORWARDED_ALLOW_IPS")[1], want, env)
                 self.assertEqual(ss.uvicorn_options()["forwarded_allow_ips"], want)
-                row = self.row("FORWARDED_ALLOW_IPS")
-                self.assertEqual((row["from"], row["can_change"]), ("environment", False))
-                self.assertEqual(self.put({"FORWARDED_ALLOW_IPS": "10.0.0.6"}).status_code, 409)
-            self.assertIn("FORWARDED_ALLOW_IPS", said.output[0])
-        with mock.patch.dict(os.environ, {"TZ": "Mars/Olympus_Mons", "SLOT_GRACE_DAYS": "soon", "UPLOAD_MAX_FILE_MB": "lots"}):
-            with self.assertLogs("sanguity", "WARNING"):
-                ss._warned.clear()
-                self.assertEqual(ss.lookup("TZ"), ("environment", "Mars/Olympus_Mons"))
-                self.assertEqual(ss.lookup("SLOT_GRACE_DAYS"), ("environment", 7), "the receiver's reading of one it can't")
-            self.assertEqual(ss.lookup("UPLOAD_MAX_FILE_MB"), ("environment", 4096), "not the file's 2048")
-            self.assertEqual({r["name"]: r["can_change"] for r in self.state()["settings"] if r["name"] in ("TZ", "SLOT_GRACE_DAYS", "UPLOAD_MAX_FILE_MB")},
-                             {"TZ": False, "SLOT_GRACE_DAYS": False, "UPLOAD_MAX_FILE_MB": False})
+                self.assertEqual((ss.lookup("UPLOAD_MAX_FILE_MB"), ss.lookup("SHL_TIMEOUT")), (("default", 4096), ("file", 5)))
+                self.assertEqual((ss.lookup("TZ"), ss.lookup("SLOT_GRACE_DAYS")), (("default", "UTC"), ("default", 7)))
+                t = ss.taken()
+                self.assertEqual(sorted(t["adjusted"]), ["FORWARDED_ALLOW_IPS", "SHL_TIMEOUT", "SLOT_GRACE_DAYS", "TZ", "UPLOAD_MAX_FILE_MB"])
+                self.assertIn("4096 is used", t["adjusted"]["UPLOAD_MAX_FILE_MB"])
+                self.assertEqual(json.load(open(ss.path()))["taken"]["seen"], {}, "none of them seen: said at every start")
+                said = []
+                ss.forget()
+                ss.start(say=said.append)
+                self.assertTrue(any("UPLOAD_MAX_FILE_MB in the environment couldn't be taken in as it's set" in s for s in said), said)
+        self.assertEqual({k: ss.proxy_default(k) for k in ("compose", "release", "truenas", "casaos", "unraid", "allinone", "", "other", "k8s")},
+                         {"compose": "*", "release": "*", "truenas": "*", "casaos": "*", "unraid": "*", "allinone": "*",
+                          "": "127.0.0.1", "other": "127.0.0.1", "k8s": "127.0.0.1"}, "* only under Sanguity's own templates")
 
     def test_l_trusting_everyone_and_the_proxy_in_between(self):
         """#1131's review: 0.0.0.0/0 and ::/0 are *; trusting everyone is typed to confirm first (the one rule's 409); a
@@ -393,15 +430,10 @@ class RestartSettings(unittest.TestCase):
         self.assertIn("stays stopped until you start it yourself", says)
 
     def test_n_proxies_exactly_as_given(self):
-        """#1131's re-review: the environment's proxies reach uvicorn as its own text, never widened (10.0.0.5/8 isn't
-        made 10.0.0.0/8); on the page a network with host bits set is refused, saying which it's in; networks that
+        """#1131's re-review: on the page a network with host bits set is refused, saying which it's in (never widened:
+        10.0.0.5/8 isn't made 10.0.0.0/8); networks that
         together are every IPv4 or IPv6 address are refused (* says so, and is confirmed); the typed confirmation
         matches whatever its case."""
-        for env in ("10.0.0.5/8", "10.0.0.5, 172.16.0.0/12", " 10.0.0.1 ,10.0.0.2"):
-            with mock.patch.dict(os.environ, {"FORWARDED_ALLOW_IPS": env}), self.assertNoLogs("sanguity", "WARNING") if env != "10.0.0.5/8" else self.assertLogs("sanguity", "WARNING"):
-                ss._warned.clear()
-                self.assertEqual(ss.uvicorn_options()["forwarded_allow_ips"], env.strip())
-                self.assertEqual(ss.lookup("FORWARDED_ALLOW_IPS"), ("environment", env.strip()))
         with self.assertRaisesRegex(ss.Refused, r"10\.0\.0\.0/8"):
             ss.proxies("10.0.0.5/8")
         r = self.put({"FORWARDED_ALLOW_IPS": "10.0.0.5/8"})

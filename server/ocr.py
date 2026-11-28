@@ -29,6 +29,9 @@ English. Each run gets a folder of its own in the temporary folder with links to
   search(db, pid, q)              the ids of pid's records whose documents' text has q (the Timeline's search: all
                                   of what's typed, in lower case)
   text_of(db, pid, doc)           a document's text and state, for its drawer
+  read_picture(data)              the text of one picture read now and kept nowhere: an insurance card's photo, for
+                                  the suggestions its dialog makes (#1168, insurance.from_text), with the same
+                                  limits, languages and Tesseract run as a document's, one at a time
 
   python -m server.ocr check      recognises SAMPLE with the built-in English (CI's Docker jobs run it)
 """
@@ -582,6 +585,33 @@ def step(db):
     return True
 
 
+_card = threading.Lock()   # one card read at a time (a person waits for it, so it doesn't queue behind the pass)
+CARD_SECONDS = 60
+
+
+def read_picture(data):
+    """The text Tesseract finds in one picture (bytes of a JPEG, PNG or WebP, checked already), read now and kept
+    nowhere: its standard input, its standard output. {"state": "found" | "none" | "failed" | "off", "why",
+    "text"}; "off" when there's no text recognition on this server."""
+    if not available():
+        return {"state": "off"}
+    pages = dimensions(data)
+    if not pages or len(pages) != 1:
+        return {"state": "failed", "why": "unreadable"}
+    if pages[0][0] * pages[0][1] > MAX_PIXELS:
+        return {"state": "failed", "why": "too_big"}
+    codes = in_use()
+    with _card:
+        try:
+            with _tessdata(codes) as folder:
+                text = _tesseract(data, folder, codes, time.monotonic() + CARD_SECONDS).strip()[:MAX_CHARS]
+        except _OutOfTime:
+            return {"state": "failed", "why": "time"}
+        except _Unreadable:
+            return {"state": "failed", "why": "unreadable"}
+    return {"state": "found", "text": text} if re.search(r"[^\W_]{3,}", text) else {"state": "none"}
+
+
 def in_use():
     """The languages documents are read with: English, and those of ocr.languages there's a file for whose settings
     are only recognition's (_clean made them so as it was added; one put in the folder some other way, or by a
@@ -832,7 +862,7 @@ def download(db, code, who=None, ip=None):
     f, tmp = _temp()
     try:
         with f:
-            conn = net.connection(outside.for_ocr(db, who, ip), url, timeout=60)
+            conn = net.connection(outside.for_ocr(db, who, ip), url, timeout=config.setting("DOWNLOAD_TIMEOUT"))   # (#1158)
             try:
                 conn.request("GET", u.path, headers={"User-Agent": "Sanguity"})
                 r = conn.getresponse()

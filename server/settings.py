@@ -18,11 +18,12 @@ Adding a setting (#36-#46): one define() call below, with its section (add one t
 editor for its kind on the Settings screen (www/js/settings.js; "labs", "tiles", "names", "rules", "tabs",
 "theme" and "units" exist).
 
-A server setting the environment can also set (#999): an install setting with env="NAME", a variable of config.VARS,
-private=False and the variable's default. Where NAME is used, config.setting("NAME") gives the value in force: the
-environment's when it's set (then shown "set by the environment", and a change to it refused), else the one saved
-here, else the default. Its value and where it comes from (in_force) are the same everywhere: the API, effective(),
-install_values() and the server's own use.
+A server setting a variable stands for (#999): an install setting with env="NAME", a variable of config.VARS,
+private=False and the variable's default. Where NAME is used, config.setting("NAME") gives the value in force: the one
+saved here, else the default. The environment no longer sets it (#1158): on the first start of this version the
+environment's value was taken in once (settings_import.py), and a later change to it is ignored with a warning. Its
+value and where it comes from (in_force) are the same everywhere: the API, effective(), install_values() and the
+server's own use.
 
 settings.json, before schema version 18: each profile's copy (profiles/<id>/settings.json) is loaded into the
 table once at start-up (migrate_files), then deleted (#934). A setup build's settings.json
@@ -49,7 +50,7 @@ class Setting:
         # only once the admin has typed "type" (the count unless it says) back (routes_settings._confirmed, one rule)
         self.confirm = confirm
         self.scope, self.private, self.kind, self.help, self.merge = scope, private, kind, help, merge
-        self.env = env   # the variable of config.VARS it stands for (#999): the environment's value wins over it
+        self.env = env   # the variable of config.VARS it stands for (#999): taken in from the environment once (#1158)
         self.reread = reread   # a stored value is checked again when read: its check gives older values in today's terms
         self.screen = screen   # shown on the Settings screen (False: kept for a page of its own, like the guide's, #199)
         self.records = records   # the records carry it (#1135: keyDocs): a change moves the profile's records' revision
@@ -291,9 +292,9 @@ KEY_LABS = ["Hemoglobin", "Platelet Count", "WBC", "Automated Abs Neutrophil Cnt
             "ALT", "AST", "Total Bilirubin", "Potassium, Blood", "Sodium, Blood", "Magnesium"]
 
 section("overview", "Overview", "The tiles at the top of the Overview tab: key labs, and readings taken at home if you choose them.")
-section("trends", "Lab charts", "What the Labs tab charts before you pick anything.")
+section("trends", "Labs", "What the Labs tab charts before you pick anything, and the views saved for it.")   # (#1165: named by its tab)
 section("names", "Names", "Shorter or clearer names shown instead of the ones in the records.")
-section("health", "Workouts", "How the Body and activity tab counts workouts.")   # named as its group is (#409)
+section("health", "Body and activity", "How the Body and activity tab counts workouts.")   # named by its tab, in Dashboard (#1165; Workouts, its own group, #409)
 
 define("overview.keyLabs", "overview", "Key labs", KEY_LABS, lab_list(), kind="tiles",
        help="One tile each, in this order, for the labs this profile has results for.\nWhile this is the default list "
@@ -323,10 +324,9 @@ define("sync.attachAuto", "sync", "Fetch attachments automatically", True, yes_n
        help="Off: each sync lists the attachments it left out, and you fetch the ones you want.")
 define("sync.attachMaxMB", "sync", "Largest attachment fetched (MB)", min(20, ceiling_mb()),
        whole(1, ceiling_mb, "The largest attachment"), scope="install", private=False, kind="number",
-       # (#1008) where the ceiling is set: .env, which both compose files pass it from (#999), or the app's own
-       # environment variables where there's no .env (TrueNAS's Additional Environment Variables, an Unraid variable)
-       help=lambda: f"Bigger ones are left out and listed. At most {ceiling_mb()} MB, the server's limit: "
-                    "SYNC_MAX_ATTACHMENT_MB, on General → Needs a restart (or in .env or the app's environment variables).")
+       # (#1008, #1158) where the ceiling is set: General → Needs a restart, the page's like every server setting
+       help=lambda: f"Bigger ones are left out and listed. At most {ceiling_mb()} MB, the server's limit: One attachment, "
+                    "at most, under General → Needs a restart.")
 define("sync.attachTypes", "sync", "Kinds of attachment fetched", list(ATTACHMENT_TYPES),
        some_of(ATTACHMENT_TYPES, "Kinds of attachment"), scope="install", private=False, kind="choices",
        help="Other kinds (and these, when unticked) are left out and listed, to fetch if you want them.")
@@ -478,10 +478,9 @@ define("notify.url", "notify", "Notification server", "", notify_url, scope="ins
 # ---------------------------------------------------------------- Accounts and sign-in → Sign-in rules (#1001)
 # How people sign in, each applying at once where it's used (config.setting, or install_value for those no variable
 # stands for), with the fresh check and logged old and new as every install setting's change (#1006). Each is bounded,
-# and never more lenient than Sanguity's own default (#998): a value outside is refused (400), and the environment's
-# wins over it (a variable set there shows locked). Requiring two-factor sign-in for everyone is the meta row
-# require_2fa (accounts.two_factor_required, PATCH /api/settings), shown in this section too; the Secure cookie and the
-# password checks at once (COOKIE_SECURE, HASH_PARALLEL) are the environment's alone, shown read-only. Shortening a
+# and never more lenient than Sanguity's own default (#998): a value outside is refused (400). Requiring two-factor
+# sign-in for everyone is the meta row require_2fa (accounts.two_factor_required, PATCH /api/settings), shown in this
+# section too; the Secure cookie is chosen here (#1158), each way from automatic asked first (cookie_goes). Shortening a
 # sign-in or turning on idle sign-out ends sign-ins: the change counts them and asks first (routes_settings.py).
 IDLE_LEAST = 5   # minutes: a shorter idle sign-out would end a sign-in while its person reads a page
 
@@ -512,8 +511,9 @@ define("security.sessionDays", "security", "A sign-in lasts, with a second facto
        help="From signing in, with an authenticator app or a passkey. Shorter ends the sign-ins older than that; "
             "longer applies to new ones.")
 define("security.sessionHours", "security", "…without one (hours)", 12,
-       whole(1, 12, "A sign-in's length without a second factor"), scope="install", private=False, kind="number",
-       env="SESSION_HOURS_WITHOUT_2FA", help="For an account with no second factor yet.")
+       whole(0, 12, "A sign-in's length without a second factor"), scope="install", private=False, kind="number",
+       env="SESSION_HOURS_WITHOUT_2FA", help="For an account with no second factor yet. 0: no shorter limit, so a sign-in "
+       "without a second factor lasts as long as one with (the days above), as before Sanguity had this limit.")
 define("security.idleMinutes", "security", "Sign out when unused for (minutes)", 0, idle_minutes, scope="install",
        private=False, kind="number", env="SESSION_IDLE_MINUTES",
        help=f"0 is off. Otherwise from {IDLE_LEAST} to 1440 (a day): a sign-in left unused that long ends.")
@@ -537,6 +537,39 @@ define("security.reauthMinutes", "security", "The fresh check lasts (minutes)", 
        whole(1, 5, "The fresh check's minutes"), scope="install", private=False, kind="number", env="REAUTH_MINUTES",
        help="Before the most powerful changes, like these, Sanguity asks for the password, a code or a passkey again, "
             "unless one was given within this long.")
+COOKIE_CHOICES = {"auto": "Automatic", "always": "Always", "never": "Never"}
+
+
+def cookie_goes(db, before, after, request, s):
+    """(#1158) The Secure cookie away from automatic, asked first (routes_settings._confirmed): Always over a page that
+    came over plain HTTP signs everyone out here for good (the browser keeps no Secure cookie over HTTP); Never lets the
+    sign-in cookie travel unencrypted."""
+    https = request is not None and request.url.scheme == "https"
+    if after == before or after == "auto" and (before != "always" or https):
+        return None
+    if after == "auto":   # (#1158's review) from Always, over a page that came over plain HTTP (a change or a reset)
+        return {"count": 1, "type": "automatic", "title": "Mark the sign-in cookie Secure only over HTTPS?", "action": "Automatic",
+                "message": "This page came over plain HTTP as the server sees it (a reverse proxy that doesn't say HTTPS looks "
+                           "the same): with Automatic, the sign-in cookie of a request like this one is no longer marked "
+                           "Secure, so a browser may send it unencrypted."}
+    if after == "always":
+        if https:
+            return None
+        return {"count": 1, "type": "always secure", "title": "Always mark the sign-in cookie Secure?", "action": "Always Secure",
+                "message": "This page came over plain HTTP: with Always, browsers keep no sign-in here, so you and everyone "
+                           "reaching Sanguity this way are signed out and can't sign in again until it's reached over "
+                           "HTTPS (or python -m server.manage config reset COOKIE_SECURE is run)."}
+    return {"count": 1, "type": "never secure", "title": "Never mark the sign-in cookie Secure?", "action": "Never Secure",
+            "message": "Browsers will then send the sign-in cookie over plain HTTP too, where anyone on the network between "
+                       "can read it and sign in as that person. Only for a server reached over plain HTTP alone, on a network "
+                       "you trust."}
+
+
+define("security.cookieSecure", "security", "Secure sign-in cookie", "auto", one_of(COOKIE_CHOICES, "The Secure cookie"),
+       scope="install", private=False, kind="choice", env="COOKIE_SECURE", confirm=cookie_goes,
+       help="Automatic marks it Secure (sent only over HTTPS) when the request came over HTTPS, as your reverse proxy "
+            "says. Always and Never are for a proxy that doesn't say.")
+CHOICES["security.cookieSecure"] = COOKIE_CHOICES
 # failed sign-ins before each further try waits (security.Throttle's kinds), never more than its FREE
 SIGN_IN_TRIES = {"pair": "security.triesHere", "ip": "security.triesAddress", "user": "security.triesAccount"}
 define("security.triesHere", "security", "Wrong tries before a wait: one account, from one place", 5,
@@ -944,6 +977,18 @@ define("person.bloodType", "person", "Blood type", "", _person_check(_person.che
        help="As typed, for the emergency card; a blood type lab result in the records is used instead (#1126).")
 define("person.contacts", "person", "Emergency contacts", [], _person_check(_person.check_contacts), kind="contacts", screen=False,
        help="Name, relationship and phone of each, in order, for the emergency card (#1126).")
+from . import ecard as _ecard   # #1162: the emergency card as the person made it
+
+
+def _ecard_check(v):
+    try:
+        return _ecard.check(v)
+    except ValueError as e:
+        raise SettingError(str(e)) from None
+
+
+define("emergency.card", "person", "Emergency card", _ecard.empty(), _ecard_check, kind="emergencycard", screen=False,
+       help="What's on the emergency card, as added in its editor (Sharing → Emergency card), and where (#1162).")
 from . import targets as _targets   # #234: targets of your own for home readings, as the care team gave them
 
 
@@ -973,9 +1018,9 @@ def _groups_check(v):
 
 
 section("costs", "Costs", "The month a tax year starts in, for Costs' tax-year report.")
-define("costs.taxStart", "costs", "Tax year starts in", 1, whole(1, 12, "The tax year's first month"), kind="month", screen=False,
-       private=False, help="The first month of the tax year (1, January, for the calendar year). Costs' tax-year report "
-                           "(taxreport.py, #1136) sums the payments from it.")
+# (#1165) on Settings → Dashboard too, as Costs' own (taxreport.py, #1136)
+define("costs.taxStart", "costs", "Tax year starts in", 1, whole(1, 12, "The tax year's first month"), kind="month",
+       private=False, help="The tax-year report on Costs sums the payments from this month. January is the calendar year.")
 section("journal", "Journal", "Symptom groups: your own named sets of symptoms, logged in one go.")
 define("journal.groups", "journal", "Symptom groups", [], _groups_check, kind="groups", screen=False,
        help="Named sets of symptoms, such as “Migraine day”: headache, nausea, light sensitivity. Each is logged with "
@@ -1095,7 +1140,7 @@ def stored(db, scope, pid=None, uid=None):
 
 
 def effective(db, pid, uid):
-    """{key: (value, where it came from: "default", a scope or "environment")} for every setting, as seen by user uid
+    """{key: (value, where it came from: "default" or a scope)} for every setting, as seen by user uid
     on profile pid."""
     out = {k: (s.default, "default") for k, s in SETTINGS.items()}
     for scope in SCOPES:
@@ -1194,8 +1239,8 @@ config.saved = saved_values
 
 
 def in_force(key):
-    """(value, where it comes from) of an install setting that stands for a variable: "environment" when it's set,
-    "install" when saved here (and not left out: SANGUITY_SAVED_SETTINGS=off, #1006), else "default"."""
+    """(value, where it comes from) of an install setting that stands for a variable: "install" when saved here (and
+    not left out: SANGUITY_SAVED_SETTINGS=off, #1006), else "default"."""
     src, value = config.lookup(SETTINGS[key].env)
     return (list(value) if isinstance(value, tuple) else value), src
 

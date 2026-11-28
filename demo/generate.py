@@ -73,10 +73,12 @@ def add(t, k, title, sub="", detail=None, end=None, **extra):
 # ------------------------------------------------------------------ claims
 claim_no = 7_000_000
 oop_used = {}
+ded_used = {}   # (#1163) the part of each year's shares that went to a $1,500 deductible, as an EOB file says it
 
 
 def claim(d, prov, title, billed, cat, kind="medical", drug=None, denied=False):
-    """Insurer pays ~45% of billed (network discount); you owe 20% coinsurance up to a $4,000 yearly max."""
+    """Insurer pays ~45% of billed (network discount); you owe 20% coinsurance up to a $4,000 yearly max. A medical
+    claim says how much of your share went to a $1,500 yearly deductible (#1163); a pharmacy fill doesn't say."""
     global claim_no
     claim_no += R.randint(3, 40)
     allowed = round(billed * R.uniform(0.42, 0.58), 2)
@@ -91,13 +93,16 @@ def claim(d, prov, title, billed, cat, kind="medical", drug=None, denied=False):
             share = 15.0
         oop_used[yr] = oop_used.get(yr, 0) + share
         paid, owe, status = round(allowed - share, 2), round(share, 2), "PROCESSED"
+    ded = None if kind == "pharmacy" else round(min(owe, max(0.0, 1500 - ded_used.get(yr, 0))), 2)   # (no random draw: the rest stays as it was)
+    if ded is not None:
+        ded_used[yr] = round(ded_used.get(yr, 0) + ded, 2)
     i = add(at(d, 12), "claim", title, f"{INSURER} · {prov}",
             {"type": "claim", "insurer": INSURER, "kind": kind, "provider": prov, "drug": drug, "claimId": f"EX{claim_no}",
-             "status": status, "network": "IN_NETWORK", "billed": billed, "paid": paid, "owe": owe,
+             "status": status, "network": "IN_NETWORK", "billed": billed, "paid": paid, "owe": owe, **({"deductible": ded} if ded is not None else {}),
              "lines": [{"date": d.isoformat(), "desc": title, "code": "", "billed": billed,
                         **({"denied": ["Missing referral on file"]} if denied else {})}]})
     costs.append({"id": i, "d": d.isoformat(), "ins": INSURER, "billed": billed, "paid": paid, "owe": owe,
-                  "status": status, "kind": kind, "cat": cat, "prov": prov, "title": title})
+                  "status": status, "kind": kind, "cat": cat, "prov": prov, "title": title, **({"ded": ded} if ded is not None else {})})
     return owe
 
 
@@ -392,18 +397,26 @@ if BIG:
         add(msgs[0]["t"], "message", "Refill request", f"{len(msgs)} messages", {"type": "conversation", "messages": msgs})
 
 # ------------------------------------------------------------------ out-of-pocket payments
+# (#1163) as a payments spreadsheet the person downloaded and uploaded (server/importers/payments_csv.py), not a bank
+# feed: Date, Paid to, Amount, Paid with, For, Memo, written beside data.json as payments.csv and read back by that
+# importer, so the payments are its (keyed payments-csv:..., "From a payments file you uploaded" on Costs)
+rows = []
 m = date(FIRST.year, FIRST.month, 1)
 while m <= END:
-    payments.append({"d": m.replace(day=3).isoformat(), "payee": INSURER, "group": "Health insurance premiums",
-                     "amount": 186.0, "account": "Checking", "memo": "Monthly premium", "est": False})
-    payments.append({"d": m.replace(day=3).isoformat(), "payee": "Example Dental", "group": "Dental insurance premiums",
-                     "amount": 21.5, "account": "Checking", "memo": "Monthly premium", "est": False})
+    rows.append((m.replace(day=3).isoformat(), INSURER, 186.0, "Card", "Health insurance premiums", "Monthly premium"))
+    rows.append((m.replace(day=3).isoformat(), "Example Dental", 21.5, "Card", "Dental insurance premiums", "Monthly premium"))
     m = date(m.year + (m.month == 12), m.month % 12 + 1, 1)
 for d, payee, amt in owed_bills:
     if amt > 0 and d + timedelta(days=45) <= END:
-        payments.append({"d": (d + timedelta(days=R.randint(28, 45))).isoformat(), "payee": payee, "group": "Medical bills",
-                         "amount": amt, "account": "HSA", "memo": "Statement payment", "est": False})
-payments.sort(key=lambda p: p["d"])
+        rows.append(((d + timedelta(days=R.randint(28, 45))).isoformat(), payee, amt, "HSA card", "Medical bills", "Statement payment"))
+rows.sort(key=lambda r: r[0])
+os.makedirs(OUT, exist_ok=True)
+with open(os.path.join(OUT, "payments.csv"), "w", encoding="utf-8", newline="") as f:
+    f.write("Date,Paid to,Amount,Paid with,For,Memo\r\n" + "".join(
+        ",".join([d, '"' + p.replace('"', '""') + '"', f"{a:.2f}", w, g, memo]) + "\r\n" for d, p, a, w, g, memo in rows))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from server.importers import payments_csv   # noqa: E402  (standard library only, as build.py imports them)
+payments = payments_csv.parse({"payments.csv": os.path.join(OUT, "payments.csv")})["data"]["outOfPocket"]["payments"]
 
 # ------------------------------------------------------------------ upcoming and problems
 upcoming = [{"t": (END + timedelta(days=12)).isoformat(), "title": "Follow-up visit", "who": ONC, "where": CANCER, "dx": "", "procs": []},
@@ -590,8 +603,7 @@ lab_series += VITALS
 lab_series.sort(key=lambda s: (-s["n"], s["name"]))
 data = {"built": at(END, 6), "source": "Sanguity demo data (fictional)", "events": events, "details": details, "labs": lab_series,
         "upcoming": upcoming, "problems": problems, "familyHistory": family, "costs": costs,
-        "outOfPocket": {"payments": payments, "exported": END.isoformat(), "range": [FIRST.isoformat(), END.isoformat()],
-                        "excluded": "transfers between your own accounts", "balance": {"owed": 0, "asOf": END.isoformat()}},
+        "outOfPocket": {"payments": payments},   # (#1163) a payments file's: no account, transfers or balance
         "milestones": [{"date": DX.isoformat(), "label": "Diagnosis", "primary": True}, {"date": TX.isoformat(), "label": "Treatment start"},
                        {"date": TX_END.isoformat(), "label": "End of treatment"}],
         "clinicWeights": sorted(clinic_weights)}

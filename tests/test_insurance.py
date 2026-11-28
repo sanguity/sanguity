@@ -160,11 +160,162 @@ class Insurance(unittest.TestCase):
         self.add(name="Fictional Dental", member="D-77", group="", phones=[])
         db = dbm.connect()
         try:
-            self.assertEqual(insurance.card_lines(db, self.pid), [
+            lines = insurance.card_lines(db, self.pid)
+            self.assertEqual([{k: x[k] for k in ("line", "name", "member", "group")} for x in lines], [
                 {"line": f"{PLAN} · Member ID {MEMBER} · Group {GROUP}", "name": PLAN, "member": MEMBER, "group": GROUP},
-                {"line": "Fictional Dental · Member ID D-77", "name": "Fictional Dental", "member": "D-77", "group": ""}])
+                {"line": "Fictional Dental · Member ID D-77", "name": "Fictional Dental", "member": "D-77", "group": ""}],
+                "the keys #1126's card reads, as they were (#1162 reads them too)")
         finally:
             db.close()
+
+    def test_card_lines_say_what_the_person_chose(self):
+        """(#1168) the new fields under keys of their own; the line adds only the parts ticked for the card; "full" has
+        them all; a plan that has ended isn't on the card"""
+        more = {"kind": "medical", "order": "primary", "holder": "Sam Example", "relation": "spouse", "rxbin": "004336",
+                "rxpcn": "ADV", "rxgroup": "RX1234", "payer": "87726", "start": "2026-01-01"}
+        self.add(**more, card=["rx", "kind"])
+        self.add(name="Fictional Vision", member="V-1", group="", phones=[], kind="vision")
+        self.add(name="Fictional Old Plan", member="O-1", start="2020-01-01", end="2021-12-31", card=["payer"])
+        db = dbm.connect()
+        try:
+            lines = insurance.card_lines(db, self.pid)
+        finally:
+            db.close()
+        self.assertEqual([x["name"] for x in lines], [PLAN, "Fictional Vision"], "the ended plan is left off")
+        self.assertEqual(lines[0]["line"], f"{PLAN} · Member ID {MEMBER} · Group {GROUP} · Medical, primary · RxBIN 004336 · RxPCN ADV · RxGroup RX1234")
+        self.assertEqual(lines[0]["full"], f"{PLAN} · Member ID {MEMBER} · Group {GROUP} · Medical, primary · Policyholder Sam Example "
+                                           "(Spouse or partner) · RxBIN 004336 · RxPCN ADV · RxGroup RX1234 · Payer ID 87726 · Member services 1-800-555-0137")
+        self.assertEqual({k: lines[0][k] for k in more}, more)
+        self.assertEqual(lines[0]["phones"], [{"label": "Member services", "number": "1-800-555-0137"}])
+        self.assertEqual(lines[1]["line"], "Fictional Vision · Member ID V-1", "nothing ticked: as before")
+
+    def test_new_fields(self):
+        """(#1168) type and order, the policyholder, dates, pharmacy numbers, payer ID, website, the links to plan years
+        and claims and the emergency card's parts: kept, checked, encrypted; a plan kept before has them empty"""
+        more = {"kind": "dental", "order": "secondary", "holder": "Sam Example", "relation": "child", "start": "2026-01-01",
+                "end": "2026-12-31", "rxbin": "610014", "rxpcn": "FICTPCN", "rxgroup": "FICTRXGRP", "payer": "FICTPAYER77",
+                "website": "www.fictional-plan.example", "years": ["2026-07-01", "2026-07-01"], "payers": ["Fictional Insurer", "fictional insurer"],
+                "card": ["payer", "rx", "nonsense"]}
+        p = self.add(**more)["plans"][0]
+        self.assertEqual({k: p[k] for k in more}, {**more, "website": "https://www.fictional-plan.example", "years": ["2026-07-01"],
+                                                   "payers": ["Fictional Insurer"], "card": ["rx", "payer"]})
+        for bad, words in (({"kind": "auto"}, "plan type"), ({"order": "third"}, "order"), ({"relation": "boss"}, "relationship"),
+                           ({"start": "2026-13-01"}, "start date must be a date"), ({"end": "tomorrow"}, "end date must be a date"),
+                           ({"start": "2026-02-01", "end": "2026-01-01"}, "can't be before"),
+                           ({"website": "javascript:alert(1)"}, "website must be an address"), ({"website": "not a site"}, "website must"),
+                           ({"rxbin": "1" * 61}, "RxBIN can be at most"), ({"years": ["July"]}, "plan year's start must be a date"),
+                           ({"payers": ["x"] * 21}, "at most 20")):
+            r = self.c["robin"].post(self.url(), json={"name": "P", **bad}, headers=H)
+            self.assertEqual(r.status_code, 400, bad)
+            self.assertIn(words, r.json()["detail"], bad)
+        con = sqlite3.connect(config.DB_PATH)
+        try:
+            dump = "\n".join(con.iterdump())
+        finally:
+            con.close()
+        for word in ("FICTPCN", "FICTRXGRP", "FICTPAYER77", "Sam Example", "fictional-plan"):
+            self.assertNotIn(word, dump, "encrypted at rest, as the rest of the plan")
+        db = dbm.connect()   # a plan kept before #1168: its body has only the four fields
+        try:
+            with dbm.transaction(db):
+                old = db.execute("INSERT INTO insurance_plans(profile_id, body, created_by, created_name, created) VALUES(?, ?, NULL, 'robin', ?)",
+                                 (self.pid, insurance._enc({"name": "Before", "member": "B-1", "group": "", "phones": []}), dbm.now())).lastrowid
+        finally:
+            db.close()
+        p = next(x for x in self.c["kim"].get(self.url()).json()["plans"] if x["id"] == old)
+        self.assertEqual({k: p[k] for k in insurance.DEFAULTS}, insurance.DEFAULTS)
+
+    # ---------------------------------------------------------------- suggestions (#1168): never saved by themselves
+
+    def counts(self):
+        con = sqlite3.connect(config.DB_PATH)
+        try:
+            return con.execute("SELECT (SELECT COUNT(*) FROM insurance_plans), (SELECT COUNT(*) FROM activity)").fetchone()
+        finally:
+            con.close()
+
+    def test_read_the_card(self):
+        """A photo read by text recognition on this server: what it seems to say comes back as suggestions, and nothing
+        is kept (no plan, no file, no text); the activity log says only that a card was read. Off: it says so."""
+        from unittest import mock
+        from server import ocr
+        os.makedirs(os.path.join(TMP, "bin"), exist_ok=True)
+        os.makedirs(os.path.join(TMP, "tessdata"), exist_ok=True)
+        control, prog = os.path.join(TMP, "fake.json"), os.path.join(TMP, "bin", "tesseract")
+        with open(prog, "w") as f:
+            f.write(f'#!/bin/sh\nexec "{sys.executable}" -I "{os.path.join(ROOT, "tests", "fake_tesseract.py")}" "{control}" "$@"\n')
+        os.chmod(prog, 0o755)
+        with open(os.path.join(TMP, "tessdata", "eng.traineddata"), "wb") as f:
+            f.write(struct.pack("<i", 24) + struct.pack("<24q", *([-1] * 22 + [196, 300])) + b"\0" * 200)
+        with open(control, "w") as f:
+            json.dump({"text": "FICTIONAL HEALTH PLAN SILVER\nMember ID: FICTREAD123  Group: G-77\nRxBIN 004336 RxPCN ADV RxGrp RX9\n"
+                               "Member services 1-800-555-0168\nwww.fictional-plan.example"}, f)
+        read = lambda who="robin", data=PHOTO: self.c[who].post(self.url("/read"), content=data, headers={**H, "Content-Type": "image/jpeg"})  # noqa: E731
+        with mock.patch.object(ocr, "TESSERACT", prog), mock.patch.object(ocr, "TESSDATA", os.path.join(TMP, "tessdata")):
+            self.assertTrue(self.c["robin"].get(self.url()).json()["can_read"])
+            before, files = self.counts(), self.files()
+            r = read()
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(r.json(), {"state": "found", "found": {
+                "name": "FICTIONAL HEALTH PLAN SILVER", "member": "FICTREAD123", "group": "G-77", "rxbin": "004336", "rxpcn": "ADV",
+                "rxgroup": "RX9", "website": "https://www.fictional-plan.example",
+                "phones": [{"label": "Member services", "number": "1-800-555-0168"}]}})
+            self.assertEqual(self.counts(), (before[0], before[1] + 1), "no plan saved; one activity entry")
+            self.assertEqual(self.files(), files, "no photo kept")
+            log = self.c["robin"].get(f"/api/profiles/{self.pid}/activity?action=insurance").json()
+            self.assertEqual(log[0]["detail"], {"change": "read"})
+            self.assertNotIn("FICTREAD123", json.dumps(log))
+            con = sqlite3.connect(config.DB_PATH)
+            try:
+                self.assertNotIn("FICTREAD123", "\n".join(con.iterdump()))
+            finally:
+                con.close()
+            self.assertEqual(read("kim").status_code, 403, "viewers can't")
+            self.assertEqual(read(data=b"%PDF-1.4 not a picture").status_code, 400)
+            self.assertEqual(read(data=b"").status_code, 400)
+        with mock.patch.object(ocr, "TESSERACT", "off"):
+            self.assertFalse(self.c["robin"].get(self.url()).json()["can_read"])
+            self.assertEqual(read().json(), {"state": "off", "found": {}})
+
+    def test_suggestions_from_records(self):
+        """Plans the imported claims suggest (their Coverage's member ID and the rest), the claims' insurers and the plan
+        years to link to; a plan kept already isn't suggested again; nothing is saved"""
+        db = dbm.connect()
+        try:
+            uid = db.execute("SELECT id FROM users WHERE username='robin'").fetchone()[0]
+            pid = prof.create_profile(db, "Claims (fictional)", owner_id=uid)
+            db.execute("INSERT INTO memberships(user_id, profile_id, role) VALUES((SELECT id FROM users WHERE username='kim'), ?, 'viewer')", (pid,))
+            cov = {"payor": "Fictional Insurer", "plan": "Fictional Gold PPO", "member": "FICTCOV-1", "group": "GRP-9", "rxbin": "610014",
+                   "start": "2026-01-01", "relationship": "spouse"}
+            ev = lambda i, d: {"id": i, "t": d + "T00:00:00", "k": "claim", "title": "Office visit", "sub": ""}  # noqa: E731
+            cost = lambda i, d, ins, kind="medical": {"id": i, "d": d, "ins": ins, "billed": 100, "paid": 80, "owe": 20, "kind": kind}  # noqa: E731
+            with dbm.transaction(db):
+                records.store(db, pid, {"events": [ev(1, "2026-03-01"), ev(2, "2026-04-01"), ev(3, "2026-05-01")],
+                                        "details": {"1": {"type": "claim", "insurer": "Fictional Insurer", "coverage": cov},
+                                                    "2": {"type": "claim", "insurer": "Fictional Insurer", "coverage": cov},
+                                                    "3": {"type": "claim", "insurer": "Fictional Dental Co"}},
+                                        "labs": [], "costs": [cost(1, "2026-03-01", "Fictional Insurer"), cost(2, "2026-04-01", "Fictional Insurer"),
+                                                                cost(3, "2026-05-01", "Fictional Dental Co")]}, "dataset")
+                from server import costplan
+                costplan.save_plan(db, pid, {"id": uid, "username": "robin"}, {"start": "2026-01-01", "deductible": 500, "oop": 3000})
+        finally:
+            db.close()
+        before = self.counts()
+        got = self.c["robin"].get(self.url("/suggestions", pid=pid))
+        self.assertEqual(got.status_code, 200, got.text)
+        got = got.json()
+        self.assertEqual(got["plans"], [
+            {"name": "Fictional Dental Co", "member": "", "claims": 1, "last": "2026-05-01", "payers": ["Fictional Dental Co"], "kind": "medical"},
+            {"name": "Fictional Gold PPO", "member": "FICTCOV-1", "claims": 2, "last": "2026-04-01", "payers": ["Fictional Insurer"],
+             "group": "GRP-9", "rxbin": "610014", "start": "2026-01-01", "relation": "spouse", "kind": "medical"}][::-1])
+        self.assertEqual(got["payers"], [{"name": "Fictional Insurer", "claims": 2}, {"name": "Fictional Dental Co", "claims": 1}])
+        self.assertEqual(got["years"], [{"start": "2026-01-01", "end": "2026-12-31"}])
+        self.assertEqual(self.counts(), before, "nothing saved, nothing logged")
+        self.assertEqual(self.c["kim"].get(self.url("/suggestions", pid=pid)).status_code, 403)
+        # a plan with that member ID, and one linked to the dental insurer: neither suggested again
+        self.assertEqual(self.c["robin"].post(self.url(pid=pid), json={"name": "Mine", "member": "fictcov-1"}, headers=H).status_code, 201)
+        self.assertEqual(self.c["robin"].post(self.url(pid=pid), json={"name": "Teeth", "payers": ["Fictional Dental Co"]}, headers=H).status_code, 201)
+        self.assertEqual(self.c["robin"].get(self.url("/suggestions", pid=pid)).json()["plans"], [])
 
     # ---------------------------------------------------------------- the photos
 
@@ -233,7 +384,18 @@ class Insurance(unittest.TestCase):
         token = self.link(["visits", "insurance"])
         j = self.view(token).json()
         self.assertEqual(j["insurance"], [{"id": iid, "name": PLAN, "member": MEMBER, "group": GROUP, "front": True, "back": True,
-                                           "phones": [{"label": "Member services", "number": "1-800-555-0137"}]}])
+                                           "phones": [{"label": "Member services", "number": "1-800-555-0137"}],
+                                           **dict.fromkeys(insurance.FIELDS, "")}])
+        # (#1168) its new fields too, and nothing else: not what it's linked to on Costs, nor the emergency card's parts
+        self.c["robin"].put(self.url(f"/{iid}"), json={"name": PLAN, "member": MEMBER, "group": GROUP, "kind": "medical", "order": "primary",
+                                                    "holder": "Sam Example", "relation": "self", "rxbin": "004336", "payer": "87726",
+                                                    "website": "https://www.fictional-plan.example", "end": "2030-01-01",
+                                                    "years": ["2026-07-01"], "payers": ["FICT-LINKED-INSURER"], "card": ["rx"]}, headers=H)
+        got = self.view(token).json()["insurance"][0]
+        self.assertEqual(set(got), {"id", "name", "member", "group", "phones", "front", "back", *insurance.FIELDS})
+        self.assertEqual((got["kind"], got["holder"], got["rxbin"], got["payer"], got["website"], got["end"]),
+                         ("medical", "Sam Example", "004336", "87726", "https://www.fictional-plan.example", "2030-01-01"))
+        self.assertNotIn("FICT-LINKED-INSURER", self.view(token).text)
         self.assertEqual([s["label"] for s in j["sections"]], ["Visits and hospital stays", "Insurance cards"])
         r = self.view(token, card=iid, side="back")
         self.assertEqual((r.status_code, r.headers["content-type"], r.headers["cache-control"]), (200, "image/jpeg", "no-store"))

@@ -65,9 +65,9 @@ check changes without updating the list, and it exercises this table against a l
 | The journal | Read | Add, change, delete | Add, change, delete | No | If the link includes it (without who wrote what) | No |
 | The journal's photos (#161): `GET /api/profiles/{pid}/journal/photos/{id}`, sent first by `PUT …/journal/photos` | Read | Send, attach, remove | Send, attach, remove | No (404) | Only if its owner ticks "Photos in the journal" too (unticked by default; offered only when there are some), each fetched with the token like the view | No |
 | The journal's spots (#1139): a photo tagged as its entry is saved; `PUT …/journal/spots/{sid}` (rename), `POST …/spots/{sid}/merge`, `DELETE …/spots/photos/{id}` (untag) | Read (in the records) | Tag, rename, merge, untag | Tag, rename, merge, untag | No | No (a link's photos never say their spot) | No |
-| Insurance cards (#1137): `…/insurance`, a card's photo by `GET …/insurance/{id}/front` or `/back` | Read | Add, change, remove; send and take off photos | Add, change, remove; send and take off photos | No (404) | Only if its owner ticks "Insurance cards" (unticked by default; offered only when there are some): every plan, whatever the dates, each photo fetched with the token like the view | No |
+| Insurance cards (#1137): `…/insurance`, a card's photo by `GET …/insurance/{id}/front` or `/back`; (#1168) `POST …/insurance/read` (a photo read by text recognition, kept nowhere) and `GET …/insurance/suggestions` (from the records), owners and editors only | Read | Add, change, remove; send and take off photos; read a card, suggestions | Add, change, remove; send and take off photos; read a card, suggestions | No (404) | Only if its owner ticks "Insurance cards" (unticked by default; offered only when there are some): every plan, whatever the dates, each photo fetched with the token like the view | No |
 | The medication log (#235): `…/medications/doses` | Read | Log, correct, remove | Log, correct, remove | No | Only if its owner ticks "Medication log" (unticked by default), in the link's dates, notes included | No |
-| Your own medications and your changes to the records' (#1091): `…/medications/own`, `…/listed`, `…/hidden` | Read | Add, change, remove, hide, show again | Add, change, remove, hide, show again | No | No | No |
+| Your own medications and your changes to the records' (#1091), stopped taking and started again (#1161): `…/medications/own`, `…/listed`, `…/hidden`, `…/stopped`, `…/again`, `…/taking` | Read | Add, change, remove, hide, show again, mark stopped or started again | Add, change, remove, hide, show again, mark stopped or started again | No | No | No |
 | Costs' plan years and bills (#1127, #1128): `…/costs/plans`, `…/costs/bills` | Read | Add, change, remove | Add, change, remove | No | No | No |
 | Costs' tax-year report (#1136): `GET …/costs/tax-report?year=` (a preview, or the zip) | Download | Download; set the tax year's first month | Download; set the tax year's first month | No | No | No |
 | Follow-ups from a visit (#1138): `…/followups` | Read | Add, change, mark done, remove | Add, change, mark done, remove | No | No | Each one not done with a date, all day, "Sanguity follow-up" unless that one was set to show its words |
@@ -85,7 +85,8 @@ check changes without updating the list, and it exercises this table against a l
 | Cycle tracking: turn on or off, delete all of it | No | No | Yes | No | No | No |
 | A SMART Health Link pasted on Sources | No | Yes (after confirming) | Yes | No | No | No |
 | The visit summary PDF and its questions draft | Yes | Yes | Yes | No | No | No |
-| The emergency card (#1126): its preview, PDF and lock-screen image (`/api/profiles/{pid}/emergency`), files the person keeps | Yes | Yes | Yes | No (404) | No | No |
+| The emergency card (#1126): its preview, PDF and lock-screen image (`/api/profiles/{pid}/emergency`), files the person keeps | Yes (the saved card) | Yes | Yes | No (404) | No | No |
+| The emergency card's editor (#1162): what the records suggest, and saving what's on it (`PUT /api/profiles/{pid}/emergency`, encrypted) | No | Yes | Yes | No (404) | No | No |
 | Blood type and emergency contacts under About this person (#1126) | Read | Read and change | Read and change | No (404) | No (not in "About this person") | No |
 | Key documents (#1135): a document marked as an advance directive, a power of attorney, a POLST..., with where it's kept (`/api/profiles/{pid}/keydocs`) | Read | Read and mark | Read and mark | No (404) | No | No |
 | Settings: read; their own settings | Yes | Yes | Yes | Their own only | No | No |
@@ -216,7 +217,7 @@ Not opened as issues; written up here for the owner to file or drop:
   - The device cookie (`sg_device`) only separates one browser's sign-in tries from other people's; it's sent
     only to `/api/login` and lets nobody in.
 - **Connected sources are off by default** (#1096): behind the install setting `experimental.connectedSources`
-  (`CONNECTED_SOURCES` in the environment wins). Off, the server refuses every connections, sync and directory route
+  (`CONNECTED_SOURCES` in the environment is taken in once on upgrade, then ignored: #1158). Off, the server refuses every connections, sync and directory route
   (404, after the sign-in's own checks), runs no sync or directory update, and the outside gateway allows none of their
   hosts (`settings.connected_sources()`, one rule); connections and what they pulled are kept.
 - **`PUBLIC_ORIGINS` and `X-Forwarded-Host`:**

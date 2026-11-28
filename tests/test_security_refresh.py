@@ -35,6 +35,7 @@ from fastapi.routing import APIRoute   # noqa: E402
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, atrest, crypto, db as dbm, jobs, main, profiles as prof, records, settings, uploads   # noqa: E402
+import given   # noqa: E402  (#1158: a setting as the app holds it)
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
@@ -122,6 +123,7 @@ ROUTES = {
     ("POST", "/api/profiles/{pid}/summary/preview"): (USER, "viewer"), ("POST", "/api/profiles/{pid}/summary/pdf"): (USER, "viewer"),
     ("GET", "/api/profiles/{pid}/emergency"): (USER, "viewer"), ("POST", "/api/profiles/{pid}/emergency/pdf"): (USER, "viewer"),   # #1126
     ("POST", "/api/profiles/{pid}/emergency/image"): (USER, "viewer"),
+    ("POST", "/api/profiles/{pid}/emergency/preview"): (USER, "viewer"), ("PUT", "/api/profiles/{pid}/emergency"): (USER, "editor"),   # #1162
     ("PUT", "/api/profiles/{pid}/keydocs"): (USER, "editor"), ("DELETE", "/api/profiles/{pid}/keydocs/{event}"): (USER, "editor"),   # #1135
     ("DELETE", "/api/profiles/{pid}/members/{uid}"): (USER, "owner"),  # anyone may remove themself (leave)
     # editors
@@ -160,6 +162,7 @@ ROUTES = {
     ("POST", "/api/profiles/{pid}/insurance"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/insurance/{iid}"): (USER, "editor"),   # #1137
     ("DELETE", "/api/profiles/{pid}/insurance/{iid}"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/insurance/{iid}/{side}"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/insurance/{iid}/{side}"): (USER, "editor"),
+    ("POST", "/api/profiles/{pid}/insurance/read"): (USER, "editor"), ("GET", "/api/profiles/{pid}/insurance/suggestions"): (USER, "editor"),   # #1168
     ("PUT", "/api/profiles/{pid}/medications/doses/{did}"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/medications/doses/{did}"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/medications/own"): (USER, "editor"),        # your own medications and changes (#1091)
@@ -171,6 +174,8 @@ ROUTES = {
     ("PUT", "/api/profiles/{pid}/requests/{rid}"): (USER, "editor"), ("DELETE", "/api/profiles/{pid}/requests/{rid}"): (USER, "editor"),
     ("PUT", "/api/profiles/{pid}/requests/{rid}/import"): (USER, "editor"),
     ("PUT", "/api/profiles/{pid}/medications/listed"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/medications/hidden"): (USER, "editor"),
+    ("POST", "/api/profiles/{pid}/medications/stopped"): (USER, "editor"),    # stopped taking, started again, undo (#1161)
+    ("POST", "/api/profiles/{pid}/medications/again"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/medications/taking"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/family/own"): (USER, "editor"),             # family history of your own (#1134)
     ("PUT", "/api/profiles/{pid}/family/own/{eid}"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/family/own/{eid}"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/family/hidden"): (USER, "editor"),
@@ -209,6 +214,7 @@ ROUTES = {
     ("DELETE", "/api/settings/install/demo"): (ADMIN, None),
     ("GET", "/api/settings/install/restart"): (ADMIN, None), ("PUT", "/api/settings/install/restart/values"): (ADMIN, None),   # General → Needs a restart (#1121)
     ("POST", "/api/settings/install/restart"): (ADMIN, None),
+    ("POST", "/api/settings/install/taken/seen"): (ADMIN, None),   # General's word on what was taken from the environment (#1158)
     # General -> Text recognition (#1129): the pass, a language imported, downloaded or removed; and a document's text and
     # the search of documents' text, as the records are
     ("GET", "/api/settings/install/ocr"): (ADMIN, None), ("PUT", "/api/settings/install/ocr/languages/{name}"): (ADMIN, None),
@@ -401,7 +407,7 @@ class Reach(unittest.TestCase):
         from server import routes_connect, routes_directory   # (the routers refused while they're off)
         self.assertEqual(set(theirs), {(m, r.path) for rt in (routes_connect.api, routes_directory.router) for r in rt.routes for m in r.methods})
         fill = {"{pid}": str(self.pid), "{cid}": "1", "{sid}": "1"}
-        with mock.patch.dict(os.environ, {"CONNECTED_SOURCES": "0"}):
+        with given.settings(CONNECTED_SOURCES="0"):
             for m, path in theirs:
                 for k, v in fill.items():
                     path = path.replace(k, v)
@@ -478,7 +484,7 @@ PLAIN_SETTINGS = {"sync.attachAuto", "sync.attachMaxMB", "sync.attachTypes", "sy
                   "phone.uploadUrl",   # General → Phone receiver (#1003): the same
                   "notify.url",   # General → Notifications (#1130): the install's own server's address (its token is apart, sealed)
                   # Sign-in rules (#1001): how people sign in, numbers and a choice, none about anyone
-                  "security.sessionDays", "security.sessionHours", "security.idleMinutes", "security.profiles", "security.passwordMin",
+                  "security.sessionDays", "security.sessionHours", "security.idleMinutes", "security.profiles", "security.passwordMin", "security.cookieSecure",
                   "security.passwordMin2fa", "security.tempPasswordDays", "security.reauthMinutes", "security.triesHere",
                   "security.triesAddress", "security.triesAccount",
                   "directory.weekly",   # on or off (#992)

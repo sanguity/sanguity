@@ -205,7 +205,21 @@ class MedFields(BaseModel):
     status: Optional[str] = None
     prescriber: Optional[str] = None
     note: Optional[str] = None
+    reason: Optional[str] = None               # why it stopped, in the person's words (#1161)
     key: Optional[str] = None                  # an own entry's, its removal undone (POST); the records' (PUT .../listed)
+
+
+class Taking(BaseModel):
+    """(#1161) Stopped taking (day: the day it stopped, reason: the person's words or none) or Started again (day)."""
+    key: str
+    day: str
+    reason: Optional[str] = None
+
+
+class TakingBack(BaseModel):
+    """(#1161) Undo of Stopped taking or Started again: "was", the reply's."""
+    key: str
+    was: dict
 
 
 class Hidden(BaseModel):
@@ -285,6 +299,41 @@ def change_listed(pid: int, body: MedFields, request: Request, s=Depends(user), 
         before, eid = medications.set_change(db, pid, s, body.key, _listed(db, pid, body.key), fields=f)
         activity.log(db, "medication", s, pid, medications.log_detail("listed.change" if eid else "listed.back"), _client_ip(request))
     return _entry_reply(db, pid, {"id": eid, "key": body.key, "was": before})
+
+
+def _taking(db, pid, s, request, key, what, do):
+    try:
+        with dbm.transaction(db):
+            was = do()
+            activity.log(db, "medication", s, pid, medications.log_detail(what), _client_ip(request))
+    except LookupError:
+        raise HTTPException(404, "No such medication.")
+    except medications.EntryError as x:
+        raise HTTPException(400, str(x))
+    return _entry_reply(db, pid, {"key": key, **({"was": was} if what != "taking.back" else {})})
+
+
+@router.post("/api/profiles/{pid}/medications/stopped")
+def stopped(pid: int, body: Taking, request: Request, s=Depends(user), db=Depends(get_db)):
+    """(#1161) Stopped taking: a current medication, your own or the records', marked stopped on body.day with the
+    reason given or none; its history kept, its schedule ended there. "was": what Undo puts back."""
+    need(db, s, pid, "editor")
+    return _taking(db, pid, s, request, body.key, "taking.stop",
+                   lambda: medications.mark_stopped(db, pid, s, body.key, body.day, body.reason or ""))
+
+
+@router.post("/api/profiles/{pid}/medications/again")
+def started_again(pid: int, body: Taking, request: Request, s=Depends(user), db=Depends(get_db)):
+    """(#1161) Started again: a stopped medication taken again from body.day, the history before kept."""
+    need(db, s, pid, "editor")
+    return _taking(db, pid, s, request, body.key, "taking.again", lambda: medications.started_again(db, pid, s, body.key, body.day))
+
+
+@router.put("/api/profiles/{pid}/medications/taking")
+def taking_back(pid: int, body: TakingBack, request: Request, s=Depends(user), db=Depends(get_db)):
+    """(#1161) Undo: its stop, reason, status and the times it was started again as they were (body.was)."""
+    need(db, s, pid, "editor")
+    return _taking(db, pid, s, request, body.key, "taking.back", lambda: medications.put_taking(db, pid, s, body.key, body.was))
 
 
 @router.put("/api/profiles/{pid}/medications/hidden")

@@ -21,6 +21,8 @@ const el = (tag, attrs = {}, ...kids) => {
    (#245), so a part that may be left out (x ? el(…) : null) goes in through this, as el() leaves out its own children:
    box.append(...present(a, b ? el(…) : null)) */
 const present = (...kids) => kids.flat().filter(k => k != null);
+/* a picture's bytes as a data: address, the one kind the pages' policy lets an <img> show besides the app's own */
+const dataUrl = blob => new Promise((ok, no) => { const rd = new FileReader(); rd.onload = () => ok(rd.result); rd.onerror = no; rd.readAsDataURL(blob); });
 /* each kind of record's name: the Timeline's and the drawer's (core.js), and the command palette's on every page, an
    event's words as the Timeline searches them (store.js, palette.js: #463) */
 /* key documents (#1135, server/keydocs.py KINDS): a mark's kinds; keyDocWords(e) what a search finds a marked one by */
@@ -171,18 +173,19 @@ const helpNodes = (help, ...more) => {
    for another element than a div). -> the row */
 const setRow = (lbl, ctl, {tag = "div", ...attrs} = {}) => el(tag, {...attrs, class: "set-row" + (attrs.class ? " " + attrs.class : "")},
   el("div", {class: "set-row-lbl"}, lbl), el("div", {class: "set-row-ctl"}, ctl));
-/* (#1119) Install → General's rows of what can't be changed there, the same on every card: never a control that looks
-   changeable. envRow: a setting the server's environment sets (.env always wins, #1006), from GET settings/install
-   ({key, label, help, env, value}): its value as text (value: nodes, else st.value), "Set in .env: VAR" on its name's
-   line (head: the name's [tag, attrs]), its own help (helpId: an id for it), more under the value, and where this
-   install's settings are (at: settings/install's settings_at); attrs, the row's own. factRow: a read-only fact, its
-   value as text (a code chip only for what's worth copying), "Set by: …" under it where something sets it (text or
-   nodes: a link to where it's changed); env: its variable, when the environment set it. envTag: [a space, the tag],
-   the tag (.env) unindented where it wraps under its name, on a phone. -> the row */
+/* (#1119) Install's rows of what can't be changed there, the same on every card: never a control that looks
+   changeable. factRow: a read-only fact, its value as text (a code chip only for what's worth copying), "Set by: …"
+   under it where something sets it (text or nodes: a link to where it's changed); env: its variable, for one of the
+   container's own (#1158: the published receiver port; every server setting is changed on the page). envTag: [a space,
+   the tag], the tag (.env) unindented where it wraps under its name, on a phone. envRow (#1158, opt-in): one the
+   server's environment manages (the sign-in provider's fields, the notification token: server/config.py's MANAGED),
+   from its card's answer ({key, label, help, env}): its value as text (value: nodes, else st.value), "Managed by the
+   environment: VAR" on its name's line (head: the name's [tag, attrs]), its own help (helpId: an id for it), more
+   under the value, and where it's changed (at: where this install's settings are); attrs, the row's own. -> the row */
 const envTag = name => [" ", el("span", {class: "tag env", text: "Set in .env: " + name})];
 const envRow = (st, at, {value = String(st.value), head = ["p", {class: "set-row-name"}], help = st.help, helpId, more, attrs} = {}) => setRow(
-  present(el(...head, st.label, envTag(st.env)), helpId ? el("div", {id: helpId}, helpNodes(help)) : helpNodes(help)),
-  present(el("p", {}, value), more, el("p", {class: "hint", text: `Change it where this server's settings are, or take it out there to change it here: ${at}.`})),
+  present(el(...head, st.label, " ", el("span", {class: "tag env", text: "Managed by the environment: " + st.env})), helpId ? el("div", {id: helpId}, helpNodes(help)) : helpNodes(help)),
+  present(el("p", {}, value), more, el("p", {class: "hint", text: `Changed where it's set (${at}), or taken out there to change it here.`})),
   {"data-key": st.key, "data-env": st.env, ...attrs});
 const factRow = (name, help, value, by, env) => setRow([el("h3", {class: "sub"}, name, env ? envTag(env) : null), el("p", {class: "hint", text: help})],
   present([value].flat(2).map(v => typeof v === "string" ? el("p", {text: v}) : v), by ? el("p", {class: "hint"}, "Set by: ", by, ".") : null));
@@ -737,12 +740,12 @@ function labelCells(table) {
    first; Enter in it does the action. Escape or Cancel say no. Resolves true for the action, false otherwise, and
    focus goes back to whatever had it (the button that opened it). Use: if (!await ask({...})) return;
    A plain notice isn't asked: it goes in the page's message line beside what it's about (sayIn, above). */
-function ask({title, message = "", action = "OK", cancel = "Cancel", danger = false, field = null} = {}) {
+function ask({title, message = "", action = "OK", cancel = "Cancel", danger = false, field = null, cls = ""} = {}) {   // cls: the dialog's own class too
   const opener = document.activeElement, id = "sgAsk" + (ask.n = (ask.n || 0) + 1);
   return new Promise(resolve => {
     const no = el("button", {class: "btn", type: "button", text: cancel, onclick: () => box.close("")});
     const yes = el("button", {class: "btn " + (danger ? "danger" : "primary"), type: "submit", value: "yes", text: action});
-    const box = el("dialog", {class: "sg-ask", role: danger ? "alertdialog" : null, "aria-labelledby": id + "t", "aria-describedby": id + "m"},
+    const box = el("dialog", {class: "sg-ask" + (cls ? " " + cls : ""), role: danger ? "alertdialog" : null, "aria-labelledby": id + "t", "aria-describedby": id + "m"},
       el("form", {method: "dialog"},
         el("h2", {id: id + "t", text: title}),
         el("div", {class: "sg-ask-msg", id: id + "m"}, ...[].concat(message).filter(m => m != null && m !== "")
@@ -827,8 +830,10 @@ function liveFollow() {
 }
 function wireDialog(d) {
   d.sgWired = true;
+  // what every page shares back out first, before the dialog's own close handlers: one may take the dialog out of
+  // the page (ins-desk.js's), and the toasts with it, for good
+  d.addEventListener("close", liveFollow, {capture: true});
   d.addEventListener("close", () => {
-    liveFollow();
     if (d.open) return;   // opened again the other way
     const back = d.sgBack;
     d.sgBack = null;

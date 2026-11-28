@@ -12,6 +12,8 @@
 const SH_KIND = {visit: "Visit", stay: "Hospital stay", procedure: "Procedure", imaging: "Imaging", study: "Report / study",
   note: "Note", symptom: "Symptom", side_effect: "Side effect", mood: "Mood"};
 const shDay = t => t ? fmtD(zParse(String(t).slice(0, 10))) : "";
+const SH_INS = {kind: {medical: "Medical", dental: "Dental", vision: "Vision", pharmacy: "Pharmacy"}, order: {primary: "primary", secondary: "secondary"},   // (#1168, as insurance.js says them)
+  relation: {self: "Self", spouse: "Spouse or partner", child: "Child", other: "Other"}};
 const shWhen = t => !t ? "" : /T\d\d:\d\d/.test(t) ? fmtDT(zParse(String(t).slice(0, 19))) : shDay(t);
 const DAY = 864e5;   // (core.js's, which this page doesn't load: the kit's time axis counts in it, #302)
 const shUsd = v => v == null ? "" : v.toLocaleString("en-US", {style: "currency", currency: "USD"});   // "$22.06", as the app writes it (#543)
@@ -113,10 +115,16 @@ const SH_DRAW = {
     el("dt", {text: "Birth date"}), el("dd", {text: a.birthDate ? shDay(a.birthDate) : "Not given"}),
     el("dt", {text: "Sex used for reference ranges"}), el("dd", {text: a.sex || "Not given"})),
     shTable(["Date", "Height"], (a.heights || []).map(h => [shDay(h.date), h.text]), "No heights written down in this range.")),
-  // insurance cards (#1137), only when the link's owner ticked them: each plan's numbers, then its card's photos
+  // insurance cards (#1137), only when the link's owner ticked them: each plan's numbers and what else its card says
+  // (#1168: its type, policyholder, dates, pharmacy numbers, payer ID, website), then its card's photos, as cropped
   insurance: list => list.length ? el("div", {}, ...list.map(c => el("div", {class: "share-entry"},
     el("div", {}, el("b", {text: c.name})),
-    el("dl", {class: "share-about"}, ...[["Member ID", c.member], ["Group number", c.group], ...c.phones.map(p => [p.label || "Phone", p.number])]
+    el("dl", {class: "share-about"}, ...[["Plan type", [SH_INS.kind[c.kind], SH_INS.order[c.order]].filter(Boolean).join(", ")],
+      ["Member ID", c.member], ["Group number", c.group],
+      ["Policyholder", c.holder && c.holder + (c.relation ? ` (${SH_INS.relation[c.relation]})` : "")],
+      ["Dates", [c.start && `from ${shDay(c.start)}`, c.end && `to ${shDay(c.end)}`].filter(Boolean).join(" ").replace(/^./, m => m.toUpperCase())],
+      ["RxBIN", c.rxbin], ["RxPCN", c.rxpcn], ["RxGroup", c.rxgroup], ["Payer ID", c.payer], ["Website", c.website],
+      ...c.phones.map(p => [p.label || "Phone", p.number])]
       .filter(([, v]) => v).flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})])),
     c.front || c.back ? el("div", {class: "share-pics"}, ...["front", "back"].filter(s => c[s]).map(s =>
       shPhoto({alt: `${s === "front" ? "Front" : "Back"} of the card for ${c.name}`}, "", {card: c.id, side: s}))) : null)))

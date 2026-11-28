@@ -351,7 +351,8 @@
   }
   // the profile-wide lists' entries a duplicate can be (#497)
   const LISTED = {allergy: ["allergy", "allergies"], problem: ["problem or diagnosis", "problems or diagnoses"],
-                  upcoming: ["upcoming appointment", "upcoming appointments"], family: ["family history entry", "family history entries"]};
+                  upcoming: ["upcoming appointment", "upcoming appointments"], family: ["family history entry", "family history entries"],
+                  "outOfPocket.payments": ["payment", "payments"]};   // (#1163) one already here
   // what a Sanguity export brings besides its records (#589: its corrections, journal, medication log and reminders),
   // to be put back (the review) or put back (done): a line, or null when it brings none
   const RESTORED = [["corrections", ["correction", "corrections"]], ["journal", ["journal entry", "journal entries"]],
@@ -384,6 +385,7 @@
     ["allergies", ["allergy", "allergies"], "triangle-alert", MUTED],
     ["problems", ["problem or diagnosis", "problems or diagnoses"], "clipboard", INK2],
     ["upcoming", ["upcoming appointment", "upcoming appointments"], "calendar", "var(--c-visit)"],
+    ["payments", ["payment", "payments"], "banknote", INK2],   // a payments spreadsheet's, for Costs (#1163)
     ["watch_days", ["day of activity data", "days of activity data"], "watch", INK2],
     ["workouts", KIND.exercise, "dumbbell", INK2],
     ["ecgs", ["ECG recording", "ECG recordings"], "activity", INK2],
@@ -396,7 +398,7 @@
     ["cycle", ["cycle tracking record", "cycle tracking records"], "droplet", "var(--c-cycle)"],
     ["updated", UPDATED, "test-tube-diagonal", "var(--c-lab)"],   // results here updated in place (#869), once saved
     ["changed", CHANGED, "pencil", INK2]];   // records here updated in place (#920), once saved
-  const RECORDS = new Set(["results", "allergies", "problems", "upcoming"]);   // besides events: what's a record
+  const RECORDS = new Set(["results", "allergies", "problems", "upcoming", "payments"]);   // besides events: what's a record
   // a wearable's (the server's jobs._watch_counts), counted in the review's bar beside the records (#500)
   const WATCH = new Set(["watch_days", "workouts", "ecgs", "rhythm", "bp_readings", "temp_readings", "glucose_readings", "cgm_days", "heights", "cycle"]);
   // the counts c, each {k, n, words, mark, tone, record}: events by kind, most first (a lab draw left out where there are

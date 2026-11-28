@@ -62,12 +62,16 @@
        each upload's card under it, from Sending to Saved (import-jobs.js) -->
   <section class="card" id="importer" hidden>
     <h2>Upload files</h2>
-    <p class="hint">The export a patient portal or app gave you, as it is: a zip, a folder or single files.</p>
+    <p class="hint">A portal's or app's export, claims files or a payments spreadsheet (CSV), as they are: a zip, a folder or single files.</p>
     <div class="about-words" hidden>
       <p>Most portals give you a zip (MyChart, Apple Health's export.zip, Blue Button): it's unpacked on the server, and
         Sanguity recognises the format itself; Quest's and Labcorp's lab report PDFs too, experimental: check each value against the PDF. Files go to your Sanguity server only, and are kept there encrypted as the
         import's original files. Each upload is shown to you as a review first, and saved as one import you can undo
         from the import history.</p>
+      <p>Insurance claims: UnitedHealthcare's or Blue Cross Blue Shield's claims.json, any insurer's EOB spreadsheet
+        (CSV), or Blue Button (FHIR) claims from your insurer's website. Payments for care: a spreadsheet (CSV) with a
+        date, who was paid and the amount (and what it was paid with, such as an HSA card, and a memo, if it has them),
+        downloaded yourself from a bank, card, HSA provider or budgeting app. Sanguity doesn't connect to any of them.</p>
     </div>
     <div id="upDrop"></div>
     <!-- the steps for an iPhone, under the drop target behind a disclosure named for them (#494): the help under the

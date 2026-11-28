@@ -20,8 +20,10 @@ drawer, Trends, Health and Costs show them as they show imported records. Every 
   immunization DATE VACCINE dose site lot who where       an "immunization" event (#179), with the detail the C-CDA
                                                            and FHIR importers give one (common.immunization)
   claim      DATE PROVIDER-or-TITLE title BILLED paid owe  a "claim" event, its claim detail (with the claims
-             status insurer claim category                 importers' `visit` hint) and its Costs row, filed under the
-                                                           care category given or worked out by _claims.care_category
+             ded status insurer claim category             importers' `visit` hint) and its Costs row, filed under the
+                                                           care category given or worked out by _claims.care_category;
+                                                           ded, the part of what you owe toward the deductible
+                                                           (#1163), is the row's "ded" (costplan.py)
   payment    DATE PAYEE AMOUNT group account memo hsa      an entry of outOfPocket.payments; hsa "HSA" or "FSA" tags it
              upload file                                   (oop.py, #55); with a receipt (upload and file, as a
                                                            document's), also a "document" event "Receipt: <payee>"
@@ -118,7 +120,7 @@ FIELDS = {   # kind -> its fields; LONG ones may hold a note
     "rx": ("date", "drug", "pharmacy", "supply", "billed", "paid", "owe", "insurer"),
     "problem": ("name", "status", "since", "type"),
     "immunization": ("date", "vaccine", "dose", "site", "lot", "who", "where"),   # #179
-    "claim": ("date", "provider", "title", "billed", "paid", "owe", "status", "insurer", "claim", "category"),
+    "claim": ("date", "provider", "title", "billed", "paid", "owe", "ded", "status", "insurer", "claim", "category"),
     "payment": ("date", "payee", "amount", "group", "account", "memo", "hsa", "upload", "file"),
     "upcoming": ("date", "time", "title", "who", "where"),
     "vitals": ("date", "time", "where", "bp", "hr", "temp", "temp_unit", "height", "height_unit", "spo2", "resp", "weight", "weight_unit"),
@@ -144,7 +146,8 @@ NEED = {"date": "a date", "admit": "the admission date", "discharge": "the disch
 CAPTION = {"admit_time": "admission time", "discharge_time": "discharge time", "bp": "blood pressure", "hr": "heart rate",
            "temp": "temperature", "spo2": "SpO2", "resp": "breathing rate", "owe": "amount you owe", "paid": "amount paid",
            "billed": "amount billed", "amount": "amount", "supply": "days' supply", "stop": "stop date", "since": "date",
-           "start": "start date", "sys": "systolic pressure", "dia": "diastolic pressure", "glucose": "glucose reading"}
+           "start": "start date", "sys": "systolic pressure", "dia": "diastolic pressure", "glucose": "glucose reading",
+           "ded": "amount toward the deductible"}
 
 
 def _norm(f):
@@ -427,7 +430,9 @@ def _claim(r):
     if not (v["provider"] or v["title"]):
         r.bad("provider", "needs " + NEED["provider"])
     r.need("billed")
-    billed, paid, owe = r.money("billed"), r.money("paid"), r.money("owe")
+    billed, paid, owe, ded = r.money("billed"), r.money("paid"), r.money("owe"), r.money("ded")
+    if ded is not None and ded > (owe or 0.0) + 0.005:
+        r.bad("ded", "has more toward the deductible than you owe")
     if v["category"] and v["category"] not in CLAIM_CATEGORIES:
         r.bad("category", f"has a type of care Sanguity doesn't know ({v['category']})")
     if r.fields or not t:
@@ -443,6 +448,8 @@ def _claim(r):
            "visit": {"date": t[:10], **({"provider": v["provider"]} if v["provider"] else {})}}
     cost = {"d": t[:10], "ins": v["insurer"], "billed": billed, "paid": paid, "owe": owe, "status": v["status"],
             "kind": "pharmacy" if pharmacy else "medical", "cat": cat, "prov": v["provider"], "title": title}
+    if ded is not None:   # the part toward the deductible, typed (#1163): as an EOB gives it (_fhir_claims.py)
+        cost["ded"] = det["deductible"] = ded
     key = _hkey("claim", t[:10], v["provider"], title, billed, v["claim"])
     sub = _join(v["provider"] if v["title"] else "", v["insurer"]) + (" · denied" if denied else "")
     ev = _event(t, "rx" if pharmacy else "claim", title, sub, det, key, cost=cost, abn=1 if denied else None)

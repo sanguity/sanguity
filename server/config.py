@@ -30,17 +30,112 @@ MB = 2**20
 CONNECT_ALLOW_HTTP = os.environ.get("CONNECT_ALLOW_HTTP", "") == "1"
 
 
-# ---------------------------------------------------------------- the settings that tune the server (#999)
-# Each is read where it's used, through setting(NAME), so a change applies at once. Its value is the environment's
-# when the variable is set (not empty: the compose files pass "${NAME:-}", which is empty while .env doesn't set it),
-# else the value an admin saved in the app, else the default below. Only a variable that an install setting of
-# settings.py's registry stands for (define(..., env=NAME), which sets Var.setting) can have a saved value; the rest
-# are the environment's or their default. source(NAME) says which it is. With SANGUITY_SAVED_SETTINGS=off, saved values
-# are left out (#1006): the way back in when one locks everyone out (python -m server.manage config reset, too).
+# ---------------------------------------------------------------- what only the container sets (#1158)
+# Every variable the server, the receiver and docker/ read is either a setting the page owns (VARS below, the restart
+# settings of server_settings.py), one an install may opt to manage there (MANAGED, below), or one of these: what the container itself needs to start,
+# or a fact of how it's built and deployed, each with why it can't be a setting. tests/test_env_audit.py reads the
+# code for every variable read and fails on one that's neither; deploy/check.py lets the templates set only these.
+_MOUNT = "a folder inside the container, which the template mounts there: moving it is the template's"
+_FILE = "a data file shipped in the image (the tests point it at their own)"
+_BIND = ("where the server listens inside its container: nginx, the healthcheck and the all-in-one container are built "
+         "around it, so a change on the page would cut the app off")
+CONTAINER = {
+    "PUID": "the user the container runs as, and owns its files with: set before anything starts",
+    "PGID": "the group the container runs as: set before anything starts",
+    "SANGUITY_DATA": "the data folder: the settings live in it, so it can't be one of them",
+    "SANGUITY_KEY_FILE": "the encryption key file: needed to read the database the settings are in",
+    "SANGUITY_AUTH": "the folder of the key and the receiver's secret (setup, the all-in-one container): " + _MOUNT,
+    "SANGUITY_BUILD": "where setup writes the built data: " + _MOUNT,
+    "SANGUITY_RECORDS": "the record exports: " + _MOUNT,
+    "SANGUITY_LEGACY_WWW": "an older install's www/ (documents in www/files*/): " + _MOUNT,
+    "SANGUITY_WATCH_FILE": "the receiver's daily summary: " + _MOUNT,
+    "SANGUITY_WATCH_KEYS": "the receiver's secrets, written by the app: " + _MOUNT,
+    "SANGUITY_WATCH_STORE": "the receiver's whole folder, read-only, for backups: " + _MOUNT,
+    "SANGUITY_WATCH": "the receiver's folder, as setup and the all-in-one container see it: " + _MOUNT,
+    "SANGUITY_BACKUPS": "where backups are written: " + _MOUNT,
+    "SANGUITY_CONFIG": "sources.json, settings.json and corrections.json, read by setup before the app starts: " + _MOUNT,
+    "SANGUITY_APP": "where setup finds the app's code: " + _MOUNT,
+    "SANGUITY_DEPLOYMENT": "which template started it, set by the template itself (About, Restart now's question)",
+    "SANGUITY_IMAGE_VERSION": "the image's own version, baked in as it's built (a release's .env picks the image by "
+                              "its tag, SANGUITY_VERSION, which the app never reads)",
+    "SANGUITY_SERVE_STATIC": "a server run without nginx (development) serves www/ itself",
+    "SANGUITY_TESSERACT": "the text-recognition program, as installed in the image",
+    "SANGUITY_TESSDATA": "the text-recognition program's language data, as installed in the image",
+    "SANGUITY_CORRECTIONS": _FILE, "SANGUITY_LAB_TEST_PAGES": _FILE, "SANGUITY_CONDITION_PRESETS": _FILE,
+    "SANGUITY_LAB_ALIASES": _FILE, "SANGUITY_DIRECTORY": _FILE,
+    "SANGUITY_SAVED_SETTINGS": "the way back in: off leaves the values saved in the app out while it's set; read at "
+                               "each use, never taken in, as it must work when the page can't be reached",
+    "CONNECT_ALLOW_HTTP": "tests only: a plain-HTTP connected source on this machine, never a real vendor",
+    "HOST": _BIND, "PORT": _BIND,
+    "RECEIVER_PORT": "the receiver's published port (compose's ports:), which the app can't see, given in the phone's "
+                     "upload address: the port mapping is the container's",
+    "PATH": "the program search path, passed on to the text-recognition program",
+    "DATA_DIR": "server/directory/build.py, a tool run by hand: the folder it writes the provider directory to",
+    "DATA": "the receiver's folder inside its container: " + _MOUNT,
+    "SECRET_FILE": "the receiver's first secret (from before #46): " + _MOUNT,
+    "KEYS_FILE": "the receiver's secrets, written by the app: " + _MOUNT,
+}
+# (#1158, the owner's decision: env-managed, opt-in) settings an install may choose to keep in its environment, as a
+# secret manager or Docker secrets do: while one is set (NAME, or NAME_FILE: the path of a file holding it, read at each
+# use, so a rotated secret applies), it wins and the page shows its row locked, "Managed by the environment"; unset,
+# the page owns it like any other. Never taken in. Each with why it's offered. Read through managed().
+_SSO = "the sign-in provider, kept with the identity provider's own configuration where an install manages that as code"
+MANAGED = {
+    "OIDC_ISSUER": "Sign-in provider's issuer: " + _SSO,
+    "OIDC_CLIENT_ID": "Sign-in provider's client ID: " + _SSO,
+    "OIDC_CLIENT_SECRET": "Sign-in provider's client secret: a secret a secret manager rotates (or OIDC_CLIENT_SECRET_FILE, "
+                          "a Docker secret)",
+    "OIDC_SCOPES": "Sign-in provider's scopes: " + _SSO,
+    "OIDC_BUTTON": "Sign-in provider's button name: " + _SSO,
+    "OIDC_ACR": "Sign-in provider's acr that counts as two factors: " + _SSO,
+    "OIDC_ONLY": "Sign in with OIDC only: " + _SSO + " (taken out, the page's switch again)",
+    "NOTIFY_TOKEN": "Notifications' access token: a secret a secret manager rotates (or NOTIFY_TOKEN_FILE)",
+    # (#1159) the outbound proxy's password joins here, as OUTBOUND_PROXY_PASSWORD (and _FILE), read with managed()
+}
+_managed_warned = set()
+
+
+def managed(name):
+    """(#1158) The value the environment manages for name (one of MANAGED), or None: NAME's text, else the contents of
+    the file NAME_FILE names (a Docker secret), read at each use; stripped. A file that can't be read is None, said once
+    (its path, never its contents)."""
+    text = os.environ.get(name, "").strip()
+    if text:
+        return text
+    path = os.environ.get(name + "_FILE", "").strip()
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip() or None
+    except (OSError, ValueError) as e:
+        if (name, path) not in _managed_warned:
+            _managed_warned.add((name, path))
+            print(f"{name}_FILE names {path}, which can't be read ({type(e).__name__}): it's as if unset.", flush=True)
+        return None
+
+
+def managed_by(name):
+    """The variable that manages name now (NAME or NAME_FILE), or None."""
+    if os.environ.get(name, "").strip():
+        return name
+    return name + "_FILE" if managed(name) is not None else None
+
+
+# ---------------------------------------------------------------- the settings that tune the server (#999, #1158)
+# Each is read where it's used, through setting(NAME), so a change applies at once. The settings file is the one source
+# of truth, as Sonarr's and Radarr's (#1158): the value an admin saved in the app (an install setting of settings.py's
+# registry that stands for it: define(..., env=NAME) sets Var.setting), or, for one of RESTART, the one changed on the
+# page's Needs a restart as this process started (server_settings.py), else the default below. The environment no
+# longer sets any of them: on the first start of this version each one it set was taken into the settings once
+# (settings.take_environment, server_settings.take_environment), and a later change to it is ignored with a warning
+# naming it. The container's own (CONTAINER) are the environment's alone. source(NAME) says where a value comes from.
+# With SANGUITY_SAVED_SETTINGS=off, the values saved in the app are left out (#1006): the way back in when one locks
+# everyone out (python -m server.manage config reset NAME, or config set NAME VALUE, too).
 #
-# Adding one: a var() line below, then setting("NAME") where it's used, its line in both compose files' app service
-# ("NAME: ${NAME:-}", deploy/check.py checks), and in .env.example and the README's configuration. To let admins change
-# it in the app, define() it in settings.py with scope="install", private=False and env="NAME".
+# Adding one: a var() line below, then setting("NAME") where it's used, and a home on the page: define() it in
+# settings.py with scope="install", private=False and env="NAME" (applies at once), or in server_settings.py and
+# RESTART (read as the server starts). tests/test_env_audit.py fails on a variable that has neither.
 
 class Var:
     def __init__(self, name, default, read, keep, about):
@@ -50,14 +145,14 @@ class Var:
 
 VARS = {}   # name -> Var
 # (#1121) the variables changed on the page's Needs a restart (server_settings.py defines them; a test keeps the two the
-# same): kept in data/server-settings.json and read as the server starts, after the environment's and before the default
-RESTART = {"UPLOAD_MAX_FILE_MB", "UPLOAD_MAX_TOTAL_MB", "UPLOAD_MAX_FILES", "JOURNAL_PHOTO_MAX_MB", "SYNC_HOURS",
+# same): kept in data/server-settings.json and read as the server starts, before the default
+RESTART = {"UPLOAD_MAX_FILE_MB", "UPLOAD_MAX_TOTAL_MB", "UPLOAD_MAX_FILES", "UPLOAD_MAX_ZIP_RATIO", "JOURNAL_PHOTO_MAX_MB", "SYNC_HOURS",
            "SYNC_MAX_RESOURCES", "SYNC_MAX_ATTACHMENT_MB", "CONNECT_TIMEOUT", "SHL_MAX_MB", "SHL_MAX_FILES", "SHL_TIMEOUT",
-           "HASH_PARALLEL", "RESTORE_KEEP_DAYS"}
+           "HASH_PARALLEL", "RESTORE_KEEP_DAYS", "OIDC_TIMEOUT", "NOTIFY_TIMEOUT", "DIRECTORY_TIMEOUT", "DOWNLOAD_TIMEOUT"}
 
 
 def var(name, default, read=int, keep=None, about=""):
-    """read: the variable's text -> its value (ValueError: unreadable, so left out); keep: a saved value -> the same
+    """read: the variable's text -> its value (ValueError: unreadable, so not taken in); keep: a saved value -> the same
     kind of value (the registry has checked it)."""
     VARS[name] = Var(name, default, read, keep or (lambda v: v), about)
 
@@ -89,7 +184,14 @@ var("SESSION_DAYS", 30, about="a session ends this long after sign-in...")
 var("SESSION_HOURS_WITHOUT_2FA", 12, about="...or this many hours after it, while the account has no second factor "
                                            "(0 = SESSION_DAYS for everyone)")
 var("SESSION_IDLE_MINUTES", 0, about="also end it after this long unused (0 = off)")
-var("COOKIE_SECURE", "auto", str.lower, about="auto = Secure when the request came over HTTPS; 1 always, 0 never")
+def _cookie(text):
+    v = text.strip().lower()
+    if v in ("auto", "always", "never"):
+        return v
+    return "always" if _yes(v) else "never"
+
+
+var("COOKIE_SECURE", "auto", _cookie, about="auto = Secure when the request came over HTTPS; always (1), never (0)")
 var("TEMP_PASSWORD_DAYS", 7, about="a one-time password from an admin stops working after this")
 var("REAUTH_MINUTES", 5, about="the fresh check before the most powerful admin actions: the password, a code or a "
                                "passkey within this many minutes (signing in counts)")
@@ -125,6 +227,12 @@ var("CONNECT_TIMEOUT", 30, about="seconds to wait for a vendor's answer")
 var("SHL_MAX_MB", 64)
 var("SHL_MAX_FILES", 50)
 var("SHL_TIMEOUT", 20)
+# (#1158) how long the server waits for another server, each changed under Needs a restart's Timeouts (with
+# CONNECT_TIMEOUT and SHL_TIMEOUT above)
+var("OIDC_TIMEOUT", 15, about="seconds to wait for the sign-in provider (its discovery, keys and token)")
+var("NOTIFY_TIMEOUT", 10, about="seconds to wait for the notification server")
+var("DIRECTORY_TIMEOUT", 60, about="seconds a provider directory list's host may go silent")
+var("DOWNLOAD_TIMEOUT", 60, about="seconds a text-recognition language file's download may go silent")
 var("RECEIVER_PORT", 8731, about="the watch receiver's published port, for the upload address (watch_keys.py)")
 var("WATCH_UPLOAD_URL", "", str.strip, about="the upload address, when the receiver is behind a reverse proxy")
 var("RESTORE_KEEP_DAYS", 30, _days, about="what a restore replaced is deleted this long after (backup.py; the receiver "
@@ -140,17 +248,18 @@ def saved_ignored():
 
 
 def lookup(name):
-    """(where it comes from, the value in force) of the variable name: ("environment" | "install" | "file" | "default",
-    value): "file" for one of RESTART changed on the page, as this process started (#1121)."""
+    """(where it comes from, the value in force) of the variable name: ("install" | "file" | "default", value): "file"
+    for one of RESTART changed on the page, as this process started (#1121); "environment" only for one of CONTAINER
+    (RECEIVER_PORT), which the container sets."""
     v = VARS[name]
-    text = os.environ.get(v.name, "")
-    if text.strip():
-        try:
-            return "environment", v.read(text.strip())
-        except ValueError:   # unreadable: as if it weren't set (unreadable() says so at start)
-            if name in RESTART and not v.setting:   # (#1121) never the page's file instead: it's set, so the default
-                return "environment", v.default
-
+    if name in CONTAINER:
+        text = os.environ.get(v.name, "").strip()
+        if text:
+            try:
+                return "environment", v.read(text)
+            except ValueError:   # unreadable: as if it weren't set (unreadable() says so at start)
+                pass
+        return "default", v.default
     if v.setting and saved is not None and not saved_ignored():
         have = saved()
         if v.setting in have:
@@ -164,14 +273,28 @@ def lookup(name):
 
 
 def setting(name):
-    """The value in force of the variable name (a key of VARS): the environment's, else the one saved in the app,
-    else the default."""
+    """The value in force of the variable name (a key of VARS): the one saved in the app, else the default."""
     return lookup(name)[1]
 
 
 def source(name):
-    """Where setting(name) comes from: "environment", "install" (saved in the app), "file" (#1121) or "default"."""
+    """Where setting(name) comes from: "install" (saved in the app), "file" (#1121), "default", or "environment" for
+    one of CONTAINER."""
     return lookup(name)[0]
+
+
+def fingerprint(text):
+    """What's kept of a variable's text once it's been taken in (#1158): enough to tell it changed, never the text (a
+    secret's included)."""
+    import hashlib
+    return hashlib.sha256(text.strip().encode()).hexdigest()[:24]
+
+
+def environment_changed(name, where):
+    """The warning for a variable the environment sets again, or differently, after it was taken in (#1158)."""
+    return (f"{name} is set in the environment, but the settings file is where it's kept since it was taken in once: "
+            f"this change is ignored. Change it on {where}, or with python -m server.manage config set {name} VALUE; "
+            f"then take {name} out of the environment (.env, or the app's settings where it's deployed).")
 
 
 def public_address(origins=None):
@@ -191,9 +314,9 @@ def given_base():
 
 
 def unreadable():
-    """[(name, text)] of the variables set to something they can't be read as (left out, as if unset)."""
+    """[(name, text)] of the container's variables set to something they can't be read as (left out, as if unset)."""
     out = []
-    for v in VARS.values():
+    for v in (v for n, v in VARS.items() if n in CONTAINER):
         text = os.environ.get(v.name, "").strip()
         if text:
             try:

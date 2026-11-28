@@ -1,26 +1,29 @@
 """Costs' tax-year report (#1136): one zip of a tax year's out-of-pocket payments, for itemized deductions and HSA
 records. Facts only: what was paid, when, to whom, for what, and whether a receipt is on file; no tax rules assumed.
 
-The payments are exactly Costs' out-of-pocket payments (oop.py, data["oop"]): every payment typed in or exported,
+The payments are exactly Costs' out-of-pocket payments (oop.py, data["oop"]): every payment typed in or uploaded,
 counted once (one that arrived twice is left out, as Costs counts it once), a refund or adjustment as it is. A claim's
 share with no payment isn't a payment, so it isn't here. The tax year is the calendar year, or the year from the
 month the profile's setting costs.taxStart says (4: April to March), named by the year it starts in ("2026", or
 "2026-27" when it doesn't start in January).
 
 The zip (streamed, a receipt a piece at a time, so a large year never sits in memory whole):
-  summary.pdf    totals for the year, by kind (the payment's group) and by who was paid, and a note to check what
+  summary.pdf    totals for the year: for care and for premiums apart (#1163: premiums are never out of pocket,
+                 oop.py), by kind (the payment's group) and by who was paid, and a note to check what
                  counts with a tax adviser
-  payments.csv   every payment: Row, Date, Paid to, For, Amount, HSA/FSA, From (typed in or an export), Receipt file
+  payments.csv   every payment: Row, Date, Paid to, For, Amount, HSA/FSA, From (oop.SRC_LABELS), Receipt file
   receipts/      each payment's receipt, named by its row and date (receipts/003-2026-03-21.pdf), as its CSV row says
 Names hold nothing of the person's but the dates: no names of payees or files, no account numbers or memos.
 """
 import csv, datetime, io, json, os, re, zipfile
 
-from . import crypto, pdfdoc, records
+from . import crypto, oop, pdfdoc, records
+
+SRC = oop.SRC_LABELS
 
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 DOC_URL = re.compile(r"^api/profiles/\d+/documents/([^/#?]+)")
-NOTE = ("These are the payments recorded in Sanguity, typed in or from a finance export. What counts for a deduction "
+NOTE = ("These are the payments recorded in Sanguity, typed in or from a payments file you uploaded. What counts for a deduction "
         "or an HSA depends on where you file: check with a tax adviser.")
 
 
@@ -63,7 +66,7 @@ def payments(data, year, start=1):
             m = DOC_URL.match(str((details.get(str(x["receipt"])) or {}).get("url") or ""))
             doc = m.group(1) if m else None
         out.append({"d": p["d"][:10], "payee": str(p.get("payee") or ""), "group": str(p.get("group") or "Other"),
-                    "amount": _money(p.get("amount")), "hsa": x.get("hsa") or "", "src": "Typed in" if x.get("src") == "typed" else "Finance export",
+                    "amount": _money(p.get("amount")), "hsa": x.get("hsa") or "", "premium": bool(x.get("premium")), "src": SRC.get(x.get("src"), SRC["records"]),
                     "receipt": doc})
     out.sort(key=lambda r: (r["d"], r["payee"].lower(), r["amount"]))
     for n, r in enumerate(out, start=1):
@@ -80,7 +83,8 @@ def years(data, start=1):
 
 def plan(db, pid, year, start=1):
     """What the report needs, gathered now (the stream runs after the request's database connection closes):
-    {year, start, label, from, to, rows, files {document id: (path, ext)}, total, count, receipts, missing}."""
+    {year, start, label, from, to, rows, files {document id: (path, ext)}, total, count, care, careCount, premiums,
+    premiumCount, receipts, missing}."""
     body = records.served(db, pid)
     data = json.loads(body) if body else {}
     rows = payments(data, year, start)
@@ -98,11 +102,14 @@ def plan(db, pid, year, start=1):
     a, b = span(year, start)
     return {"year": year, "start": start, "label": label(year, start), "from": a, "to": b, "rows": rows, "files": files,
             "total": round(sum(r["amount"] for r in rows), 2), "count": len(rows),
+            "care": round(sum(r["amount"] for r in rows if not r["premium"]), 2), "careCount": sum(1 for r in rows if not r["premium"]),
+            "premiums": round(sum(r["amount"] for r in rows if r["premium"]), 2), "premiumCount": sum(1 for r in rows if r["premium"]),
             "receipts": sum(1 for r in rows if r["file"]), "missing": sum(1 for r in rows if not r["file"])}
 
 
 def preview(p):
-    return {k: p[k] for k in ("year", "start", "label", "from", "to", "total", "count", "receipts", "missing")}
+    return {k: p[k] for k in ("year", "start", "label", "from", "to", "total", "count", "care", "careCount", "premiums",
+                              "premiumCount", "receipts", "missing")}
 
 
 def filename(p):
@@ -133,7 +140,7 @@ def _usd(v):
 
 
 def pdf_bytes(p):
-    doc = pdfdoc.Document(title=f"Out-of-pocket payments, tax year {p['label']}")
+    doc = pdfdoc.Document(title=f"Payments for care and premiums, tax year {p['label']}")
     page, y = doc.page(), 740
     L, R = 54, pdfdoc.WIDTH - 54
 
@@ -176,9 +183,12 @@ def pdf_bytes(p):
             g[key(r)] = (n + 1, round(v + r["amount"], 2))
         return sorted(g.items(), key=lambda kv: (-kv[1][1], kv[0].lower()))
 
-    line(f"Out-of-pocket payments, tax year {p['label']}", 16, True, 22)
+    line(f"Payments for care and premiums, tax year {p['label']}", 16, True, 22)
     line(f"{_date(p['from'])} to {_date(p['to'])}", 10, False, 20)
-    line(f"Total paid: {_usd(p['total'])} in {p['count']} payment{'' if p['count'] == 1 else 's'}", 12, True, 18)
+    n = lambda k: f"{p[k]} payment{'' if p[k] == 1 else 's'}"   # noqa: E731
+    line(f"Paid for care: {_usd(p['care'])} in {n('careCount')}", 12, True, 18)
+    line(f"Insurance premiums: {_usd(p['premiums'])} in {n('premiumCount')}", 12, True, 18)
+    line(f"Total of both: {_usd(p['total'])} in {n('count')}")
     line(f"Receipts on file: {p['receipts']} · without a receipt: {p['missing']}")
     for tag in ("HSA", "FSA"):
         tagged = [r for r in p["rows"] if r["hsa"] == tag]

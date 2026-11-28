@@ -47,9 +47,11 @@ Profile events (profile_id set), readable by the profile's owners:
                 a medication reminder set, changed, turned on or off, paused or resumed, or removed (med_reminders.py,
                 #162; never which medication); {"change": "dose.add" | "dose.change" | "dose.delete", "status"}: a dose logged, corrected
                 or removed (med_log.py, #235; never the medication or the note); {"change": "own.add" | "own.back" |
-                "own.change" | "own.delete" | "listed.change" | "listed.back" | "listed.hide" | "listed.show"}: a
-                medication of the profile's own added, put back, changed or deleted, or one of the records' changed,
-                put back as listed, hidden or shown again (medications.py, #1091; never which medication)
+                "own.change" | "own.delete" | "listed.change" | "listed.back" | "listed.hide" | "listed.show" |
+                "taking.stop" | "taking.again" | "taking.back"}: a medication of the profile's own added, put back,
+                changed or deleted, or one of the records' changed, put back as listed, hidden or shown again
+                (medications.py, #1091; never which medication); either marked stopped, started again, or that undone
+                (#1161)
   family        {"change": "add" | "back" | "change" | "delete" | "hide" | "show"}: a family history entry of the
                 profile's own added, put back, changed or deleted, or one of the records' hidden or shown again
                 (family.py, #1134; never the relative or a condition)
@@ -58,9 +60,10 @@ Profile events (profile_id set), readable by the profile's owners:
                 undone by an owner or editor, with how many saved results were re-filed (labmap.py, #1097; never names)
   notify        {"kind": "results" | "doses", "on"}: someone turned a kind of notification on or off for the profile
                 (notify.py, #1130)
-  insurance     {"change": "add" | "change" | "delete" | "photo" | "photo.delete", "side"?}: an insurance plan added,
-                changed or removed, or a photo of its card's front or back put on or taken off (insurance.py, #1137;
-                never the plan's name, member ID or numbers)
+  insurance     {"change": "add" | "change" | "delete" | "photo" | "photo.delete" | "read", "side"?}: an insurance
+                plan added, changed or removed, a photo of its card's front or back put on or taken off, or a card's
+                photo read by text recognition for suggestions (insurance.py, #1137, #1168; never the plan's name,
+                member ID or numbers, nor what was read)
   link          {"change": "create" | "revoke" | "view", "link", "label"?, ...}: a share link made or revoked by an owner
                 (with its sections, number of labs, dates and hours), or opened by whoever holds it: actor SHARE_LINK,
                 with the viewer's address (share_links.py, #47; never the token)

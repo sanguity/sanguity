@@ -35,7 +35,7 @@ the access gone, the server taken away) or a dose's an hour late is dropped.
 The access token is a secret, never given to a page (only whether there is one), and sent only to the server it is
 for, by scheme and host (an origin: https://ntfy.example.com, never its http:// on the same host):
   - one saved here (General → Notifications) is encrypted in meta (TOKEN_META) with the origin it was saved for;
-  - the server's environment's NOTIFY_TOKEN, which wins, goes to the origin it was first sent to, kept in meta
+  - the server's environment's NOTIFY_TOKEN (or NOTIFY_TOKEN_FILE, a Docker secret: #1158's opt-in), which wins, goes to the origin it was first sent to, kept in meta
     (ENV_META, with a hash of the token): a server at another origin gets none until the environment's token is
     changed, when the next origin it's sent to is the one it's kept for.
 A token is letters, digits and signs (0x21-0x7e) only: one from the environment that isn't is ignored, said in the
@@ -66,7 +66,6 @@ BACKOFF = (60, 300, 1800)   # seconds after the first, second and third failure
 WINDOW = 15 * 60     # a dose whose time passed longer ago than this when first noticed isn't sent
 DOSE_LATE = 3600     # a dose's notification not sent by this long after it was made is dropped
 KEEP = 7 * 86400     # rows of notify_sent kept after they're done
-TIMEOUT = 10
 TOKEN_MOST = 500
 TEST_EVERY = 10      # seconds between one person's test notifications
 
@@ -110,7 +109,7 @@ _warned = set()
 
 def _env_token():
     """The environment's token, cleaned; "" when it's unset, or isn't one (said in the log, once, without it)."""
-    raw = os.environ.get(TOKEN_ENV)
+    raw = config.managed(TOKEN_ENV)   # (#1158: NOTIFY_TOKEN, or NOTIFY_TOKEN_FILE, read at each use)
     if not raw:
         return ""
     t = clean_token(raw)
@@ -297,7 +296,7 @@ def send(db, kind, uid, name=None, p=None):
     path = urllib.parse.urlsplit(full).path
     try:
         ip = _local_only(p, u) if urllib.parse.urlsplit(u).scheme == "http" else None
-        conn = net.connection(p, full, timeout=TIMEOUT, ip=ip)
+        conn = net.connection(p, full, timeout=config.setting("NOTIFY_TIMEOUT"), ip=ip)   # (#1158)
         try:
             conn.request("POST", path, body, headers)
             r = conn.getresponse()
@@ -409,7 +408,7 @@ def _at(day, hm, zone):
 def due_doses(db, now=None):
     """Make the notifications of the doses due now: for each person who wants them, a time that passed less than
     WINDOW ago and after they turned them on. Returns how many were made."""
-    from . import med_log, med_reminders
+    from . import med_log, med_reminders, medications
     if not configured():
         return 0
     now, made = now or time.time(), 0
@@ -433,8 +432,8 @@ def due_doses(db, now=None):
             continue
         meds = med_reminders.current(db, pid)
         for r, day, hm, at in due:   # of a medication still in the records, and not ended by the day they say it stopped
-            m = meds.get(r["med"])
-            if not m or hm not in {t for t, _ in med_log.scheduled([r], day, m.get("stop"))}:
+            m = meds.get(r["med"])   # (#1161: nor on a day between the times it was taken)
+            if not m or hm not in {t for t, _ in med_log.scheduled([r], day, m.get("stop"), medications.gaps(m))}:
                 continue
             for uid, created in people.items():
                 if at >= created and _make(db, f"doses:{pid}:{day.isoformat()}:{hm}:{uid}", uid, pid, "doses"):

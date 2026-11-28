@@ -26,7 +26,7 @@ router = APIRouter()
 
 def _install(db):
     u = notify.url()
-    return {"url": u, "host": next(iter(notify.hosts()), None), "token": notify.token_source(db), "token_env": notify.TOKEN_ENV,
+    return {"url": u, "host": next(iter(notify.hosts()), None), "token": notify.token_source(db), "token_env": config.managed_by(notify.TOKEN_ENV) or notify.TOKEN_ENV,
             "click": config.public_address(), "texts": [notify.message(k, "Ben") for k in notify.KINDS],
             "people": db.execute("SELECT COUNT(DISTINCT user_id) FROM notify_optins").fetchone()[0],
             "token_elsewhere": notify.token_source(db) == "environment-elsewhere"}

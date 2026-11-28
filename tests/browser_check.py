@@ -651,6 +651,21 @@ USER_MENU = {"#logout", "#theme", "#settingsLink", "#guideLink"}   # (#991: Sett
 PROFILE_MENU = {"#sharingLink", "#sourcesLink", "#emergencyLink", "#newProfileLink"}   # #264 (#991: its settings are Settings' This person)
 
 
+def public_origins(value):
+    """(#1158) The public addresses as saved in the app (the environment sets them no more: the run's PUBLIC_ORIGINS was
+    taken in as the server started): value, a list to save, [] or None for none. Returns the list saved before."""
+    import contextlib as _cl
+    from server import db as _dbm, settings as _settings
+    with _cl.closing(_dbm.connect()) as db:
+        before = _settings.stored(db, "install").get("host.publicOrigins", [])
+        if value:
+            _settings.put(db, "host.publicOrigins", list(value))
+        else:
+            _settings.clear(db, ["host.publicOrigins"], "install")
+    _settings.forget_saved()
+    return before
+
+
 def menu_click(pg, item):
     """Click an item of the top bar's menus (nav.js): open its menu first, as a person would."""
     pg.click("#userMenuBtn" if item in USER_MENU else "#profileMenuBtn" if item in PROFILE_MENU else "#addMenuBtn")
@@ -1010,22 +1025,6 @@ def general_backups_check(browser, base, cookies, check, db_path, pw=None):
         check("…and more days asks nothing; saved by Enter in the field, through the fresh check, focus back in the field, in sight (#1077: on the page)",
               pg.evaluate(days) == 365 and foc1077 == ["genActDays", True], foc1077)
 
-        def env(route):   # as when ACTIVITY_DAYS is set in the app's environment
-            got = route.fetch()
-            j = got.json()
-            for sec in j["sections"]:
-                for st in sec["settings"]:
-                    if st["key"] == "activity.days":
-                        st.update(value=400, **{"from": "environment", "can_change": False})
-            route.fulfill(response=got, json=j)
-        pg.route("**/api/settings/install", env)
-        pg.reload()
-        pg.wait_for_selector("#genBk .kv", timeout=15000)
-        fixed = pg.evaluate("""(r => [!!document.getElementById('genActDays'), !!r.querySelector('input'), r.querySelector('.set-row-ctl > p').textContent,
-          r.querySelector('.set-row-lbl .tag:not(.set-unsaved)')?.textContent, r.querySelector('.set-row-lbl').textContent, r.querySelector('.set-row-ctl').textContent])(document.querySelector('#genBk .set-row'))""")
-        check("…set by the environment, it's its value as text, never a field, with its variable's tag, its own help, and where it's "
-              "changed (#1119)", fixed[:4] == [False, False, "400 days", "Set in .env: ACTIVITY_DAYS"] and "older entries are deleted once a day" in fixed[4]
-              and "or take it out there to change it here:" in fixed[5], fixed)
     except Exception as e:
         check("Backups → Folder and key and Logs and activity → Logging (#1002, #1153) ran", False, stopped(e))
     finally:
@@ -1063,8 +1062,11 @@ def general_about_check(browser, base, cookies, check):
               and not pg.evaluate("!!document.querySelector('#genAbout input, #genAbout select')"), got[2])
         check("…and what only the server's own setup sets, Host's and Security's before, each with what sets it (#1119)",
               got[0][11:] == ["Internal port and bind address", "Secure session cookie"]   # (the trusted proxies and password checks: Needs a restart's, #1121)
-              and all(w in got[3] for w in ("Set by: PORT and HOST", "Set by: COOKIE_SECURE")) and "Changed under General, Needs a restart" in got[3]
-              and pg.evaluate("!!document.querySelector('#genAbout a[href=\"#gen-restart\"]')"), got[0][11:])
+              # (#1158: the Secure cookie a page setting, Sign-in rules' row, named there with its variable)
+              and all(w in got[3] for w in ("Set by: PORT and HOST", "Set by: Accounts and sign-in, Sign-in rules (COOKIE_SECURE)"))
+              and "Changed under General, Needs a restart" in got[3]
+              and pg.evaluate("[...document.querySelectorAll('#genSecBody .set-row-name')].some(n => n.textContent === 'Secure sign-in cookie')")
+              and pg.evaluate("!!document.querySelector('#genAbout a[href=\"#gen-restart\"]')"), [got[0][11:], got[3]])
     except Exception as e:
         check("About (#1004) ran", False, stopped(e))
     finally:
@@ -1073,26 +1075,27 @@ def general_about_check(browser, base, cookies, check):
 
 
 def general_env_check(browser, base, cookies, check, db_path):
-    """(#1119) Settings → Install → General with its settings set by the server's environment (each variable set here
-    for the while, as #1000's PUBLIC_ORIGINS is, the values as they are so nothing else changes): what can't be
-    changed never looks changeable. No disabled or readonly control anywhere in General, nor in the parts that were
-    General's (#1119, #1153); each environment-set row (Host's, Sign-in rules', the Sign-in provider's secret, Logging's,
-    the Phone receiver's, Connected sources' switch) its
-    value as text (the secret never), a "Set in .env: VAR" tag on its name's line, its own help, and where this install's
-    settings are; Host and Security hold no read-only fact (About does), and About tags a limit only where the
-    environment set it. With passkeys made, Host's Passkey names says each name and its count. 320 px and 200% text
-    fit, keyboard and screen reader (no serious axe finding). Puts everything back as it was. Returns script errors."""
+    """(#1119, #1158) Settings → Install with every server setting the page has set in the server's environment as well
+    (each variable set here for the while, to values the page doesn't hold): the environment changes nothing, so each
+    of them is a plain editable row at the page's own value, but the secrets an install may opt to manage there
+    (OIDC_CLIENT_SECRET, NOTIFY_TOKEN: locked, "Managed by the environment", never shown). No disabled or readonly control anywhere in General, nor in
+    the parts that were General's (#1119, #1153); no "Set in .env" tag but on the container's own (the receiver's
+    published port, on Phone receiver); the secrets never in the page; Host and Sign-in rules hold no read-only fact
+    of the server's setup (About does), and About tags no limit. With passkeys made, Host's Passkey names says each
+    name and its count. 320 px and 200% text fit, keyboard and screen reader (no serious axe finding). Puts everything
+    back as it was. Returns script errors."""
     import sqlite3
     ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
     ctx.add_cookies(cookies)
     pg, errs = ctx.new_page(), []
     pg.on("pageerror", lambda e: errs.append(str(e)))
     inst = {st["key"]: st for sec in ctx.request.get(base + "/api/settings/install").json()["sections"] for st in sec["settings"]}
-    files = {x["name"]: x for g in ctx.request.get(base + "/api/settings/install/about").json()["limits"] for x in g["limits"]}["UPLOAD_MAX_FILES"]["value"]
-    env = {"WATCH_UPLOAD_URL": "https://phones.example.test/ingest", "SESSION_DAYS": str(inst["security.sessionDays"]["value"]),
-           "ACTIVITY_DAYS": str(inst["activity.days"]["value"]), "CONNECTED_SOURCES": "1" if inst["experimental.connectedSources"]["value"] else "0",
-           "OIDC_CLIENT_SECRET": "a fictional client secret from the environment", "UPLOAD_MAX_FILES": str(files),
-           "NOTIFY_TOKEN": "tk_fictional_1119_from_the_environment"}
+    files = {st["name"]: st for st in ctx.request.get(base + "/api/settings/install/restart").json()["settings"]}["UPLOAD_MAX_FILES"]
+    files = str(files.get("next", files["value"]))
+    env = {"WATCH_UPLOAD_URL": "https://phones.example.test/ingest", "SESSION_DAYS": str(inst["security.sessionDays"]["value"] - 1),
+           "ACTIVITY_DAYS": str(inst["activity.days"]["value"] + 1), "CONNECTED_SOURCES": "0" if inst["experimental.connectedSources"]["value"] else "1",
+           "OIDC_CLIENT_SECRET": "a fictional client secret from the environment", "UPLOAD_MAX_FILES": "123", "COOKIE_SECURE": "0",
+           "PUBLIC_ORIGINS": "https://env1158.example.test", "NOTIFY_TOKEN": "tk_fictional_1119_from_the_environment"}
     had = {k: os.environ.get(k) for k in env}
     con = sqlite3.connect(db_path)
     uid = con.execute("SELECT id FROM users WHERE username=?", (USER,)).fetchone()[0]
@@ -1102,50 +1105,46 @@ def general_env_check(browser, base, cookies, check, db_path):
     os.environ.update(env)
     try:
         pg.goto(base + "/settings.html?profile=1#general")
-        for sel in ("#gen-host [data-env]", "#gen-phone [data-env]", "#genSecBody [data-env]", "#genExpBody [data-env]", "#genBk [data-env]",
-                    "#signin-provider [data-env]", "#genAbout .kv"):
-            pg.wait_for_selector(sel, state="attached", timeout=20000)   # (the sign-in parts: Accounts and sign-in's, #1119)
+        for sel in ("#hostOrigins", "#phoneUrl", "#genAbout .kv", "#rs-upload-max-files"):
+            pg.wait_for_selector(sel, state="attached", timeout=20000)
         were = ':is(section[id^="gen-"], #signin-rules, #signin-provider, #bk-files, #logging, #cs-switch, #install-about)'   # (General's, #1119, #1153)
         fixed_js = """[...document.querySelectorAll('""" + were + """ :is(input, textarea, select, button, [role=switch])')]
             .filter(e => e.checkVisibility() && (e.disabled || e.readOnly || e.getAttribute('aria-disabled') === 'true')).map(e => e.id || e.textContent.trim())"""
-        got = pg.evaluate("""(at => ({
-          fixed: """ + fixed_js + """,
-          rows: Object.fromEntries([...document.querySelectorAll('""" + were + """ [data-env]')].map(r => [r.dataset.env, {
-            value: r.querySelector('.set-row-ctl > p').textContent, tag: r.querySelector('.set-row-lbl .tag')?.textContent,
-            tagOnName: !!r.querySelector('.set-row-lbl > :first-child .tag'), help: r.querySelector('.set-row-lbl .hint')?.textContent || '',
-            where: r.querySelector('.set-row-ctl > p.hint:last-child')?.textContent, controls: r.querySelectorAll('input, textarea, select').length}])),
+        tags_js = """[...document.querySelectorAll('""" + were + """ .tag.env')].filter(t => t.checkVisibility()).map(t => t.textContent)"""
+        got = pg.evaluate("""(() => ({
+          fixed: """ + fixed_js + """, tags: """ + tags_js + """,
+          values: {host: document.getElementById('hostOrigins').value, phone: document.getElementById('phoneUrl').value,
+                   files: document.getElementById('rs-upload-max-files').value},
           host: document.getElementById('gen-host').textContent, sec: document.getElementById('signin-rules').textContent,
           passkeys: [...document.querySelectorAll('#gen-host .set-row')].find(r => r.textContent.startsWith('Passkey names'))?.querySelector('.set-row-ctl').textContent,
           limits: [...document.querySelectorAll('#genAbout li')].filter(l => l.querySelector('.tag')).map(l => l.querySelector('.tag').textContent),
-          page: document.documentElement.outerHTML}))""", None)
+          page: document.documentElement.outerHTML}))""")
         # (#1119) Sign-in rules and Sign-in provider, Accounts and sign-in's, and (#1153) Backups' Folder and key, Logging,
-        # Connected sources' switch and About: no disabled or readonly control there either
-        for grp, sel in (("accounts", "#signin-rules [data-env]"), ("backups", "#bkFiles .kv"), ("logs", "#genBk [data-env]"),
-                         ("connected", "#genExpBody [data-env]"), ("install-about", "#genAbout .kv")):
+        # Connected sources' switch and About: no disabled or readonly control there either, each a control of its own
+        seen = {}
+        for grp, sel in (("accounts", "#gs-sessionDays"), ("backups", "#bkFiles .kv"), ("logs", "#genActDays"),
+                         ("connected", "#genExpBody [role=switch]"), ("install-about", "#genAbout .kv")):
             pg.click(f"#setNav a[data-group={grp}]")
             pg.wait_for_selector(sel, state="visible", timeout=10000)
             got["fixed"] += pg.evaluate(fixed_js)
-        at = ctx.request.get(base + "/api/settings/install").json()["settings_at"]
-        machine = {st["name"] for st in ctx.request.get(base + "/api/settings/install/restart").json()["settings"]   # (Needs a restart's
-                   if not st["can_change"]}   # the machine's own environment sets, as TZ here: #1121)
-        rows = got["rows"]
-        want = {"PUBLIC_ORIGINS": "".join(inst["host.publicOrigins"]["value"]), "WATCH_UPLOAD_URL": env["WATCH_UPLOAD_URL"], "SESSION_DAYS": env["SESSION_DAYS"],
-                "ACTIVITY_DAYS": f"{env['ACTIVITY_DAYS']} days", "CONNECTED_SOURCES": "On" if env["CONNECTED_SOURCES"] == "1" else "Off",
-                "OIDC_CLIENT_SECRET": "Set there (never shown here)", "UPLOAD_MAX_FILES": f"{files:,} files",   # (Needs a restart's, #1121)
-                "NOTIFY_TOKEN": "Set there (not sent to this server)" if ctx.request.get(base + "/api/settings/install/notify").json()["token_elsewhere"]
-                else "Set there (never shown here)"}   # (#1130's, never its value)
-        check("General with its settings set by the environment (#1119): no disabled or readonly control anywhere in it, nor in what was "
-              "General's (#1153)",
-              not got["fixed"] and all(r["controls"] == 0 for r in rows.values()), [got["fixed"], {k: r["controls"] for k, r in rows.items()}])
-        check("…each row the environment sets: its value as text (the client secret's never), its variable's tag on its name's line, "
-              "its own help, and where this install's settings are, to change it or take it out",
-              set(rows) == set(want) | machine and all((rows[k]["value"] == want[k] if k in want else rows[k]["value"]) and rows[k]["tag"] == "Set in .env: " + k
-                                                       and rows[k]["tagOnName"] and len(rows[k]["help"]) > 20 and rows[k]["where"] == "Change it where this server's "
-                                                       f"settings are, or take it out there to change it here: {at}." for k in rows)
-              and env["OIDC_CLIENT_SECRET"] not in got["page"] and env["NOTIFY_TOKEN"] not in got["page"], {k: [r, want.get(k)] for k, r in rows.items()})
-        check("…Host and Sign-in rules hold no read-only fact of the server's setup (About does); About tags a limit only where the "
-              "environment set it", not re.search(r"Trusted proxies|Internal port|COOKIE_SECURE|HASH_PARALLEL|Secure session cookie|Password checks at once",
-                                                  got["host"] + got["sec"]) and got["limits"] == ["Set in .env: UPLOAD_MAX_FILES"],
+            got["tags"] += pg.evaluate(tags_js)
+        seen["days"] = [pg.evaluate("document.getElementById('gs-sessionDays')?.value"), pg.evaluate("document.getElementById('genActDays')?.value")]
+        seen["cookie"] = pg.evaluate("[...document.querySelectorAll('#genSecBody input[name=gs-cookieSecure]')].map(i => [i.value, i.checked])")
+        seen["switch"] = pg.evaluate("document.querySelector('#genExpBody [role=switch]')?.checked")
+        check("Install with the environment setting every server setting (#1158): no disabled or readonly control anywhere in what was "
+              "General's (#1119, #1153); no \"Set in .env\" tag but on the container's own published receiver port, and the two "
+              "secrets the environment may manage (#1158, opt-in) locked as \"Managed by the environment\"",
+              not got["fixed"] and set(got["tags"]) - {"Set in .env: RECEIVER_PORT"} == {"Managed by the environment: OIDC_CLIENT_SECRET",
+                                                                          "Managed by the environment: NOTIFY_TOKEN"}, [got["fixed"], got["tags"]])
+        check("…each a plain editable row at the page's own value, the environment's changing none of them; the secrets never in the page",
+              got["values"] == {"host": "\n".join(inst["host.publicOrigins"]["value"]), "phone": inst["phone.uploadUrl"]["value"], "files": files}
+              and seen["days"] == [str(inst["security.sessionDays"]["value"]), str(inst["activity.days"]["value"])]
+              and dict(seen["cookie"]).get(inst["security.cookieSecure"]["value"]) is True and len(seen["cookie"]) == 3
+              and seen["switch"] is bool(inst["experimental.connectedSources"]["value"])
+              and env["OIDC_CLIENT_SECRET"] not in got["page"] and env["NOTIFY_TOKEN"] not in got["page"], [got["values"], seen])
+        check("…Host holds no read-only fact of the server's setup (About does), Sign-in rules only its Secure cookie's choice; About "
+              "tags no limit", not re.search(r"Trusted proxies|Internal port|COOKIE_SECURE|HASH_PARALLEL|Secure session cookie|Password checks at once",
+                                             got["host"] + got["sec"]) and "Secure sign-in cookie" in got["sec"] and got["limits"] == [],
               [got["limits"], re.findall(r"Trusted proxies|Internal port|COOKIE_SECURE|HASH_PARALLEL", got["host"] + got["sec"])])
         check("…and Host's Passkey names says each name the passkeys were made at, with its count (never “[object …]”)",
               got["passkeys"] == "records.example.test: 2 passkeys", got["passkeys"])
@@ -1156,19 +1155,19 @@ def general_env_check(browser, base, cookies, check, db_path):
             pg.evaluate("document.adoptedStyleSheets = []")
             pg.click(f"#setNav a[data-group={grp}]")
             pg.wait_for_timeout(300)
-            serious += axe_check(pg, f"{name}, set by the environment")[0]
+            serious += axe_check(pg, f"{name}, the environment setting it too")[0]
             pg.set_viewport_size({"width": 320, "height": 800})
             pg.wait_for_timeout(200)
-            fits += phone_fits(pg, f"{name}, set by the environment, at 320 px")
+            fits += phone_fits(pg, f"{name}, at 320 px")
             pg.set_viewport_size({"width": 412, "height": 900})
             pg.evaluate("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = [s]; }", BIG_TEXT_CSS)
             pg.wait_for_timeout(300)
-            fits += phone_fits(pg, f"{name}, set by the environment, at 200% text")
+            fits += phone_fits(pg, f"{name}, at 200% text")
             fits += [f"{name} at 200% text scrolls sideways by {n} px" for n in [pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")] if n > 0]
         check("…no serious axe finding, there and in Accounts and sign-in, Logs and activity and Connected sources", not serious, serious)
         check("…and fits at 320 px and at 200% text", not fits, fits)
     except Exception as e:
-        check("General with its settings set by the environment (#1119) ran", False, stopped(e))
+        check("Install with the environment setting every server setting (#1158) ran", False, stopped(e))
     finally:
         for k, v in had.items():
             if v is None:
@@ -1179,6 +1178,69 @@ def general_env_check(browser, base, cookies, check, db_path):
         con.commit()
         con.close()
         ctx.close()
+    return errs
+
+def settings_taken_check(browser, base, cookies, check, db_path):
+    """(#1158) What the first start of this version took from the environment is said once, above Host: each setting by
+    its label and variable, that it's changed here from now on; Got it says it's been read, for good (focus to Host's
+    heading). And the Secure sign-in cookie, a choice of Sign-in rules now: Never is asked first, typed to confirm, and
+    cancelled leaves Automatic as it was. Puts everything back as it was. Returns script errors."""
+    import json as _json, sqlite3
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900})
+    ctx.add_cookies(cookies)
+    pg, errs, got = ctx.new_page(), [], {}
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    con = sqlite3.connect(db_path)
+    mark = "settings.taken_from_environment"
+    was = con.execute("SELECT v FROM meta WHERE k=?", (mark,)).fetchone()
+    con.execute("INSERT INTO meta(k, v) VALUES(?, ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+                (mark, _json.dumps({"at": 1, "names": ["PUBLIC_ORIGINS", "UPLOAD_MAX_FILES"], "shown": False, "seen": {}})))
+    con.commit()
+    try:
+        pg.goto(base + "/settings.html?profile=1#general")
+        pg.wait_for_selector("#hostTaken", timeout=20000)
+        got["said"] = pg.inner_text("#hostTaken")
+        got["first"] = pg.evaluate("document.querySelector('#gen-host .set-hd').nextElementSibling?.id")
+        for w in (412, 1400) if os.environ.get("SANGUITY_SHOTS") else ():
+            pg.set_viewport_size({"width": w, "height": 900})
+            pg.locator("#gen-host").screenshot(path=os.path.join(os.environ["SANGUITY_SHOTS"], f"1158-taken-{w}.png"))
+        pg.set_viewport_size({"width": 1400, "height": 900})
+        pg.locator("#hostTaken").get_by_role("button", name="Got it").click()
+        pg.wait_for_selector("#hostTaken", state="detached", timeout=10000)
+        got["focus"] = pg.evaluate("document.activeElement.id")
+        pg.reload()
+        pg.wait_for_selector("#hostOrigins", timeout=20000)
+        got["again"] = pg.evaluate("!!document.getElementById('hostTaken')")
+        pg.click("#setNav a[data-group=accounts]")
+        pg.wait_for_selector("#gs-cookieSecure-never", state="visible", timeout=10000)
+        got["choices"] = pg.evaluate("[...document.querySelectorAll('#genSecBody input[name=gs-cookieSecure]')].map(i => [i.value, i.checked, i.labels[0].textContent])")
+        pg.click("#gs-cookieSecure-never")
+        pg.wait_for_selector("dialog.sg-ask input", timeout=10000)
+        got["asked"] = pg.inner_text("dialog.sg-ask")
+        pg.keyboard.press("Escape")
+        pg.wait_for_selector("dialog.sg-ask", state="detached", timeout=10000)
+        pg.wait_for_function("document.getElementById('genSecMsg').textContent.length > 0", timeout=10000)
+        got["after"] = [pg.evaluate("document.getElementById('gs-cookieSecure-auto').checked"), pg.inner_text("#genSecMsg"),
+                        {st["key"]: st for sec in ctx.request.get(base + "/api/settings/install").json()["sections"]
+                         for st in sec["settings"]}["security.cookieSecure"]["value"]]
+    except Exception as e:
+        got["stopped"] = stopped(e)
+    finally:
+        if was is None:
+            con.execute("DELETE FROM meta WHERE k=?", (mark,))
+        else:
+            con.execute("UPDATE meta SET v=? WHERE k=?", (was[0], mark))
+        con.commit()
+        con.close()
+        ctx.close()
+    check("What the first start took from the environment, said once above Host (#1158): each by its label and variable, changed "
+          "here from now on; Got it says it's read, for good, focus to Host's heading", "stopped" not in got
+          and got["first"] == "hostTaken" and "Public addresses (PUBLIC_ORIGINS)" in got["said"] and "Files in one upload (Uploads) (UPLOAD_MAX_FILES)" in got["said"]
+          and "changed here" in got["said"] and got["focus"] == "gen-host-hd" and got["again"] is False, got)
+    check("…the Secure sign-in cookie a choice of Sign-in rules: Never asked first, typed to confirm; cancelled, Automatic stays",
+          "stopped" not in got and [c[:2] for c in got.get("choices", [])] == [["auto", True], ["always", False], ["never", False]]
+          and "plain HTTP" in got.get("asked", "") and "Type never secure to confirm" in got.get("asked", "")
+          and got.get("after", [None])[0] is True and "wasn't confirmed" in got["after"][1] and got["after"][2] == "auto", got)
     return errs
 
 
@@ -1340,6 +1402,111 @@ CLEAR_OF_BAR_JS = r"""(() => {
 # where focus is, when it's on a control in sight (#417): not the page itself, shown, inside the window; else None
 IN_SIGHT = """(a => a && a !== document.body && a.checkVisibility() && (r => r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth)(a.getBoundingClientRect())
     ? [a.tagName, a.id, a.dataset.id || '', a.textContent.trim().slice(0, 40)] : null)(document.activeElement)"""
+
+
+def meds_stopped_check(browser, base, cookies, check):
+    """Stopped taking (#1161, medmine.js mmTakingForm), as an owner whose sign-in cookies are given, on profile 1: a
+    current medication of the records, its drawer's Stopped taking opens the form (focus on the day, today; each field
+    labelled), saved with a reason: out of Current and Today, under Past with its dates and the reason, its drawer
+    saying both, a toast with an Undo, which makes it current again; stopped again, Started again takes it up from
+    today, the time before kept, listed in its drawer. One of your own, stopped without a reason: under Past. The form
+    at 320 and 412 px (200% text there), light and dark, forced colours: fits, axe-core. Leaves profile 1 as it found
+    it. Returns the page's script errors."""
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)   # (its waits are evaluated)
+    ctx.add_cookies(cookies)
+    pg, errs = ctx.new_page(), []
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    js, settle = pg.evaluate, (lambda ms=400: pg.wait_for_timeout(ms))
+    key = None
+    try:
+        pg.goto(base + "/?profile=1#medications")
+        pg.wait_for_function("typeof booted !== 'undefined' && booted && MEDS.length > 0", timeout=20000)
+        js("setPeriod('all')")
+        key, name = js("(() => { const m = MEDS.find(m => mrCurrent(m) && !m.own && !m.change); return [m.key, m.name]; })()")
+        today = js("zToday()")
+        pg.locator("#view-medications li.med-row .cell-btn", has_text=name).first.click()
+        settle()
+        pg.click("#dbody .btns button:text-is('Stopped taking')")
+        settle()
+        form = js("""[document.getElementById('dtitle').textContent, document.activeElement.type, document.activeElement.value,
+            [...document.querySelectorAll('#dbody form label')].map(l => l.textContent),
+            [...document.querySelectorAll('#dbody form input, #dbody form textarea')].every(i => i.labels.length === 1)]""")
+        check("Stopped taking (#1161): a current medication's drawer opens the form, focus on the day (today), every field labelled",
+              form == [f"Stopped taking {name}", "date", today, ["The day it stopped", "Why it stopped (optional)"], True], form)
+        bad, axe = [], []
+        for width, theme in ((1400, "light"), (1400, "dark"), (412, "light"), (320, "dark")):
+            pg.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
+            js("t => { document.documentElement.dataset.theme = t; }", theme)
+            settle(250)
+            if width < 1000:
+                bad.extend(phone_fits(pg, f"Stopped taking's form, {width} px ({theme})"))
+            axe.extend(axe_check(pg, f"Stopped taking's form, {width} px, {theme}")[0])
+        js("document.documentElement.style.fontSize = '200%'")
+        pg.set_viewport_size({"width": 412, "height": 860})
+        settle(300)
+        bad.extend(phone_fits(pg, "Stopped taking's form, 412 px at 200%"))
+        js("document.documentElement.style.fontSize = ''; delete document.documentElement.dataset.theme")
+        pg.set_viewport_size({"width": 1400, "height": 900})
+        pg.emulate_media(forced_colors="active")
+        settle(250)
+        axe.extend(axe_check(pg, "Stopped taking's form, forced colours")[0])
+        pg.emulate_media(forced_colors="none")
+        check("…the form fits 320 and 412 px and 200% text, and passes axe-core's WCAG A and AA rules, light, dark and forced colours",
+              not bad and not axe, (bad + axe)[:6])
+        pg.fill("#dbody textarea[id^=mt-why]", "Fictional reason, in my words")
+        pg.click("#dbody button[type=submit]")
+        pg.wait_for_function("k => !mrCurrent(MEDS.find(m => m.key === k))", arg=key, timeout=20000)
+        settle()
+        pg.click("#view-medications details.med-past:has(h2:text-matches('^Past')) > summary")
+        settle(250)
+        said = js("""([k, w]) => { const v = document.getElementById('view-medications'), past = v.querySelector('details.med-past li[data-med-key="' + CSS.escape(k) + '"]');
+            return [[...v.querySelectorAll('div.card:not(.med-past) li.med-row .cell-btn, #medToday .dose-med')].some(b => b.textContent === w),
+              past?.textContent.includes('Why it stopped: Fictional reason, in my words'), !!past?.textContent.match(/ – /),
+              document.getElementById('dbody').textContent.includes('Why it stopped') && document.getElementById('dbody').textContent.includes('Fictional reason, in my words'),
+              [...document.querySelectorAll('#sgToasts .sg-toast-text')].at(-1)?.textContent.startsWith('Marked ' + w + ' as stopped on '),
+              MEDS.find(m => m.key === k).stop]; }""", [key, name])
+        check("…saved with a reason: out of Current and Today, under Past with its dates and the reason, its drawer saying it, a toast with an Undo",
+              said == [False, True, True, True, True, today], said)
+        pg.click("#sgToasts .sg-toast:last-child button:text-is('Undo')")
+        pg.wait_for_function("k => mrCurrent(MEDS.find(m => m.key === k)) && !MEDS.find(m => m.key === k).change", arg=key, timeout=20000)
+        settle()
+        check("…Undo: current again, as the records list it", js("k => document.querySelector('#view-medications div.card li.med-row[data-med-key=\"' + CSS.escape(k) + '\"]') !== null", key))
+        js("k => mmSend('POST', 'stopped', {key: k, day: zToday()})", key)
+        pg.wait_for_function("k => !mrCurrent(MEDS.find(m => m.key === k))", arg=key, timeout=20000)
+        js("k => openMedication(MEDS.find(m => m.key === k))", key)
+        settle()
+        pg.click("#dbody .btns button:text-is('Started again')")
+        settle()
+        again = js("[document.getElementById('dtitle').textContent, document.activeElement.value, [...document.querySelectorAll('#dbody form label')].map(l => l.textContent)]")
+        pg.click("#dbody button[type=submit]")
+        pg.wait_for_function("k => mrCurrent(MEDS.find(m => m.key === k))", arg=key, timeout=20000)
+        settle()
+        again += js("""k => { const m = MEDS.find(m => m.key === k); return [m.spans.length - m.listed.spans.length, m.spans.at(-1).again, m.spans.at(-2).to,
+            document.getElementById('dbody').textContent.includes('Started again'), !!document.querySelector('#dbody .btns button[aria-label^="Stopped taking"]')]; }""", key)
+        check("…Started again: from today, the time before kept, current again, its drawer listing it and offering Stopped taking",
+              again == [f"Started {name} again", today, ["The day it started again"], 1, True, today, True, True], again)
+        js("k => mmSend('PUT', 'taking', {key: k, was: {}})", key)
+        pg.wait_for_function("k => !MEDS.find(m => m.key === k).change", arg=key, timeout=20000)
+        key = None
+        # one of your own, stopped without a reason: under Past with its dates
+        js("mmSend('POST', 'own', {name: 'Stoppable (fictional)', start: '2026-01-05', status: 'Active'})")
+        pg.wait_for_function("MEDS.some(m => m.own && m.name === 'Stoppable (fictional)')", timeout=20000)
+        js("openMedication(MEDS.find(m => m.own && m.name === 'Stoppable (fictional)'))")
+        settle()
+        pg.click("#dbody .btns button:text-is('Stopped taking')")
+        settle()
+        pg.click("#dbody button[type=submit]")
+        pg.wait_for_function("!mrCurrent(MEDS.find(m => m.own && m.name === 'Stoppable (fictional)'))", timeout=20000)
+        settle()
+        own = js("""[...document.querySelectorAll('#view-medications details.med-past li.med-row')].find(r => r.textContent.includes('Stoppable (fictional)'))?.textContent.includes(fmtD(dayTs('2026-01-05')) + ' – ' + fmtD(dayTs(zToday())))""")
+        check("…one of your own, stopped without a reason: under Past with its dates", own is True, own)
+        js("(() => { const m = MEDS.find(m => m.own && m.name === 'Stoppable (fictional)'); return mmSend('DELETE', `own/${m.own.id}`); })()")
+        settle(300)
+    finally:
+        if key:
+            js("k => mmSend('PUT', 'taking', {key: k, was: {}})", key)
+        ctx.close()
+    return errs
 
 
 def family_check(browser, base, cookies, check):
@@ -1673,10 +1840,12 @@ def png_square(size=24, rgb=(200, 60, 80)):
 
 def insurance_check(browser, base, cookies, check):
     """Settings → This person → Insurance cards (#1137), as an owner whose sign-in cookies are given, on profile 1: a plan
-    added through its dialog (focus on its name, Escape back on Add), a photo of the front sent and shown; a share link
-    without Insurance cards shows nothing about insurance, one with it the plan's numbers and the card's photo. The card
-    at 320–1400 px and with text at 200%, light and dark, forced colours. Removes the plan and the links after. Returns
-    the pages' script errors."""
+    added through its dialog (focus on its name, Escape back on Add) with its photos (#1168): a fixture photo's card found,
+    its corners moved by keyboard, cropped and shown as it will be saved; Read the card's and the records' suggestions,
+    filled in only once used; the card at the desk, full screen; a share link without Insurance cards shows nothing about
+    insurance, one with it the plan's numbers and fields and the card's photos. The card, the dialog, a crop and the
+    desk at 320–1400 px and with text at 200%, light and dark, forced colours. Removes the plan and the links after.
+    Returns the pages' script errors."""
     ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
     ctx.add_cookies(cookies)
     pg, errs = ctx.new_page(), []
@@ -1700,26 +1869,176 @@ def insurance_check(browser, base, cookies, check):
         check("Insurance cards: its own group in This person, the card alone there; Add a plan… opens its dialog with focus on the "
               "plan's name, and Escape closes it with focus back on Add (#1137)",
               "insurance" in shown and "labmatches" not in shown and first and back == "insAdd", [shown, first, back])
+        # (#1168) a plan added with its photos: the card found in a photo, straightened and cropped, its corners moved by
+        # keyboard; Read the card's suggestions (the server's text recognition stood in for here: it's off in this
+        # demo) and the records', each shown under its field and filled in only once used
+        sugg = {"name": "FICTIONAL READ PLAN", "member": member, "group": "G-READ-1168", "rxbin": "004336",
+                "phones": [{"label": "Nurse line", "number": "1-800-555-0168"}]}
+        sent = []
+
+        def listing(route):
+            if route.request.method != "GET":
+                return route.continue_()
+            r = route.fetch()
+            route.fulfill(response=r, json={**r.json(), "can_read": True})
+        pg.route(re.compile(r".*/api/profiles/1/insurance$"), listing)
+        pg.route(re.compile(r".*/api/profiles/1/insurance/read$"), lambda route: (sent.append(route.request.post_data_buffer),
+                                                                                  route.fulfill(json={"state": "found", "found": sugg}))[1])
+        pg.reload()
+        pg.wait_for_selector("#insuranceBody > *", timeout=15000)
         pg.click("#insAdd")
-        box = pg.wait_for_selector("dialog.sg-ask[open]", timeout=10000)
-        box.query_selector("input[id$=-name]").fill("Fictional Health Plan 1137")
-        box.query_selector("input[id$=-member]").fill(member)
-        box.query_selector("input[id$=-group]").fill("G-42")
-        box.query_selector("input[id$=-pl1]").fill("Member services")
-        box.query_selector("input[id$=-pn1]").fill("1-800-555-0137")
+        box = pg.wait_for_selector("dialog.ins-dlg[open]", timeout=10000)
+        photo, corners = card_photo()
+        pg.set_input_files("dialog.ins-dlg input[id$=front-file]", files=[{"name": "card.png", "mimeType": "image/png", "buffer": photo}])
+        pg.wait_for_selector("dialog.cc-dlg[open] .cc-h", timeout=15000)
+        pg.wait_for_timeout(300)
+        crop = pg.evaluate("""(() => { const s = document.querySelector('.cc-stage'), vb = s.viewBox.baseVal;
+          return [[...s.querySelectorAll('.cc-ring')].map(c => [c.getAttribute('cx') / vb.width, c.getAttribute('cy') / vb.height]),
+            [...s.querySelectorAll('.cc-h')].map(h => h.getAttribute('aria-label').split(',')[0]), document.querySelector('.cc-dlg .sg-ask-msg p').textContent]; })()""")
+        off = max(min(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 for cx, cy in corners) for x, y in crop[0])
+        pg.focus(".cc-h")
+        pg.keyboard.press("Shift+ArrowRight")
+        pg.wait_for_timeout(500)
+        moved = pg.evaluate("[document.querySelector('.cc-ring').getAttribute('cx') / document.querySelector('.cc-stage').viewBox.baseVal.width, "
+                            "document.querySelector('.cc-say').textContent]")
+        pg.keyboard.press("Shift+ArrowLeft")
+        check("…a photo chosen as a plan is added opens its crop: the card's edges found, each corner within 3% of the card's; each "
+              "corner named for where it is, moved by the arrow keys (Shift: 5%) and said (#1168)",
+              off < 0.03 and crop[2].startswith("Found the card's edges") and sorted(crop[1]) == sorted(["Top-left corner", "Top-right corner",
+              "Bottom-right corner", "Bottom-left corner"]) and abs(moved[0] - crop[0][0][0] - 0.05) < 0.002 and moved[1].endswith("down."),
+              [off, crop, moved])
+        pg.click("dialog.cc-dlg .sg-ask-acts button:last-child")
+        pg.wait_for_selector("dialog.ins-dlg img.ins-pv", timeout=15000)
+        pg.set_input_files("dialog.ins-dlg input[id$=back-file]", files=[{"name": "back.png", "mimeType": "image/png", "buffer": png_square(200)}])
+        pg.wait_for_selector("dialog.cc-dlg[open] .cc-h", timeout=15000)
+        nocard = pg.evaluate("document.querySelector('.cc-dlg .sg-ask-msg p').textContent")
+        pg.click("dialog.cc-dlg button:text('Use the whole photo')")
+        pg.wait_for_function("document.querySelectorAll('dialog.ins-dlg img.ins-pv').length === 2 && [...document.querySelectorAll('dialog.ins-dlg img.ins-pv')].every(i => i.naturalWidth)", timeout=15000)
+        pv = pg.evaluate("[[...document.querySelectorAll('dialog.ins-dlg img.ins-pv')].map(i => [i.naturalWidth, i.naturalHeight, i.alt]), "
+                         "[...document.querySelectorAll('dialog.ins-dlg .ins-side')].map(s => [...s.querySelectorAll('label.btn, button')].map(b => b.textContent).join('|')), "
+                         "document.activeElement.closest('.ins-side')?.getAttribute('aria-labelledby')?.endsWith('back-hd')]")
+        check("…the crop shown as it will be saved, card-shaped (1200 × 757), with Choose another, Adjust corners and Take off; a photo with "
+              "no card found says so and is kept whole; focus back in its side",
+              pv[0][0] == [1200, 757, "Front of the card, as it will be saved"] and pv[0][1][:2] == [200, 200] and nocard.startswith("The card's edges weren't found")
+              and pv[1] == ["Choose another…|Adjust corners…|Take off"] * 2 and pv[2], [pv, nocard])
+        pg.click("dialog.ins-dlg button:text('Read the card')")
+        pg.wait_for_selector("dialog.ins-dlg .ins-sug", timeout=15000)
+        pg.wait_for_timeout(200)
+        read = pg.evaluate("""(() => { const d = document.querySelector('dialog.ins-dlg'), v = s => d.querySelector('[id$=-' + s + ']').value;
+          return [[...d.querySelectorAll('.ins-sug b')].map(b => b.textContent), ['name', 'member', 'group', 'rxbin', 'pn1'].map(v),
+            d.querySelector('[id$=-member]').getAttribute('aria-describedby'), d.querySelector('.ins-said').textContent]; })()""")
+        box.query_selector("[id$=-member-sug] .ins-use").click()
+        recs = box.query_selector("fieldset.ins-set button")
+        offered = recs.text_content() if recs else None
+        if recs:
+            recs.click()
+        pg.wait_for_timeout(200)
+        box.query_selector("[id$=-name-sug] .ins-use").click()
+        used = pg.evaluate("(() => { const d = document.querySelector('dialog.ins-dlg'); return [d.querySelector('[id$=-name]').value, d.querySelector('[id$=-member]').value, "
+                           "d.querySelector('[id$=-member]').classList.contains('ins-used'), d.querySelector('[id$=-group]').value, document.activeElement.id.endsWith('-name')]; })()")
+        check("…Read the card sends the cropped photos alone (JPEGs, never the photo taken) and shows what it suggests under each field, none "
+              "filled in; Use fills one in, marked; the records suggest the plan their claims name",
+              len(sent) == 2 and all(b[:3] == b"\xff\xd8\xff" for b in sent) and read[0] == ["FICTIONAL READ PLAN", member, "G-READ-1168", "004336", "Nurse line 1-800-555-0168"]
+              and read[1] == ["", "", "", "", ""] and read[2].endswith("-member-sug") and read[3].startswith("The card suggests 5 fields")
+              and offered and offered.startswith("Example Health Plan") and used == ["Example Health Plan", member, True, "", True],
+              [len(sent), [b[:3] for b in sent], read, offered, used])
+        plan_name = used[0]
         box.query_selector(".sg-ask-acts button:last-child").click()
-        pg.wait_for_function("document.getElementById('insuranceMsg').textContent.startsWith('Added')", timeout=10000)
-        pg.wait_for_selector("#insuranceBody [data-plan]", timeout=10000)
-        pg.set_input_files("#insuranceBody [data-plan] input[id$=-front]",
-                           files=[{"name": "card-front.png", "mimeType": "image/png", "buffer": png_square()}])
-        pg.wait_for_function("document.getElementById('insuranceMsg').textContent.startsWith('Saved the photo of the front')", timeout=15000)
-        pg.wait_for_function("(() => { const i = document.querySelector('#insuranceBody [data-plan] .jpic img'); return i && i.complete && i.naturalWidth > 0; })()", timeout=10000)
+        pg.wait_for_function("document.getElementById('insuranceMsg').textContent.startsWith('Added')", timeout=15000)
+        pg.wait_for_selector("#insuranceBody [data-plan] .jpic img", timeout=10000)
+        pg.wait_for_function("[...document.querySelectorAll('#insuranceBody [data-plan] .jpic img')].every(i => i.complete && i.naturalWidth > 0)", timeout=10000)
+        kept = api("profiles/1/insurance")[1]["plans"][0]
         row = pg.evaluate("(() => { const r = document.querySelector('#insuranceBody [data-plan]'); return [r.querySelector('h3').textContent, r.textContent.includes('Member ID " + member + "'), "
-                          "r.querySelector('img').alt, [...r.querySelectorAll('button, label.btn')].map(b => b.textContent).join('|'), document.activeElement.id.endsWith('-front')]; })()")
-        check("…a plan added there lists its name, member ID and number, and a photo of its front sent is shown, named for its side and plan, "
-              "with Change, Replace, Add back, Take off and Remove; focus back on the front's picker",
-              row[0] == "Fictional Health Plan 1137" and row[1] and row[2] == "Front of the card for Fictional Health Plan 1137"
-              and row[3] == "Change…|Replace front photo…|Add back photo…|Take off front photo|Remove" and row[4], [row, msg()])
+                          "[...r.querySelectorAll('img')].map(i => [i.alt, i.naturalWidth, i.naturalHeight]), [...r.querySelectorAll('button, label.btn')].map(b => b.textContent).join('|'), "
+                          "document.activeElement.id, document.getElementById('insuranceMsg').textContent]; })()")
+        check("…saved with only what was used (not the group or phone it suggested), and both photos as cropped; the row lists its name, "
+              "member ID and photos, with Show at the desk, Change and Remove; focus back on Add",
+              row[0] == plan_name and row[1] and row[2] == [[f"Front of the card for {plan_name}", 1200, 757], [f"Back of the card for {plan_name}", 200, 200]]
+              and row[3] == "Show at the desk|Change…|Remove" and row[4] == "insAdd" and row[5] == f"Added {plan_name}. Saved both photos."
+              and (kept["group"], kept["phones"], kept["rxbin"]) == ("", [], ""), [row, kept])
+        pg.unroute(re.compile(r".*/api/profiles/1/insurance$"))
+        # the card at the desk: full screen, the front then the back, the member ID as text; Escape back
+        api(f"profiles/1/insurance/{kept['id']}", "PUT", {**{k: kept[k] for k in ("name", "member", "group", "phones")}, "group": "G-1168",
+                                                          "kind": "medical", "order": "primary", "rxbin": "004336"})
+        pg.reload()
+        pg.wait_for_selector("#insuranceBody [data-plan] button", timeout=15000)
+        pg.focus("#insuranceBody [data-plan] .acts button")
+        pg.keyboard.press("Enter")
+        pg.wait_for_selector("dialog.ins-desk[open] .dk-card img", timeout=10000)
+        desk = [pg.evaluate("""[document.querySelector('.dk-card img').alt, [...document.querySelectorAll('.dk-ids div')].map(d => d.innerText.replace(/\\s+/g, ' ')),
+          (() => { const r = document.querySelector('dialog.ins-desk').getBoundingClientRect(); return [r.width === innerWidth, r.height === innerHeight]; })(),
+          document.querySelector('.dk-rx').textContent]""")]
+        pg.focus(".dk-card")
+        pg.keyboard.press("Enter")
+        pg.wait_for_function("document.querySelector('.dk-card img')?.alt.startsWith('Back')", timeout=10000)
+        desk.append(pg.evaluate("[document.querySelector('.dk-card img').alt, [...document.querySelectorAll('.ins-desk [aria-pressed]')].map(b => b.textContent + ':' + b.getAttribute('aria-pressed'))]"))
+        fits = {}
+        for w in (320, 412, 1400):
+            pg.set_viewport_size({"width": w, "height": 900})
+            pg.wait_for_timeout(150)
+            fits[w] = pg.evaluate("document.querySelector('dialog.ins-desk').scrollWidth - document.querySelector('dialog.ins-desk').clientWidth") or None
+        big = pg.add_style_tag(content=BIG_TEXT_CSS)
+        pg.set_viewport_size({"width": 412, "height": 900})
+        pg.wait_for_timeout(200)
+        fits["200%"] = pg.evaluate("document.querySelector('dialog.ins-desk').scrollWidth - document.querySelector('dialog.ins-desk').clientWidth") or None
+        big.evaluate("s => s.remove()")
+        pg.set_viewport_size({"width": 1400, "height": 900})
+        axes = []
+        for theme in ("light", "dark"):
+            pg.emulate_media(color_scheme=theme)
+            pg.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+            pg.wait_for_timeout(150)
+            axes += axe_check(pg, f"Insurance card at the desk, {theme}")[0]
+        pg.evaluate("delete document.documentElement.dataset.theme")
+        pg.emulate_media(color_scheme=None)
+        pg.keyboard.press("Escape")
+        pg.wait_for_function("!document.querySelector('dialog.ins-desk')", timeout=10000)
+        desk.append(pg.evaluate("document.activeElement.textContent"))
+        check("…Show at the desk: the card full screen, its front, the member ID and group number as text, the pharmacy numbers; Enter on "
+              "the card shows its back (Front and Back say which); it fits 320–1400 px and 200% text, axe-core finds nothing serious light "
+              "or dark; Escape back on Show at the desk",
+              desk[0] == [f"Front of the card for {plan_name}", [f"Member ID {member}", "Group G-1168"], [True, True], "RxBIN 004336"]
+              and desk[1] == [f"Back of the card for {plan_name}", ["Front:false", "Back:true"]] and desk[2] == "Show at the desk"
+              and not any(fits.values()) and not axes, [desk, fits, axes[:4]])
+        # the dialog and a crop at 320 px and 200% text, by axe light and dark
+        pg.click("#insuranceBody [data-plan] .acts button:nth-child(2)")
+        pg.wait_for_selector("dialog.ins-dlg[open]", timeout=10000)
+        pg.set_input_files("dialog.ins-dlg input[id$=front-file]", files=[{"name": "card.png", "mimeType": "image/png", "buffer": photo}])
+        pg.wait_for_selector("dialog.cc-dlg[open] .cc-h", timeout=15000)
+        dlgfits, dlgaxes = {}, []
+        for name_, sel in (("crop", "dialog.cc-dlg"), ("dialog", "dialog.ins-dlg")):
+            for w in (320, 412):
+                pg.set_viewport_size({"width": w, "height": 800})
+                pg.wait_for_timeout(150)
+                o = pg.evaluate("s => { const d = document.querySelector(s), r = d.getBoundingClientRect(); return [document.documentElement.scrollWidth - innerWidth, "
+                                "[...d.querySelectorAll('*')].filter(e => e.checkVisibility() && e.getBoundingClientRect().right > r.right + 0.5).length]; }", sel)
+                if o != [0, 0]:
+                    dlgfits[f"{name_} {w}"] = o
+            big = pg.add_style_tag(content=BIG_TEXT_CSS)
+            pg.wait_for_timeout(200)
+            o = pg.evaluate("s => document.querySelector(s).scrollWidth - document.querySelector(s).clientWidth", sel)
+            if o:
+                dlgfits[f"{name_} 200%"] = o
+            big.evaluate("s => s.remove()")
+            pg.set_viewport_size({"width": 1400, "height": 900})
+            for theme in ("light", "dark"):
+                pg.emulate_media(color_scheme=theme)
+                pg.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+                pg.wait_for_timeout(150)
+                dlgaxes += axe_check(pg, f"Insurance card's {name_}, {theme}")[0]
+            pg.evaluate("delete document.documentElement.dataset.theme")
+            pg.emulate_media(color_scheme=None, forced_colors="active")
+            pg.wait_for_timeout(150)
+            if name_ == "crop":
+                forced = pg.evaluate("getComputedStyle(document.querySelector('.cc-ring')).stroke")
+            pg.emulate_media(forced_colors="none")
+            if name_ == "crop":
+                pg.keyboard.press("Escape")
+                pg.wait_for_function("!document.querySelector('dialog.cc-dlg')", timeout=10000)
+        pg.keyboard.press("Escape")
+        pg.wait_for_function("!document.querySelector('dialog.ins-dlg')", timeout=10000)
+        check("…its dialog and a photo's crop fit 320 and 412 px and 200% text, axe-core finds nothing serious in either, light or dark, "
+              "and the corners keep an edge in forced colours", not dlgfits and not dlgaxes and forced not in ("", "none"), [dlgfits, dlgaxes[:4], forced])
         # the card at 320–1400 px, text at 200%, light and dark, forced colours
         fits, axes = {}, []
         for w in (320, 412, 768, 1400):
@@ -1762,21 +2081,247 @@ def insurance_check(browser, base, cookies, check):
             sp.goto(base + "/" + made["path"])
             sp.wait_for_selector("#share-visits", timeout=15000)
             if name == "with":
-                sp.wait_for_function("(() => { const i = document.querySelector('#share-insurance img'); return i && i.src.startsWith('data:') && i.naturalWidth > 0; })()", timeout=10000)
+                sp.wait_for_function("[...document.querySelectorAll('#share-insurance img')].every(i => i.src.startsWith('data:') && i.naturalWidth > 0)", timeout=10000)
             seen[name] = sp.evaluate("[document.body.innerText.includes(" + json.dumps(member) + "), /insurance card/i.test(document.body.innerText), "
-                                     "!!document.getElementById('share-insurance'), [...document.querySelectorAll('#share-insurance img')].map(i => i.alt)]")
+                                     "!!document.getElementById('share-insurance'), [...document.querySelectorAll('#share-insurance img')].map(i => i.alt), "
+                                     "[...document.querySelectorAll('#share-insurance dt')].map(d => d.textContent + ' ' + d.nextElementSibling.textContent)]")
             sp.close()
-        check("…offered for a share link; a link without Insurance cards shows nothing about insurance, one with it the plan's member ID "
-              "and the photo of its card's front",
-              "insurance" in offered and seen["without"] == [False, False, False, []]
-              and seen["with"][:3] == [True, True, True] and seen["with"][3] == ["Front of the card for Fictional Health Plan 1137"], [offered, seen])
+        check("…offered for a share link; a link without Insurance cards shows nothing about insurance, one with it the plan's member ID, "
+              "what else its card says (#1168: its type, pharmacy numbers) and the photos of its card as cropped",
+              "insurance" in offered and seen["without"] == [False, False, False, [], []]
+              and seen["with"][:3] == [True, True, True] and seen["with"][3] == [f"Front of the card for {plan_name}", f"Back of the card for {plan_name}"]
+              and seen["with"][4] == ["Plan type Medical, primary", f"Member ID {member}", "Group number G-1168", "RxBIN 004336"], [offered, seen])
     finally:
         try:
             for lid in links:
                 api(f"profiles/1/links/{lid}", "DELETE")
             for plan in (api("profiles/1/insurance")[1] or {}).get("plans") or []:
-                if plan["name"] == "Fictional Health Plan 1137":
+                if plan["member"] == member:
                     api(f"profiles/1/insurance/{plan['id']}", "DELETE")
+        finally:
+            ctx.close()
+    return errs
+
+
+# (#1165) where a control is on the screen, the page's scroll, and focus: before and after each edit in Dashboard
+HOLD1165 = """e => { const r = e.getBoundingClientRect(), a = document.activeElement, q = a.getBoundingClientRect();
+  return {y: scrollY, top: r.top, focus: a.getAttribute('aria-label') || a.value || a.id || a.tagName, ftop: q.top, fin: q.bottom > 0 && q.top < innerHeight}; }"""
+
+
+def dashboard_edit_check(browser, base, cookies, check):
+    """Settings → This person → Dashboard by tab (#1165), as an owner whose sign-in cookies are given, on profile 1: a
+    section per tab it changes (Overview, Labs, Body and activity, Costs, then Tabs), each named by its tab with a link
+    to it; every lab in the records to tick under Key labs and Labs selected at first, by panel, with its results and
+    latest date, a count, narrowed as a name is typed; each change said, with an Undo where it took something out. At
+    412 and 1400 px, each edit measured: a control kept stays where it was on the screen (within 1 px), one gone leaves
+    focus on the next one in sight, the page not moving; a move keeps the page; Save leaves the cards as they are, the
+    control used in place. #activity and #sec-trends open their sections, the palette finds them by their old words,
+    Costs' tax year is chosen here. At 320–1400 px, text at 200%, light and dark (axe-core), forced colours. Leaves
+    profile 1's settings as it found them. Returns the pages' script errors."""
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+    ctx.add_cookies(cookies)
+    pg, errs = ctx.new_page(), []
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    api = lambda path, method="GET", body=None: pg.evaluate(  # noqa: E731
+        "([p, m, b]) => fetch('api/' + p, {method: m, headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'}, "
+        "body: b == null ? undefined : JSON.stringify(b)}).then(async r => [r.status, await r.json().catch(() => null)])", [path, method, body])
+    keys = ("overview.keyLabs", "overview.homeTiles", "trends.defaultLabs", "trends.views", "tabs", "costs.taxStart")
+    T, D = "#sec-overview [data-key='overview.keyLabs']", "#sec-trends [data-key='trends.defaultLabs']"
+    was = None
+
+    def restore():   # profile 1's settings as they were
+        for k, st in (was or {}).items():
+            if st["from"] == "default":
+                api(f"profiles/1/settings/{k}", "DELETE")
+            else:
+                api(f"profiles/1/settings/{k}", "PUT", {"value": st["value"]})
+
+    def open_dash(w, hash="dashboard"):
+        pg.set_viewport_size({"width": w, "height": 900})
+        pg.goto("about:blank")   # (the same address again would only scroll to its hash: drawn afresh)
+        pg.goto(base + "/settings.html?profile=1#" + hash)
+        pg.wait_for_selector(f"{T} .set-pick label[data-lab]", timeout=15000)
+        pg.wait_for_load_state("networkidle")
+        pg.wait_for_timeout(300)
+
+    def edit(sel, do):
+        """the control (sel), where it and focus are before and after do(it), once the page has drawn it"""
+        loc = pg.locator(sel).first
+        loc.evaluate("e => e.scrollIntoView({block: 'center'})")   # (mid-screen: clear of the group's bar at the foot, and nothing to scroll for the click)
+        pg.wait_for_timeout(100)
+        h = loc.element_handle()
+        a = pg.evaluate(HOLD1165, h)
+        do(loc)
+        pg.wait_for_timeout(250)
+        b = pg.evaluate(HOLD1165, h)
+        b["kept"] = pg.evaluate("e => e.isConnected && e.getClientRects().length > 0", h)
+        return a, b
+
+    try:
+        pg.goto(base + "/settings.html?profile=1#dashboard")
+        secs = (api("profiles/1/settings/sections")[1] or {}).get("sections") or []
+        was = {st["key"]: st for sec in secs for st in sec["settings"] if st["key"] in keys}
+        data = api("profiles/1/data")[1]
+        names = sorted({s["name"] for s in data["labs"] if not s.get("watch") and s.get("pts")})
+        open_dash(1400)
+        lay = pg.evaluate("""[...document.querySelectorAll('#sections > section')].filter(s => s.checkVisibility())
+          .map(s => [s.id, s.querySelector('h2').textContent, s.querySelector('.set-hd > .set-tab a')?.getAttribute('href')
+            || (s.querySelector('.set-hd > .set-tab')?.textContent.startsWith('This tab is hidden') ? 'hidden' : null)])""")
+        hid = pg.evaluate("SET_ITEMS.tabs.value().hidden")   # (a hidden one's: that it's hidden, below)
+        link = lambda t: "hidden" if t in hid else f"./?profile=1#{t}"  # noqa: E731
+        check("Dashboard by tab (#1165): a section per tab it changes, each named by it with a link to it, then Tabs",
+              lay == [["sec-overview", "Overview", link("overview")], ["sec-trends", "Labs", link("labs")],
+                      ["sec-health", "Body and activity", link("health")], ["sec-costs", "Costs", link("costs")], ["sec-tabs", "Tabs", None]], [lay, hid])
+        pick = pg.evaluate("""sel => { const p = document.querySelector(sel + ' .set-pick'), chosen = SET_ITEMS['overview.keyLabs'].value();
+          return {labs: [...p.querySelectorAll('fieldset:not([hidden]) label[data-lab]')].filter(l => !l.closest('fieldset').querySelector('legend').textContent.startsWith('Not in')).map(l => l.dataset.lab).sort(),
+            legends: [...p.querySelectorAll('fieldset:not([hidden]) > legend')].map(l => l.textContent),
+            said: [...p.querySelectorAll('label[data-lab]')].every(l => /\\d+ results?, latest \\S/.test(l.textContent) || l.textContent.includes('no results here')),
+            ticked: [...p.querySelectorAll('label[data-lab] input')].every(i => i.checked === chosen.includes(i.value)),
+            count: p.previousElementSibling.textContent, n: chosen.filter(n => LAB_NAMES.includes(n)).length}; }""", T)
+        check("…Key labs lists every lab in the records to tick, by panel, each with its results and latest date, the chosen ones "
+              "ticked, and a count", pick["labs"] == names and len(pick["legends"]) >= 2 and pick["said"] and pick["ticked"]
+              and pick["count"] == f"{pick['n']} of {len(names)} lab{'s' if len(names) != 1 else ''} chosen", {**pick, "labs": len(pick["labs"]), "want": len(names)})
+        pg.fill(f"{T} .set-add input", "hem")
+        pg.wait_for_timeout(150)
+        found = pg.evaluate("""sel => [[...document.querySelectorAll(sel + ' .set-pick label[data-lab]')].filter(l => l.checkVisibility()).map(l => l.textContent.toLowerCase().includes('hem')),
+          document.querySelector(sel + ' .set-pick-n').textContent]""", T)
+        pg.fill(f"{T} .set-add input", "")
+        check("…narrowed as a name is typed, saying how many match", found[0] and all(found[0]) and re.match(r"\d+ match “hem” · ", found[1]), found)
+
+        moves, bad = {}, []
+        for w in (1400, 412):
+            restore()
+            open_dash(w)
+            js_n = lambda: pg.evaluate("SET_ITEMS['overview.keyLabs'].value()")  # noqa: E731
+            first = js_n()
+            # a lab ticked off in the picker and back: the box stays where it was, focus on it, said with an Undo
+            lab = pg.evaluate("sel => [...document.querySelectorAll(sel + ' .set-pick label[data-lab] input')].find(i => i.checked)?.value", T)
+            box = f"{T} .set-pick label[data-lab=\"{lab}\"] input"
+            moves[f"{w} untick"] = edit(box, lambda l: l.uncheck())
+            said = pg.evaluate("sel => [document.querySelector(sel + ' .set-list > .msg').textContent, SET_ITEMS['overview.keyLabs'].value()]", T)
+            moves[f"{w} Undo"] = edit(f"{T} .set-list > .msg button", lambda l: l.click())
+            undone = [pg.evaluate("sel => document.querySelector(sel + ' .set-list > .msg').textContent", T), js_n() == first]
+            moves[f"{w} tick"] = edit(box, lambda l: l.uncheck())
+            moves[f"{w} tick back"] = edit(box, lambda l: l.check())
+            # a lab's Remove (its menu's, on a phone): focus on the next one's
+            if w > 700:
+                moves[f"{w} Remove"] = edit(f"{T} li[data-i='1'] button[aria-label^='Remove ']", lambda l: l.click())
+            else:
+                pg.locator(f"{T} li[data-i='1'] [data-act=more]").click()
+                moves[f"{w} Remove"] = edit(f"{T} li[data-i='1'] .menu-item:text-is('Remove')", lambda l: l.click())
+            moves[f"{w} reorder"] = edit(f"{T} li[data-i='0'] [data-act=grip]", lambda l: l.press("ArrowDown"))
+            # Labs selected at first: a lab added by name, one ticked in the picker, one taken out
+            pg.fill(f"{D} .set-add input", "")
+            moves[f"{w} labs tick"] = edit(f"{D} .set-pick label[data-lab] input:not(:checked)", lambda l: l.check())
+            moves[f"{w} labs Remove"] = edit(f"{D} li[data-lab] button", lambda l: l.click())
+            # a view added and taken out; a tab hidden and moved
+            moves[f"{w} add view"] = edit("#sec-trends button[aria-label='Add a view']", lambda l: l.click())
+            moves[f"{w} remove view"] = edit("#sec-trends .set-view:last-child button:text-is('Remove')", lambda l: l.click())
+            moves[f"{w} tab hidden"] = edit("#sec-tabs input[data-tab=timeline]", lambda l: l.click())   # (hidden, or shown if it was hidden)
+            tab_said = pg.evaluate("document.querySelector('#sec-tabs .msg').textContent")
+            moves[f"{w} tab reorder"] = edit("#sec-tabs li[data-i='1'] [data-act=grip]", lambda l: l.press("ArrowDown"))
+            # Save: the cards stay as they are, the control used in place
+            pg.evaluate("window._cards1165 = [...document.querySelectorAll('#sections > section')]")
+            moves[f"{w} Save"] = edit("#sec-tabs input[data-tab=timeline]", lambda l: pg.click("#setBar button:text-is('Save')"))
+            pg.wait_for_function("document.getElementById('setBar').hidden && document.querySelector('#sec-tabs .set-msg').textContent.startsWith('Saved')", timeout=10000)
+            kept = pg.evaluate("window._cards1165.every(c => c.isConnected) && document.getElementById('setBar').hidden")
+            moved = moves[f"{w} Save"]
+            moved[1].update(pg.evaluate(HOLD1165, pg.locator("#sec-tabs input[data-tab=timeline]").element_handle()))
+            check(f"…at {w} px: a lab ticked off says so with an Undo, which puts it back; a tab hidden says so; Save leaves every card as it is",
+                  said[0] == f"{pg.evaluate('n => nick(n)', lab)} taken out. Undo" and lab not in said[1] and undone == [f"{pg.evaluate('n => nick(n)', lab)} put back.", True]
+                  and tab_said in ("Timeline hidden. Undo", "Timeline shown. Undo") and kept, [said, undone, tab_said, kept])
+            for k, (a, b) in moves.items():
+                if not k.startswith(str(w)):
+                    continue
+                if k.endswith("reorder"):   # focus with the row, the page as it was
+                    ok = abs(b["y"] - a["y"]) < 1 and b["focus"].startswith("Reorder ")
+                elif b["kept"]:          # the control stays where it was on the screen
+                    ok = abs(b["top"] - a["top"]) < 1.5
+                else:                    # gone: focus on the next one, in sight, the page as it was
+                    ok = b["fin"] and b["focus"] != "BODY" and (abs(b["y"] - a["y"]) < 1 or abs(b["ftop"] - a["top"]) < 1.5)
+                if not ok:
+                    bad.append([k, a, b])
+        check("…and at 412 and 1400 px each edit (a tick, an Undo, a Remove, a move, a view, a tab, Save) keeps the control used where it was "
+              "on the screen, or focus on the next one in sight, the page not jumping", not bad, bad[:4])
+
+        # a hidden tab's section: no link to another tab, but that it's hidden and Show it, which shows it in Tabs
+        open_dash(1400)
+        if not pg.is_checked("#sec-tabs input[data-tab=labs]"):
+            pg.check("#sec-tabs input[data-tab=labs]")
+            pg.wait_for_timeout(200)
+        pg.uncheck("#sec-tabs input[data-tab=labs]")
+        pg.wait_for_timeout(200)
+        off = pg.evaluate("[document.querySelector('#sec-trends .set-tab').textContent, !!document.querySelector('#sec-trends .set-tab a'), "
+                          "document.querySelector('#sec-overview .set-tab a')?.getAttribute('href')]")
+        a, b = edit("#sec-trends .set-tab button", lambda l: l.click())
+        on = pg.evaluate("""[document.activeElement.textContent, document.activeElement.getAttribute('href'), document.querySelector('#sec-tabs input[data-tab=labs]').checked,
+          document.querySelector('#sec-tabs .msg').textContent, SET_ITEMS.tabs.value().hidden.includes('labs')]""")
+        pg.click("#sec-tabs .msg button:text-is('Undo')")
+        undone = pg.evaluate("[document.querySelector('#sec-trends .set-tab').textContent, document.querySelector('#sec-tabs input[data-tab=labs]').checked]")
+        check("…a hidden tab's section says so, with Show it in place of its link; Show it shows it in Tabs, said with an Undo, focus on the link back, "
+              "the page not moving", off == ["This tab is hiddenShow it", False, "./?profile=1#overview"]
+              and on == ["Open Labs", "./?profile=1#labs", True, "Labs shown. Undo", False] and abs(b["y"] - a["y"]) < 1
+              and undone == ["This tab is hiddenShow it", False], [off, on, a, b, undone])
+        pg.click("#setBar button:text-is('Discard')")
+
+        # old addresses and the palette's words
+        olds = {}
+        for h, sec in (("activity", "sec-health"), ("sec-trends", "sec-trends"), ("sec-overview", "sec-overview")):
+            pg.set_viewport_size({"width": 1400, "height": 900})
+            pg.goto(base + "/settings.html?profile=1#" + h)
+            pg.wait_for_selector(f"#{sec}", timeout=10000)
+            pg.wait_for_timeout(1200)
+            olds[h] = pg.evaluate("id => [document.getElementById('groupTitle').textContent, (r => r.top >= 0 && r.top < innerHeight)(document.getElementById(id).getBoundingClientRect())]", sec)
+        pals = {}
+        for q in ("workouts", "lab charts", "tax year"):
+            pg.keyboard.press("Control+k")
+            pg.wait_for_selector("#palQ", timeout=5000)
+            pg.fill("#palQ", q)
+            pg.wait_for_timeout(300)
+            pals[q] = pg.evaluate("[...document.querySelectorAll('#palList [role=option]')].map(o => o.textContent)")
+            pg.keyboard.press("Escape")
+        check("…old addresses open each part (#activity, Workouts' group before, is Body and activity's), and the palette finds them by their words",
+              all(v == ["Dashboard", True] for v in olds.values()) and "Body and activity, Settings › Dashboard" in pals["workouts"]
+              and "Labs, Settings › Dashboard" in pals["lab charts"] and "Costs, Settings › Dashboard" in pals["tax year"], [olds, pals])
+        # Costs' tax year, chosen here, saved as it's picked
+        open_dash(1400)
+        month = 5 if pg.input_value("#sec-costs select") == "4" else 4
+        pg.select_option("#sec-costs select", str(month))
+        pg.wait_for_function("document.querySelector('#sec-costs .set-msg').textContent.startsWith('Saved')", timeout=10000)
+        check("…Costs' tax year's first month is chosen here, saved as it's picked", api("profiles/1/settings")[1]["costs"]["taxStart"] == month)
+
+        # 320–1400 px, text at 200%, light and dark, forced colours
+        fits, axes = {}, []
+        for w in (320, 412, 768, 1400):
+            pg.set_viewport_size({"width": w, "height": 900})
+            pg.wait_for_timeout(150)
+            o = pg.evaluate("document.documentElement.scrollWidth - innerWidth")
+            if o:
+                fits[w] = o
+        pg.set_viewport_size({"width": 412, "height": 900})
+        big = pg.add_style_tag(content=BIG_TEXT_CSS)
+        pg.wait_for_timeout(200)
+        fits["200%"] = pg.evaluate("document.documentElement.scrollWidth - innerWidth") or None
+        big.evaluate("s => s.remove()")
+        for w in (412, 1400):
+            pg.set_viewport_size({"width": w, "height": 900})
+            for theme in ("light", "dark"):
+                pg.emulate_media(color_scheme=theme)
+                pg.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+                pg.wait_for_timeout(200)
+                clear_of_bar(pg)
+                axes += axe_check(pg, f"Dashboard {w} {theme}")[0]
+        pg.evaluate("delete document.documentElement.dataset.theme")
+        pg.emulate_media(color_scheme=None, forced_colors="active")
+        pg.wait_for_timeout(200)
+        forced = pg.evaluate(f"""[...document.querySelectorAll("{T} .set-pick input")].every(i => i.checkVisibility())
+          && [...document.querySelectorAll('#sec-overview .set-tab')].every(a => a.checkVisibility())""")
+        pg.emulate_media(forced_colors="none")
+        check("…Dashboard fits from 320 to 1400 px and with text at 200%, axe-core finds nothing serious light or dark, and its ticks and links "
+              "show in forced colours", not any(fits.values()) and not axes and forced, [fits, axes[:4], forced])
+    finally:
+        try:
+            restore()
         finally:
             ctx.close()
     return errs
@@ -2008,6 +2553,24 @@ def icon_audit(page, label):
     bad += [f"{label}: a symbol in the text, {t}" for t in a["text"]]   # #355
     bad += [f"{label}: an icon neither hidden nor named: {t}" for t in a["hidden"]] + [f"{label}: only an icon, no name: {t}" for t in a["unnamed"]]
     return a["n"], bad
+
+
+def card_photo(w=720, h=540):
+    """(#1168) a fixture photo of a fictional insurance card, turned and in perspective on a busy background
+    (tests/test_cardcrop.py draws it), as a grey PNG, and its corners as shares of the picture's width and height"""
+    import struct, zlib
+    import test_cardcrop as tc
+    was = tc.W, tc.H
+    tc.W, tc.H = w, h
+    try:
+        quad = tc.rect(w / 2, h / 2, w * 0.62, angle=17, tilt=0.12)
+        gray = tc.photo(quad, seed=3)
+    finally:
+        tc.W, tc.H = was
+    chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)  # noqa: E731
+    rows = b"".join(b"\0" + bytes(gray[y * w:(y + 1) * w]) for y in range(h))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 0, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows))
+            + chunk(b"IEND", b"")), [(x / w, y / h) for x, y in quad]
 
 
 def axe_check(page, label):
@@ -2555,10 +3118,10 @@ CHART_ACCENT_JS = r"""sel => {
 }"""
 
 
-# a tab opened for the tile checks (#330, #339, #351), from [tab, period]: "costs" is Costs' Claims and "costs-paid" its
-# What you paid, each with its More figures open, so every figure is measured (#278)
+# a tab opened for the tile checks (#330, #339, #351), from [tab, period]: "costs" is Costs' Claims, "costs-paid" its
+# Payments and bills and "costs-summary" its Summary (#1163), each with its More figures open, so every figure is measured (#278)
 TILE_TAB_JS = """([t, p]) => { if (p) setPeriod(p);
-  if (t.startsWith('costs')) Object.assign(costState, {view: t === 'costs' ? 'claims' : 'paid', more: true}); switchTab(t.split('-')[0]); }"""
+  if (t.startsWith('costs')) Object.assign(costState, {view: {costs: 'claims', 'costs-paid': 'paid', 'costs-summary': 'summary'}[t], more: true}); switchTab(t.split('-')[0]); }"""
 
 
 # a unit as the pages say it (#1103: util.js unitSaid, server/units.py said, test_units holding them alike), for what's
@@ -3062,12 +3625,12 @@ def general_security_check(check, browser, base, cookies):
       document.getElementById('signin-rules').textContent.includes('COOKIE_SECURE') || document.getElementById('signin-rules').textContent.includes('HASH_PARALLEL'),
       [...document.querySelectorAll('main > .card')].filter(c => c.checkVisibility()).map(c => c.id), !!document.querySelector('#users #reqTf')]""")
     keys = ["sessionDays", "sessionHours", "idleMinutes", "profiles", "passwordMin", "passwordMin2fa", "tempPasswordDays",
-            "reauthMinutes", "triesHere", "triesAddress", "triesAccount"]
+            "reauthMinutes", "cookieSecure", "triesHere", "triesAddress", "triesAccount"]   # (#1158: the Secure cookie's choice)
     check("Accounts and sign-in → Sign-in rules (#1001; General → Security before #1119): each setting a row with its bounds, the "
           "two-factor switch here and not in People's card, the group People, Sign-in rules and Sign-in provider, and no read-only fact: "
           "the Secure cookie and password checks are About's and Needs a restart's (#1119)",
           drawn[0] == ["security." + k for k in keys] and drawn[2:] == [True, "accounts", False, ["users", "signin-rules", "signin-provider"], False]
-          and ["gs-sessionHours", "1", "12"] in drawn[1] and ["gs-idleMinutes", "0", "1440"] in drawn[1] and ["gs-reauthMinutes", "1", "5"] in drawn[1], drawn)
+          and ["gs-sessionHours", "0", "12"] in drawn[1] and ["gs-idleMinutes", "0", "1440"] in drawn[1] and ["gs-reauthMinutes", "1", "5"] in drawn[1], drawn)
     # past its bound: the bar's Save says why, and it stays as typed
     page.fill("#gs-triesHere", "6")
     marked = js("[document.getElementById('signin-rules').dataset.dirty, document.querySelector('[data-key=\"security.triesHere\"]').classList.contains('set-changed')]")
@@ -3269,13 +3832,12 @@ def connected_sources_switch_check(check, browser, base, cookies):
 
     def host_and_log(pg):
         """General → Host's hint and what changing the public addresses says (asked, then left unsaved), and the profile
-        activity log's kinds. (The run's PUBLIC_ORIGINS, the environment's, locks the list: left out meanwhile, as #1000's)"""
-        env = os.environ.pop("PUBLIC_ORIGINS", None)
+        activity log's kinds. (The run's public address left out meanwhile, as #1000's)"""
+        env = public_origins([])
         try:
             return host_and_log_(pg)
         finally:
-            if env is not None:
-                os.environ["PUBLIC_ORIGINS"] = env
+            public_origins(env)
 
     def host_and_log_(pg):
         pg.goto(base + "/settings.html?profile=1")   # (loaded afresh: the address's own #general may be open already)
@@ -3568,14 +4130,19 @@ def oidc_check(check, browser, base, cookies):
 
 
 def emergency_card_check(check, browser, base, cookies):
-    """(#1126) The emergency card, as the owner whose cookies are given, on profile 1: Settings → About this person
-    takes a blood type (the bar's Save) and emergency contacts (added, moved up, in order); Sharing → Emergency card
-    (from the profile menu, and the palette's "emergency card") previews them, and makes the PDF (one page, Letter or
-    A4, its information the title alone) and the lock-screen PNG (upright, this screen's size, the picture alone:
-    no text, time or place chunks), "I carry the printed card" adding the wallet line to it and nothing else; the
-    group at 320 px and 200% text, light and dark, with no serious axe finding. Puts the fields back. Returns script
-    errors."""
+    """(#1126, #1162) The emergency card, as the owner whose cookies are given, on profile 1: Settings → About this
+    person takes a blood type (the bar's Save) and emergency contacts (added, moved up, in order); Sharing → Emergency
+    card (from the profile menu, and the palette's "emergency card") is an editor with nothing on the card until it's
+    added: the records' and About's suggestions each with Add (focus on to the next), lines of one's own (a critical
+    alert, in bold on the preview), moved and removed by keyboard, the legal name, each section placed on the printed
+    card or the lock screen (the previews following); the QR code, off at first, reading back to the card's text; saved
+    and there after a reload. Then the files: the PDF as a full page and a wallet card, on Letter and A4 (one page,
+    its information the title alone), and the lock-screen PNG (upright, this screen's size, the picture alone: no
+    text, time or place chunks), "I carry the printed card" adding the wallet line and nothing else, a long card cut
+    short there with "and N more". The editor at 320 px and 200% text, light and dark, with no serious axe finding.
+    Puts the fields and the card back. Returns script errors."""
     import struct
+    from tests.test_qr import read_qr
     errs, serious = [], []
     ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True, accept_downloads=True)
     ctx.add_cookies([c for c in cookies if c["name"] == "sg_session"])
@@ -3584,11 +4151,14 @@ def emergency_card_check(check, browser, base, cookies):
     js = page.evaluate
     put = """b => fetch('api/profiles/1/person', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
       body: JSON.stringify(b)}).then(r => r.status)"""
+    card_back = """() => fetch('api/profiles/1/emergency', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+      body: JSON.stringify({card: {}})}).then(r => r.status)"""
     try:
         # ---- About this person: blood type (unless the records have one) and two contacts, the second moved up
         page.goto(base + "/settings.html?profile=1#about")
         page.wait_for_selector("#about[data-profile='1'] #aboutContactsHd", timeout=20000)
         js(put, {"bloodType": "", "contacts": []})
+        js(card_back)
         page.reload()
         page.wait_for_selector("#about[data-profile='1'] #contactAdd", timeout=20000)
         lab = not js("!!document.getElementById('aboutBlood')")
@@ -3610,13 +4180,15 @@ def emergency_card_check(check, browser, base, cookies):
               and js("document.activeElement?.id") in ("contactDown-0", "contactUp-1", "aboutContactsHd") and not errs,
               [js("document.getElementById('aboutBody').innerText.slice(-400)"), js("document.activeElement?.id"), errs])
 
-        # ---- the profile menu's Emergency card, and the palette's
+        # ---- the profile menu's Emergency card, and the palette's: the editor, nothing on the card, the records suggesting
         menu_click(page, "#emergencyLink")
-        page.wait_for_selector("#emergency[data-profile='1'] #ecPreview", timeout=20000)
-        said = js("document.getElementById('ecPreview').innerText")
-        check("…the profile menu's Emergency card opens Sharing → Emergency card, its preview from the records and those fields (#1126)",
-              "sharing.html" in page.url and page.url.endswith("#emergency") and "Dr Lee: 555-0199" in said
-              and ("O negative (as typed in)" in said or lab) and "Current medications" in said and "Active problems" in said, [page.url, said[:500]])
+        page.wait_for_selector("#emergency[data-profile='1'] #ecEdit #ecSec-contacts", timeout=20000)
+        sugs = js("[...document.querySelectorAll('#ecSec-contacts .ec-sugs li')].map(li => li.textContent)")
+        empty = js("document.getElementById('ecPrint').innerText")
+        check("…the profile menu's Emergency card opens its editor: nothing on the card, About's contacts and the records suggested (#1126, #1162)",
+              "sharing.html" in page.url and page.url.endswith("#emergency") and "Nothing on the printed card yet." in empty
+              and any("Dr Lee: 555-0199" in s for s in sugs) and js("document.querySelectorAll('.ec-sugs li').length") > 2
+              and js("document.getElementById('ecQr').checked") is False, [page.url, empty[:300], sugs])
         page.keyboard.press("Control+k")
         page.wait_for_selector("dialog.palette[open]", timeout=5000)
         page.fill("#palQ", "emergency card")
@@ -3625,30 +4197,86 @@ def emergency_card_check(check, browser, base, cookies):
         page.keyboard.press("Escape")
         check("…the palette finds it as “emergency card” (#1126)", bool(found) and "Emergency card" in found[0], found)
 
-        # ---- the PDF, on A4 and Letter
+        # ---- by keyboard: Add a suggestion (focus on to the next), a critical alert of one's own, a line moved and removed
+        preview = lambda: js("document.getElementById('ecPrint').innerText")   # noqa: E731
+        settle = lambda want: page.wait_for_function(f"document.getElementById('ecPrint').innerText.includes({json.dumps(want)})", timeout=10000)   # noqa: E731
+        first = js("document.querySelector('#ecSec-contacts .ec-sugs button').id")
+        page.focus("#" + first)
+        page.keyboard.press("Enter")
+        settle("Dr Lee: 555-0199")
+        after_add = js("document.activeElement?.id || ''")
+        page.keyboard.press("Enter")   # the next suggestion, Sam
+        settle("Sam Example (Spouse): +1 555 0100")
+        page.focus("#ecAdd-alerts")
+        page.keyboard.type("Irradiated blood products only")
+        page.keyboard.press("Enter")
+        settle("Irradiated blood products only")
+        alert_focus = js("document.activeElement?.id")
+        page.focus("#ecUp-contacts-1")
+        page.keyboard.press("Enter")
+        page.wait_for_function("document.getElementById('ecLine-contacts-0')?.value.startsWith('Sam Example')", timeout=5000)
+        moved_focus = js("document.activeElement?.id")
+        page.fill("#ecName", "Robin Quinn Example (fictional)")
+        settle("Robin Quinn Example (fictional)")
+        bold = js("getComputedStyle([...document.querySelectorAll('#ecPrint .ec-alerts p')].find(p => p.textContent.startsWith('Irradiated'))).fontWeight")
+        check("…Add puts a suggestion on, focus on to the next; a critical alert of one's own, in bold; a line moved by keyboard; the legal name (#1162)",
+              after_add.startswith("ecSug-") and alert_focus == "ecAdd-alerts" and moved_focus in ("ecDown-contacts-0", "ecUp-contacts-1")
+              and int(bold) >= 700 and preview().index("Sam Example") < preview().index("Dr Lee")
+              and preview().index("CRITICAL ALERTS") < preview().index("EMERGENCY CONTACTS"), [after_add, alert_focus, moved_focus, bold, preview()[:400]])
+
+        # ---- placement: contacts off the lock screen, the image follows; the printed card keeps them
+        alt = lambda: js("document.getElementById('ecImg').alt")   # noqa: E731
+        had = alt()
+        page.click("#ecLock-contacts")
+        page.wait_for_function("!document.getElementById('ecImg').alt.includes('Dr Lee')", timeout=10000)
+        check("…each section placed: contacts off the lock screen leave the image, not the printed card (#1162)",
+              "Dr Lee: 555-0199" in had and "Irradiated blood products only" in had and "Dr Lee: 555-0199" in preview(), [had, alt()])
+        page.click("#ecLock-contacts")
+        page.wait_for_function("document.getElementById('ecImg').alt.includes('Dr Lee')", timeout=10000)
+
+        # ---- the QR code: off at first; on, it reads back to the card's text, and says what didn't fit
+        page.click("#ecQr")
+        page.wait_for_selector("#ecPrint svg.qr", timeout=10000)
+        q = js("({text: EC.view.qr.text, mods: qrCode(EC.view.qr.text, {most: 23}).modules, left: document.getElementById('ecQrLeft').textContent})")
+        check("…the QR code, once on, holds the card's own text and reads back to it, never a link (#1162)",
+              read_qr(q["mods"]).decode() == q["text"] and q["text"].startswith("EMERGENCY CARD\nRobin Quinn Example (fictional)\n")
+              and "- Irradiated blood products only" in q["text"] and "http" not in q["text"] and "It holds all of the card" in q["left"], q)
+
+        # ---- saved, and there after a reload
+        page.click("#ecSave")
+        page.wait_for_function("document.getElementById('ecStatus')?.textContent.startsWith('Card last updated')", timeout=10000)
+        page.reload()
+        page.wait_for_selector("#emergency[data-profile='1'] #ecLine-contacts-1", timeout=20000)
+        check("…saved: still there after a reload, the suggestions added no longer offered (#1162)",
+              js("document.getElementById('ecName').value") == "Robin Quinn Example (fictional)" and js("document.getElementById('ecQr').checked")
+              and not js("[...document.querySelectorAll('#ecSec-contacts .ec-sugs li')].some(li => li.textContent.includes('Dr Lee'))")
+              and "Irradiated blood products only" in preview(), preview()[:300])
+
+        # ---- the PDF, a full page and a wallet card, on A4 and Letter
         got = {}
-        for paper in ("a4", "letter"):
-            page.select_option("#ecPaper", paper)
-            with page.expect_download(timeout=20000) as dl:
-                page.click("#ecPdf")
-            got[paper] = open(dl.value.path(), "rb").read()
-            fname = dl.value.suggested_filename
+        for form in ("page", "wallet"):
+            page.select_option("#ecForm", form)
+            for paper in ("a4", "letter"):
+                page.select_option("#ecPaper", paper)
+                with page.expect_download(timeout=20000) as dl:
+                    page.click("#ecPdf")
+                got[form, paper] = open(dl.value.path(), "rb").read()
+                fname = dl.value.suggested_filename
         info = {k: re.findall(rb"/Info (\d+) 0 R", v) and re.search(rb"\n" + re.findall(rb"/Info (\d+) 0 R", v)[0] + rb" 0 obj\n(.*?)\nendobj", v, re.S).group(1)
                 for k, v in got.items()}
-        check("…the PDF downloads, one page on A4 and on Letter, its information the title alone (#1126)",
+        check("…the PDF downloads as a full page and a wallet card, one page each on A4 and on Letter, its information the title alone (#1126, #1162)",
               all(v.startswith(b"%PDF-") and v.count(b"/Type /Page ") == 1 for v in got.values())
-              and b"/MediaBox [0 0 595.28 841.89]" in got["a4"] and b"/MediaBox [0 0 612 792]" in got["letter"]
+              and all(b"/MediaBox [0 0 595.28 841.89]" in got[f, "a4"] and b"/MediaBox [0 0 612 792]" in got[f, "letter"] for f in ("page", "wallet"))
               and all(i.startswith(b"<< /Title (Emergency card for ") and b"/Producer" not in i for i in info.values())
-              and fname.startswith("emergency-card-") and fname.endswith(".pdf"), [fname, info])
+              and fname.startswith("emergency-card-") and "-wallet-" in fname and fname.endswith(".pdf"), [fname, info])
 
         # ---- the lock-screen image: the switch adds the wallet line to its preview, and the PNG is the picture alone
-        alt = lambda: js("document.getElementById('ecImg').alt")   # noqa: E731
         off = alt()
         page.click("#ecWallet")
         on = alt()
         check("…“I carry the printed card” adds the wallet line to the image, off at first, and nothing else (#1126)",
-              "see the card in my wallet" not in off and on == off.replace(". As of ", ". Medications and conditions: see the card in my wallet. As of ")
-              and "Current medications" not in on and "Active problems" not in on and "Dr Lee: 555-0199" in on, [off, on])
+              "see the card in my wallet" not in off and on == off.replace(". Card last updated ", ". More: see the card in my wallet. Card last updated ")
+              and "Current medications" not in on and "Dr Lee: 555-0199" in on, [off, on])
         with page.expect_download(timeout=20000) as dl:
             page.click("#ecPng")
         png = open(dl.value.path(), "rb").read()
@@ -3664,20 +4292,23 @@ def emergency_card_check(check, browser, base, cookies):
               and not set(chunks) & {"tEXt", "iTXt", "zTXt", "tIME", "eXIf"} and dl.value.suggested_filename.endswith(".png"), [chunks, (w, h), screen])
 
         # ---- many allergies and five contacts: never off the bottom, the type no smaller than its least, the
-        # allergies cut short with "and N more allergies", the first contact always there (#1126)
-        many = js("""() => { const c = {profile: 'Robin Example (fictional)', asOf: '2026-11-28', walletNote: 'Medications and conditions: see the card in my wallet',
-            short: [{heading: 'Allergies', lines: Array.from({length: 30}, (_, i) => `Fictional allergen ${i + 1} (hives, swelling of the throat), severe`)},
-                    {heading: 'Blood type', lines: ['O negative']},
-                    {heading: 'Emergency contacts', lines: Array.from({length: 5}, (_, i) => `Contact ${i + 1} Example (sibling): +1 555 010 00${i}`)}]};
-          const cv = ecCanvas(c, true);
-          return {h: cv.height, w: cv.width, end: cv.end, size: cv.size, least: cv.width * EC_MIN, lines: cv.lines}; }""")
+        # allergies cut short with "and N more allergies", the first contact always kept, the alerts there (#1126, #1162)
+        many = js("""() => { const part = (id, heading, lines, nouns) => ({id, heading, lines, nouns, print: true, lock: true});
+          const v = {name: 'Robin Example (fictional)', updated: 'Card last updated Nov 28, 2026', qr: {on: false},
+            parts: [part('alerts', 'Critical alerts', ['Irradiated blood products only'], ['alert', 'alerts']),
+                    part('allergies', 'Allergies', Array.from({length: 30}, (_, i) => `Fictional allergen ${i + 1} (hives, swelling of the throat), severe`), ['allergy', 'allergies']),
+                    part('blood', 'Blood type', ['O negative'], ['line', 'lines']),
+                    part('contacts', 'Emergency contacts', Array.from({length: 5}, (_, i) => `Contact ${i + 1} Example (sibling): +1 555 010 00${i}`), ['contact', 'contacts'])]};
+          const cv = ecCanvas(v, true);
+          return {h: cv.height, w: cv.width, end: cv.end, size: cv.size, least: cv.width * EC_MIN, lines: cv.lines, cut: cv.cut}; }""")
         lines = many["lines"]
-        check("…with 30 allergies and 5 contacts the lock-screen image stays on the screen, the allergies cut short, the first contact kept (#1126)",
+        check("…with 30 allergies and 5 contacts the lock-screen image stays on the screen, the allergies cut short, the first contact and the alert kept (#1126, #1162)",
               many["end"] <= many["h"] and many["size"] >= many["least"] - 0.01 and any(re.fullmatch(r"and \d+ more allergies", t) for t in lines)
-              and "Contact 1 Example (sibling): +1 555 010 000" in lines and "O negative" in lines and lines[-2].startswith("Medications and conditions"),
+              and "Contact 1 Example (sibling): +1 555 010 000" in lines and "O negative" in lines and "Irradiated blood products only" in lines
+              and lines[-2].startswith("More: see the card") and many["cut"] and many["cut"][0]["heading"] == "Allergies",
               {k: v for k, v in many.items() if k != "lines"} | {"lines": lines})
 
-        # ---- the group at 320 px and 200% text, light and dark, with no serious axe finding
+        # ---- the editor at 320 px and 200% text, light and dark, with no serious axe finding
         out = []
         for w_ in (320, 412):
             page.set_viewport_size({"width": w_, "height": 900})
@@ -3692,10 +4323,11 @@ def emergency_card_check(check, browser, base, cookies):
             page.emulate_media(color_scheme=scheme)
             serious.extend(axe_check(page, f"Emergency card, {scheme}")[0])
         page.emulate_media(color_scheme="light")
-        check("…it fits 320 px and 200% text, with no serious axe finding, light or dark (#1126)", not out and not serious, out + serious)
+        check("…its editor fits 320 px and 200% text, with no serious axe finding, light or dark (#1126, #1162)", not out and not serious, out + serious)
     finally:
         try:
             js(put, {"bloodType": "", "contacts": []})
+            js(card_back)
         except Exception:
             pass
         ctx.close()
@@ -3748,8 +4380,8 @@ def key_documents_check(check, browser, base, cookies):
         found = js("[...document.querySelectorAll('#palList [role=option]')].map(o => o.textContent.trim())")
         page.keyboard.press("Escape")
         check("…the palette finds it as “advance directive” (#1135)", any(doc["title"] in f for f in found), found[:6])
-        card = js("fetch('api/profiles/1/emergency').then(r => r.json()).then(c => c.sections.find(s => s.heading === 'Key documents')?.lines)")
-        check("…the emergency card says it's on file, and where (#1135)",
+        card = js("fetch('api/profiles/1/emergency').then(r => r.json()).then(c => c.suggestions.filter(s => s.section === 'documents').map(s => s.text))")
+        check("…the emergency card's editor suggests it's on file, and where (#1135, #1162)",
               card == ["Advance directive or living will: on file (kept at Original in the hall desk (fictional))"], card)
         js("id => openEvent(byId.get(id))", doc["id"])
         page.wait_for_selector("#dKeyDoc button", timeout=10000)
@@ -4052,7 +4684,7 @@ def main():
         check("no Sources card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         strict.goto(base + "/settings.html")
         strict.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
-        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 12)   # Visit summary (#186); Lab name matches (#1097)
+        check("under the CSP: settings.js runs", strict.evaluate("document.querySelectorAll('#sections > section').length") == 13)   # Visit summary (#186); Lab name matches (#1097); Costs' (#1165)
         check("no Settings card shows a stray “null” (#175)", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         check("…and Settings has no Watch and scale any more (#166)", not strict.evaluate("!!document.getElementById('watch')")
               and "Watch and scale" not in strict.evaluate("document.getElementById('setNav').textContent"))
@@ -4068,7 +4700,7 @@ def main():
             strict.wait_for_selector(sel, state="attached", timeout=10000)
         groups = strict.evaluate("[...document.querySelectorAll('#setNav .set-nav-part, #setNav a')].map(x => (x.matches('.set-nav-part') ? '§' : '') + x.textContent)")
         check("under the CSP: Install's scripts run on Settings, its sidebar in three parts, This person, You and Install (#266, #991)", groups ==
-              ["§This person", "Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Workouts", "Rename or delete",   # (insurance cards, #1137)
+              ["§This person", "Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Rename or delete",   # (insurance cards, #1137; Workouts Dashboard's, #1165)
                "§You", "Sign-in and security", "This device", "Display",
                "§Install", "General", "Accounts and sign-in", "Backups", "Logs and activity", "Connected sources (experimental)",
                "Outside connections", "About"], groups)   # (#1114: Lab name matches, the profile's card alone; #1153: Install in order)
@@ -4103,7 +4735,7 @@ def main():
               "Backups are drawn, and no script fails", drawn1028 is True and not errs1028, [drawn1028, errs1028])
         # #1048: with no public address, Connected-source apps says to set one in General → Host (where it's set since
         # #1000, at once: not .env and a restart), a link there; at 320 px with 200% text its example address breaks
-        env1048 = os.environ.pop("PUBLIC_ORIGINS")
+        env1048 = public_origins([])   # (#1158: as saved in the app)
         ctx1048 = browser.new_context(viewport={"width": 320, "height": 760}, bypass_csp=True)
         ctx1048.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
         p1048, got1048 = ctx1048.new_page(), {}
@@ -4119,7 +4751,7 @@ def main():
         except Exception as e:
             got1048["stopped"] = stopped(e)
         finally:
-            os.environ["PUBLIC_ORIGINS"] = env1048
+            public_origins(env1048)
             ctx1048.close()
         check("Connected-source apps with no public address (#1048): says to set it in Settings → Install → General → Host, a link there, not .env "
               "and a restart; at 320 px with 200% text the page no wider than the screen", "stopped" not in got1048
@@ -4130,7 +4762,7 @@ def main():
         # the server gives (source apps to register again, phones with a secret), then asks for it typed; saved, the
         # server uses it at once, and the bar's gone
         from server import config as config1000
-        env1000 = os.environ.pop("PUBLIC_ORIGINS")
+        env1000 = public_origins([])   # (#1158: as saved in the app)
         ctx1000 = browser.new_context(viewport={"width": 1400, "height": 900})
         ctx1000.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
         p1000, errs1000, got1000, eff1000 = ctx1000.new_page(), [], {}, {}
@@ -4160,7 +4792,7 @@ def main():
         except Exception as e:
             got1000["stopped"] = stopped(e)
         finally:
-            os.environ["PUBLIC_ORIGINS"] = env1000
+            public_origins(env1000)
             ctx1000.close()
         apps1000, phones1000 = eff1000.get("apps", 0), eff1000.get("phones", 0)
         check("General → Host (#1000): the public addresses' change says what it does, with the server's counts, asks for it typed, "
@@ -4179,7 +4811,7 @@ def main():
         # focus to its heading and the bar's words with it; Security is Accounts and sign-in's since #1119, and Backups and
         # logging's days of activity kept, after it, Logs and activity's since #1153: so Needs a restart's first number,
         # whose save takes focus to its heading). Discarded and put back after
-        env1049 = os.environ.pop("PUBLIC_ORIGINS")
+        env1049 = public_origins([])   # (#1158: as saved in the app)
         ctx1049 = browser.new_context(viewport={"width": 1400, "height": 900})
         ctx1049.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
         p1049, errs1049, got1049 = ctx1049.new_page(), [], {}
@@ -4204,7 +4836,7 @@ def main():
         except Exception as e:
             got1049["stopped"] = stopped(e)
         finally:
-            os.environ["PUBLIC_ORIGINS"] = env1049
+            public_origins(env1049)
             ctx1049.close()
         check("General → Host and Needs a restart saved together (#1049; Security's before #1119, Backups and logging's before #1153): focus "
               "stays in Host's typed confirmation, the bar's words name it, and the other's saved is said after them", "stopped" not in got1049 and not errs1049
@@ -4259,9 +4891,8 @@ def main():
         try:
             p1121.goto(base + "/settings.html?profile=1#gen-restart")
             p1121.wait_for_selector("#rs-upload-max-file-mb", timeout=20000)
-            got1121["env"] = p1121.evaluate("""(r => [r.querySelector('.tag').textContent, r.querySelector('.set-row-ctl > p').textContent, !!r.querySelector('input'),
-                r.querySelector('.set-row-ctl > .hint:last-child')?.textContent.startsWith('Change it where this server\\'s settings are')])(
-                document.querySelector('#gen-restart [data-name=SHL_TIMEOUT]'))""")
+            got1121["env"] = p1121.evaluate("""(r => [!!r.querySelector('.tag.env'), r.querySelector('input')?.value, r.querySelector('input')?.disabled])(
+                document.querySelector('#gen-restart [data-name=SHL_TIMEOUT]'))""")   # (#1158: the environment's 25 changes nothing)
             p1121.fill("#rs-upload-max-file-mb", "99999")
             p1121.click("#setBar button:has-text('Save')")
             p1121.locator("#setBar .msg", has_text="Not saved").wait_for(timeout=10000)
@@ -4293,9 +4924,9 @@ def main():
             ss1121.forget()
             ctx1121.close()
         check("General → Needs a restart (#1121): saved from the bar it waits for a restart (Restart needed, the server's value unchanged), "
-              "past its bound refused and kept as typed, the environment's plain text with its variable; Restart now asks, restarts, "
-              "and the card read again has it in force", "stopped" not in got1121 and not errs1121
-              and got1121["env"] == ["Set in .env: SHL_TIMEOUT", "25 seconds", False, True]   # (#1119: util.js envRow)
+              "past its bound refused and kept as typed, one the environment sets a plain field at the page's value (#1158); Restart now "
+              "asks, restarts, and the card read again has it in force", "stopped" not in got1121 and not errs1121
+              and got1121["env"] == [False, "20", False]
               and got1121["refused"][0].startswith("Not saved: One file must be a whole number from 1 to 4,096") and got1121["refused"][1] == "99999"
               and got1121["dirty"] == "1" and got1121["saved"][1:] == [4096, "Restart needed", False] and "apply once the server restarts" in got1121["saved"][0]
               and got1121["after"][:3] == [[1], 2048, False] and "checking them" in got1121["after"][3], [got1121, errs1121])
@@ -4334,6 +4965,9 @@ def main():
         errs1119 = general_env_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check,
                                      os.path.join(TMP, "sanguity.db"))   # (#1119) General with its settings set by the environment
         check("…nor with its settings set by the environment (#1119)", not errs1119, errs1119)
+        errs1158 = settings_taken_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check,
+                                        os.path.join(TMP, "sanguity.db"))   # (#1158) what was taken from the environment, said once
+        check("…nor where what was taken from the environment is said (#1158)", not errs1158, errs1158)
         errs1119m = signin_moved_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check)   # (#1119) Accounts and sign-in
         check("…nor in Accounts and sign-in (#1119)", not errs1119m, errs1119m)
         errs1153 = install_moved_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check)   # (#1153) Install in order
@@ -4402,7 +5036,8 @@ def main():
         check("one sidebar (#266): Sources, Sharing and Settings (its You and Install too, #991) each have its search box (named “Find in …” on each, #403), group labels and the group's title as the h1, "
               "a card's title only beside another card, in a 1280 px shell", not side_bad, side_bad)
         # #409: in no group of any of them does a card's title shown say again what the h1 says; a card alone in its
-        # group has its Reset to defaults beside the h1 (Milestones), none in the card; Workouts' card is named Workouts
+        # group has its Reset to defaults beside the h1 (Milestones), none in the card; Workouts' card is named by its tab,
+        # Body and activity, in Dashboard (#1165)
         repeats_js = """() => { const out = []; for (const a of document.querySelectorAll('main > nav.set-nav a')) { a.click();
             const h1 = document.getElementById('groupTitle').textContent.trim().toLowerCase();
             for (const h of document.querySelectorAll('main :is(section, form, div) > h2, main .set-hd > h2'))
@@ -4495,8 +5130,8 @@ def main():
               c = r.querySelector(':scope > .set-row-ctl').getBoundingClientRect();
               return [Math.round(l.width / b.width * 100), l.right <= c.left, c.top >= l.bottom - 1, r.matches('.wide')]; }); }
           return out; }"""
-        rows286, want286 = {}, {"settings": ["dashboard", "about", "labs", "milestones", "activity", "profile", "security", "device", "display", "accounts", "backups", "logs", "connected"],
-                                "sharing": ["people", "calendar", "summary", "export"]}   # (Account's and Admin's in Settings, #991)
+        rows286, want286 = {}, {"settings": ["dashboard", "about", "labs", "milestones", "profile", "security", "device", "display", "accounts", "backups", "logs", "connected"],
+                                "sharing": ["people", "calendar", "summary", "export"]}   # (Account's and Admin's in Settings, #991; Workouts' rows Dashboard's, #1165)
         for w in (1400, 375):
             strict.set_viewport_size({"width": w, "height": 900})
             for name in want286:
@@ -4611,11 +5246,11 @@ def main():
         lone = strict.evaluate("""(() => { const r = document.getElementById('setReset'), h = document.getElementById('groupTitle').getBoundingClientRect(), b = r.getBoundingClientRect();
             return [r.checkVisibility() && r.textContent, b.top < h.bottom && b.bottom > h.top, document.querySelector('#sec-milestones .set-hd > .btn').checkVisibility(),
                     document.querySelector('#sec-milestones .set-hd > h2').matches('.vh')]; })()""")
-        strict.click("#setNav a[data-group=activity]")
+        strict.click("#setNav a[data-group=dashboard]")
         strict.wait_for_timeout(300)
         lone.append(strict.evaluate("document.querySelector('#sec-health h2').textContent"))
         check("…a card alone in its group (Milestones): Reset to defaults beside the group's title, the h1, and not in the card; Workouts' card "
-              "is named Workouts (#409)", lone == ["Reset to defaults", True, False, True, "Workouts"], lone)
+              "is named by its tab, in Dashboard (#409, #1165)", lone == ["Reset to defaults", True, False, True, "Body and activity"], lone)
         strict.goto(base + "/settings.html?profile=1#backups")   # (as the sidebar's checks left it, for its search below)
         strict.wait_for_selector("main > nav.set-nav a[aria-current=page]", timeout=10000)
         strict.wait_for_timeout(600)
@@ -6155,7 +6790,7 @@ def main():
             js("window._was330 = [state.tab, state.preset, state.from, state.to]")
             for width in (1400, 1100, 375, 320):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
-                for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-paid", "all")):
+                for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-summary", None), ("costs-paid", "all")):
                     js(TILE_TAB_JS, [tab, preset])
                     settle(300)
                     got = js(TILE_LINES_JS)
@@ -6345,7 +6980,7 @@ def main():
             seen260, odd260 = {}, []
             page.set_viewport_size({"width": 1400, "height": 900})
             page.mouse.move(1, 1)   # no tile under the pointer, in its hover look
-            for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-paid", "all")):
+            for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-summary", None), ("costs-paid", "all")):
                 js(TILE_TAB_JS, [tab, preset])
                 settle(300)
                 got260 = js(look260)
@@ -6368,7 +7003,7 @@ def main():
             fit351, rows351 = [], {}
             for width in (1400, 375, 320):
                 page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
-                for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-paid", "all")):
+                for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-summary", None), ("costs-paid", "all")):
                     js(TILE_TAB_JS, [tab, preset])
                     settle(300)
                     got = js(TILE_FIT_JS)
@@ -6376,7 +7011,8 @@ def main():
                     fit351 += [f"{tab} {width} px, {k}: {x}" for k in ("wide", "overlap", "baseline") for x in got[k]]
             page.set_viewport_size({"width": 1400, "height": 900})
             check("tiles at 1400, 375 and 320 px (#351): no value or label wider than its tile, none overlapping another, and the "
-                  "values in each row of tiles on one baseline", not fit351 and all(n > 0 and r > 0 for n, r in rows351.values()), fit351[:8] or rows351)
+                  "values in each row of tiles on one baseline", not fit351 and all(n > 0 and (r > 0 or k == "costs-summary 320") for k, (n, r) in rows351.items())
+                  and rows351["costs-summary 320"][0] == 4, fit351[:8] or rows351)   # (#1163: the Summary's four tiles one under another at 320 px, no row to line up)
             # #722, #753: with text at 200%, at 320 to 1400 px and on a phone held sideways (TILE_SIZES753), every word of
             # every tile and figure on the records tabs inside its tile (TILE_TEXT722_JS), and none overlapping another
             # (TILE_FIT_JS): the Overview's key labs, Readings and insurance figures, Body and activity's, and Costs' with
@@ -6386,13 +7022,13 @@ def main():
             # Glucose at 768 to 1100 px and "$4,681" past What you paid's at 700 to 900 px and sideways (#753). The unit
             # goes under the value, and every grid takes fewer columns as text grows (app.css, --tile-em)
             def records753(width):
-                for tab, preset in (("overview", None), ("health", "2y"), ("costs", "all"), ("costs-paid", "all")):
+                for tab, preset in (("overview", None), ("health", "2y"), ("costs", "all"), ("costs-summary", None), ("costs-paid", "all")):
                     js(TILE_TAB_JS, [tab, preset])
                     yield tab
             text722, n722 = tiles_big753(page, settle, records753)
             check("…and with text at 200% at 320 to 1400 px and on a phone held sideways, every word of every tile and figure on the Overview, Body and activity "
                   "and Costs inside its tile, none overlapping another (#722, #753, 1.4.4): a unit under its value, fewer tiles a row as text grows",
-                  not text722 and all(n >= 6 for n in n722.values()), text722[:10] or n722)
+                  not text722 and all(n >= (4 if k.startswith("costs-summary") else 6) for k, n in n722.items()), text722[:10] or n722)   # (#1163: the Summary has four)
             js("[state.preset, state.from, state.to] = window._was330.slice(1); Object.assign(costState, {view: 'claims', more: false}); switchTab(window._was330[0]); renderAll()")
             js("window._was330 = [state.tab, state.preset, state.from, state.to]")
             # #339: and in the other two date formats (keepDates keeps only the date together, "as of" with it), with no
@@ -6402,7 +7038,7 @@ def main():
                 js("f => useDates(DATES.zone, f)", fmt)
                 for width in (1400, 320):
                     page.set_viewport_size({"width": width, "height": 900 if width > 400 else 800})
-                    for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-paid", "all")):
+                    for tab, preset in (("overview", None), ("health", "90d"), ("costs", "all"), ("costs-summary", None), ("costs-paid", "all")):
                         js(TILE_TAB_JS, [tab, preset])
                         settle(300)
                         got = js(TILE_LINES_JS)
@@ -6563,7 +7199,7 @@ def main():
             tctx = browser.new_context(viewport={"width": 844, "height": 390}, bypass_csp=True, has_touch=True, is_mobile=True)
             tctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
             tpg = tctx.new_page()
-            tpg.goto(base + "/?profile=1#labs")
+            tpg.goto(base + "/?profile=1#labs-chart")   # (its charts: Labs opens on Latest, #1160)
             tpg.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
             for on651 in (False, True):
                 tpg.evaluate("on => { state.tables.clear(); applyPreset('2y'); state.marks = on; medsOnTrends = on; renderAll(); }", on651)
@@ -7624,7 +8260,7 @@ def main():
             check("Costs: the claims chart's Hospital stay swatch has an edge 3:1 against the card, in light and dark (#450)",
                   all(len(v) == 1 and v[0][0] >= 3 and v[0][1] >= 1 for v in edges450.values()), edges450)
             ct = []
-            for view, key in (("Claims", "#costBars"), ("What you paid", "#paidCum")):
+            for view, key in (("Claims", "#costBars"), ("Payments and bills", "#paidCum")):
                 page.click(f"#costView button:text-is('{view}')")
                 settle(200)
                 page.click(f"#view-costs .view-seg[data-key='{key}'] button:text-is('Table')")
@@ -7723,28 +8359,92 @@ def main():
             status278 = js("""(() => { const rows = [...document.querySelectorAll('#costTable tbody tr')], shown = rows.map(r => r.cells[7].textContent);
                 return [rows.length, shown.filter(s => /^(processed|paid)$/i.test(s)).length, shown.filter(Boolean)]; })()""")
             want_denied = js("costRows().filter(r => !/^(processed|paid)?$/i.test(r.status || '')).length")
-            check("Costs (#278): Claims | What you paid, a pick-one pair on Claims, focus on it; three figures, your share, paid by insurance and billed, the rest under More figures, shut",
-                  claims278 == [["group", [["Claims", "true"], ["What you paid", "false"]]], ["Your share", "Paid by insurance", "Billed by providers"], [False, 3, "More figures"], "Claims"],
+            check("Costs (#278, #1163): Summary | Claims | Payments and bills, pick one, on Claims, focus on it; three figures, your share, paid by insurance and billed, the rest under More figures, shut",
+                  claims278 == [["group", [["Summary", "false"], ["Claims", "true"], ["Payments and bills", "false"]]], ["Your share", "Paid by insurance", "Billed by providers"], [False, 3, "More figures"], "Claims"],
                   claims278)
             check("…at 1400 px the claims' chart is on the first screen", chart278 and chart278[0] > 0 and chart278[1] <= chart278[2], chart278)
             check("…money right-aligned in tabular figures, billed, insurance paid and your share",
                   money278[0] == ["Billed", "Ins. paid", "Your share"] and money278[1] == 3 * (status278[0] + 1) and money278[2], money278)
             check("…a status only when it isn't processed: no row says processed, the denied ones say so",
                   status278[0] > 0 and status278[1] == 0 and len(status278[2]) == want_denied and all("denied" in s for s in status278[2]), [status278, want_denied])
-            page.click("#costView button:text-is('What you paid')")
+            page.click("#costView button:text-is('Payments and bills')")
             settle(300)
             paid278 = [js(figs), js(more), js("document.activeElement.textContent"), js("[!!document.getElementById('paidCard'), !!document.getElementById('costTable')]")]
             page.click("#view-costs > .cost-figs > details.cost-more summary")
             page.click("#costView button:text-is('Claims')")
             settle(200)
-            page.click("#costView button:text-is('What you paid')")
+            page.click("#costView button:text-is('Payments and bills')")
             settle(200)
             kept278 = [js(more), js("document.getElementById('oopTax').checkVisibility()")]
-            check("…What you paid: its own three figures, total out of pocket, payments and claim shares with no payment, the rest under More figures; focus on it",
-                  paid278[0] == ["Total out of pocket", "Payments", "Claim shares with no payment"] and paid278[1][:1] == [False] and paid278[1][1] >= 3
-                  and paid278[2] == "What you paid" and paid278[3] == [True, False], paid278)
+            check("…What you paid: its own three figures, total out of pocket (premiums apart, #1163), paid for care and claim shares with no payment, the rest under More figures; focus on it",
+                  paid278[0] == ["Total out of pocket", "Paid for care", "Claim shares with no payment"] and paid278[1][:1] == [False] and paid278[1][1] >= 3
+                  and paid278[2] == "Payments and bills" and paid278[3] == [True, False], paid278)
             check("…More figures opened stays open, the HSA and FSA by year in it", kept278[0][0] is True and kept278[1] is True, kept278)
             js("costState.more = false; costState.view = 'claims'; renderCosts()")
+            # ---- #1163: Costs' three views. The Summary, one plan or calendar year of its own (not the records bar's
+            # period): its four figures the server's sums for that year (premiums apart, on a line of their own, never in
+            # what you paid for care), four in a row at 1400 px, two by two at 412, one under another at 320 and at 200%
+            # text; another year picked, its figures, focus kept on the picker; the figures and the plan card's heading on
+            # a phone's first screen; and no Costs text, in any view, its ⓘs, a payment's editor and More figures open,
+            # says "account", "bank" or "export", but the empty page's line that nothing connects to a bank
+            SUM1163 = """() => { const ts = [...document.querySelectorAll('#sumCard .stats.four .tile')], top = t => Math.round(t.getBoundingClientRect().top),
+                low = innerHeight - parseFloat(getComputedStyle(document.documentElement).scrollPaddingBottom || 0);   // (over a phone's bottom bar, #1163)
+                return [ts.map(t => [t.querySelector('.lbl').textContent, t.querySelector('.val').textContent]), new Set(ts.map(top)).size,
+                  [...document.querySelectorAll('#sumLines .ov-row')].map(r => [r.querySelector('.n').textContent, r.querySelector('.v').textContent]),
+                  document.querySelector('label[for=sumYear] span')?.textContent, document.getElementById('sumYear')?.selectedOptions[0]?.value,
+                  (r => r && Math.round(r.bottom) <= low)(document.querySelector('#sumCard .stats.four')?.getBoundingClientRect()),
+                  (r => r && Math.round(r.bottom) <= low)(document.querySelector('#planCard h3.sub')?.nextElementSibling?.getBoundingClientRect()), document.documentElement.scrollWidth]; }"""
+            js("applyPreset('30d'); summaryState.year = null; costState.view = 'summary'; renderCosts(); scrollTo(0, 0)")   # (a short period: the Summary's year isn't it)
+            sum1163 = {}
+            for w, h in ((1400, 900), (412, 915), (320, 800)):
+                page.set_viewport_size({"width": w, "height": h})
+                settle(300)
+                sum1163[w] = js(SUM1163)
+            y1163 = js("summaryYears()[1]")
+            want1163 = js("y => [['Your share of claims', usd(y.share)], ['You paid for care', usd(y.paid)], ['Not yet paid', usd(y.notPaid)], ['Insurance paid', usd(y.insurancePaid)]]", y1163)
+            lines1163 = js("y => [['Premiums paid', usd(y.premiums)], ['Paid with an HSA', usd(y.hsa)], ['Paid with an FSA', usd(y.fsa)]]", y1163)
+            set_big = "on => { document.documentElement.style.fontSize = on ? '200%' : ''; }"
+            big1163 = {}
+            for w in (412, 1400):   # one under another on a phone, two by two at 1400 px
+                page.set_viewport_size({"width": w, "height": 900})
+                js(set_big, True)
+                settle(300)
+                big1163[w] = js(SUM1163)
+                js(set_big, False)
+            page.set_viewport_size({"width": 1400, "height": 900})
+            check("Costs opens on its Summary (#1163): the year's share of claims, what you paid for care, what's not yet paid and what insurance paid, "
+                  "as the server sums them, premiums, HSA and FSA on lines of their own; four a row at 1400 px, two by two at 412, one under another at 320 px and on a phone at 200%",
+                  all(v[0] == want1163 and v[2] == lines1163 and v[3] == "Year" and v[4] == y1163["start"] and v[7] <= w for w, v in sum1163.items())
+                  and y1163["premiums"] > 0 and abs(y1163["outOfPocket"] - y1163["unpaidShares"] - y1163["paid"]) < 0.01
+                  and [sum1163[1400][1], sum1163[412][1], sum1163[320][1], big1163[412][1]] == [1, 2, 4, 4] and big1163[1400][1] in (1, 2)
+                  and all(v[7] <= w for w, v in big1163.items()), [sum1163, big1163, y1163])
+            check("…on a phone (412×915) its figures and the year's first meter (or its line) on the first screen, clear of the bottom bar", sum1163[412][5] and sum1163[412][6], sum1163[412])
+            other1163 = js("() => { const ys = DATA.oop.years, y = ys.find(x => x.start !== summaryYears()[1].start && x.claimCount); return y && y.start; }")
+            page.focus("#sumYear")
+            page.select_option("#sumYear", other1163)
+            settle(300)
+            picked1163 = [js("summaryYears()[1].start"), js("document.activeElement.id"), js(SUM1163)[0], js("s => (y => [['Your share of claims', usd(y.share)], ['You paid for care', usd(y.paid)], "
+                          "['Not yet paid', usd(y.notPaid)], ['Insurance paid', usd(y.insurancePaid)]])(DATA.oop.years.find(y => y.start === s))", other1163)]
+            check("…another year picked, its own figures, focus kept on the picker", picked1163[0] == other1163 and picked1163[1] == "sumYear" and picked1163[2] == picked1163[3], picked1163)
+            js("summaryState.year = null; applyPreset('all')")
+            WORDS1163 = """() => { const v = document.getElementById('view-costs'), bits = [v.textContent];
+                for (const e of v.querySelectorAll('[aria-label], [data-tip], [title], .pop-text')) bits.push(e.getAttribute('aria-label') || '', e.getAttribute('data-tip') || '', e.getAttribute('title') || '', e.textContent);
+                const said = bits.join(' ').replace(/Sanguity doesn't connect to banks, cards or HSA accounts/g, '');
+                return [...new Set(said.match(/[^.]{0,40}\\b(accounts?|banks?|bank|export\\w*)\\b[^.]{0,20}/gi) || [])]; }"""
+            words1163 = {}
+            for v in ("summary", "claims", "paid"):
+                js("v => { costState.view = v; costState.more = true; paidState.open = null; renderCosts(); }", v)
+                if v == "paid":   # a payment's editor open too: where its number came from, what it was paid with
+                    js("paidState.open = oopKey(paidRows().find(r => r.type === 'pay' && r.hsa)); renderCosts()")
+                settle(300)
+                words1163[v] = js(WORDS1163)
+            words1163["empty"] = js("""(() => { const had = [DATA.costs, DATA.outOfPocket, DATA.oop]; DATA.costs = []; DATA.outOfPocket = {payments: []}; DATA.oop = {...DATA.oop, bills: [], payments: [], claims: [], years: []};
+                renderCosts(); const said = document.getElementById('view-costs').textContent, out = [said.includes("Sanguity doesn't connect to banks, cards or HSA accounts"), (%s)()];
+                [DATA.costs, DATA.outOfPocket, DATA.oop] = had; renderCosts(); return out; })()""" % WORDS1163)
+            js("paidState.open = null; Object.assign(costState, {view: 'claims', more: false}); renderCosts()")
+            check("…no Costs text says “account”, “bank” or “export”, in any view (its ⓘs, More figures and a payment's editor open), but the empty page's "
+                  "“Sanguity doesn't connect to banks, cards or HSA accounts” (#1163)",
+                  all(not words1163[v] for v in ("summary", "claims", "paid")) and words1163["empty"] == [True, []], words1163)
             # #442: the Overview's insurance costs and Costs' figures in one order and one look: figures to read (not
             # buttons), tinted in a card, where the tiles that open something are bordered
             fig_look = """sel => [...document.querySelectorAll(sel)].map(t => { const c = getComputedStyle(t);
@@ -7787,7 +8487,7 @@ def main():
                 js("t => { document.documentElement.dataset.theme = t; }", theme)
                 for w443 in (375, 601, 640, 680):
                     page.set_viewport_size({"width": w443, "height": 800})
-                    for view in ("claims", "paid"):
+                    for view in ("summary", "claims", "paid"):   # (#1163: the plan years in the Summary)
                         js("v => { costState.view = v; renderCosts(); }", view)
                         settle(250)
                         got = js(wide443)
@@ -7800,7 +8500,7 @@ def main():
             js("t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }", theme_before)
             js("state.tables.clear(); Object.assign(costState, {view: 'claims', more: false}); renderCosts()")
             page.set_viewport_size({"width": 1400, "height": 900})
-            check("…no Costs table scrolls sideways at 375, 601, 640 or 680 px, both views, its charts as tables and More figures open, in light and dark: "
+            check("…no Costs table scrolls sideways at 375, 601, 640 or 680 px, all three views, its charts as tables and More figures open, in light and dark: "
                   "the claims stacked where they don't fit their box (#465), the others under 560, each cell named by its column; the page fits, axe finds nothing (#443)",
                   not sides443 and not axe443 and n443 == {"costTable:Date", "view-costs:Drug", "view-costs:Month", "paidTable:Date", "oopTax:Year", "paidRun:Month", "planCard:Date"} and stacked443 == 3,   # (the plan years' calendar, #1127)
                   [sides443[:6], axe443[:4], sorted(n443), stacked443])
@@ -7930,8 +8630,8 @@ def main():
             box448 = js("""(w => [w.scrollHeight - w.clientHeight, getComputedStyle(w).maxHeight, w.querySelectorAll('tbody tr[data-oop]').length,
                 (e => e && e.closest('tr.oop-open')?.previousElementSibling === document.activeElement.closest('tr'))(document.getElementById('oopEdit')),
                 document.documentElement.scrollWidth])(document.querySelector('#paidTable .tablewrap'))""")
-            # #465: What you paid's hint one line at 390 px, where the amounts came from; the rest (the export's date, what
-            # isn't counted) behind its ⓘ
+            # #465: What you paid's hint one line at 390 px, where the amounts came from; the rest (how each is counted)
+            # behind its ⓘ
             hint465 = js("""(p => [p.textContent, Math.round(p.getBoundingClientRect().height / parseFloat(getComputedStyle(p).lineHeight)),
                 [...p.parentElement.querySelectorAll('.about-words p')].map(x => x.textContent).join(' ')])(document.querySelector('#view-costs .cost-figs > p.hint'))""")
             # #467: …and one line with all three sources, a payment typed in too (the demo has only the other two)
@@ -7983,7 +8683,7 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             HEADS448 = "[...document.querySelectorAll('main h1, #view-costs :is(h2, h3, h4)')].filter(h => h.checkVisibility() || h.closest('details')).map(h => h.tagName + ' ' + h.textContent.trim().slice(0, 30))"
             heads448 = {}
-            for view in ("claims", "paid"):
+            for view in ("summary", "claims", "paid"):   # (#1163: the Summary too)
                 js("v => { costState.view = v; renderCosts(); }", view)
                 settle(200)
                 heads448[view] = js(HEADS448)
@@ -7994,8 +8694,8 @@ def main():
             check("…What you paid's hint is one line at 390 px, where its amounts came from, the rest behind its ⓘ (#465)",
                   hint465[0].startswith("From ") and hint465[1] == 1 and "counted once" not in hint465[0] and "counted once" in hint465[2] and hint465[2].startswith("From "), hint465)
             check("…and one line at 390 px with all three sources, a payment typed in too, each named in it and in full behind its ⓘ (#467)",
-                  hint467[1] == 1 and all(w in hint467[0] for w in ("typed in", "export", "claims")) and "payments typed in" in hint467[2]
-                  and "a finance export" in hint467[2] and "claims' shares with no payment matched" in hint467[2], hint467)
+                  hint467[1] == 1 and all(w in hint467[0] for w in ("typed in", "file", "claims")) and "payments typed in" in hint467[2]   # (#1163: the demo's payments an uploaded file)
+                  and "a payments file you uploaded" in hint467[2] and "claims' shares with no payment matched" in hint467[2], hint467)
             check("…Enter on a payment's date at 568×320 and 667×375 leaves the date in sight, the editor's top under it, as much of the editor as fits (#473)",
                   len(open473) == 4 and all(v[0] and v[1] >= 0 and v[2] <= v[3] < v[5] and v[6] for v in open473.values())
                   and open473["568×320 row 0"][4] > 320, open473)
@@ -12207,7 +12907,7 @@ def main():
                 ended = js("""(() => { const m = MEDS.find(m => m.key === 'examplocin');
                     DATA.reminders.push({id: 99999, med: 'examplocin', name: m.name, times: ['09:00'], days: ['mo','tu','we','th','fr','sa','su'], from: '2025-06-01', until: null, tz: 'UTC', on: true});
                     openMedication(m); const t = document.getElementById('dbody').innerText; DATA.reminders.pop();
-                    return {ended: t.includes('Ended ' + fmtD(dayTs('2025-09-30')) + ': the records say this medication stopped then'),
+                    return {ended: t.includes('Ended ' + fmtD(dayTs('2025-09-30')) + ': this medication stopped then'),
                             add: [...document.querySelectorAll('#dbody button')].some(b => /^Add (a schedule|another line)$/.test(b.textContent)),
                             none: t.includes('no new schedule can be set'),
                             off: [...document.querySelectorAll('#dbody .mr-item button')].map(b => b.textContent)}; })()""")
@@ -12615,7 +13315,7 @@ def main():
                     np452.close()
                     js("save()")   # (this page's view saved again, over the new tab's)
                 check("…a Ctrl-click on Its claims on Costs isn't prevented: its address (#costs?drug=…) opens a new tab on the drug's claims (#452)",
-                      ctrl452 is None or ctrl452 == [[[False, True], js("k => '#costs?drug=' + encodeURIComponent(k)", key275), "medications", False], ["#costs", "costs", "claims", key275, "Pharmacy", True]], ctrl452)
+                      ctrl452 is None or ctrl452 == [[[False, True], js("k => '#costs?drug=' + encodeURIComponent(k)", key275), "medications", False], ["#costs-claims", "costs", "claims", key275, "Pharmacy", True]], ctrl452)
                 check("…and that new tab shows them as the click does: the claims in sight, the line saying they're filtered with them, focus in their search (#456)",
                       ctrl452 is None or arrive456 == [True, True, True], arrive456)
                 # (#475) the period it widens, to show claims outside it, is for this visit: with 30 days saved (or a
@@ -12909,6 +13609,9 @@ def main():
                 check("…Show again: back under Current, focus on its row, said", shown1093 == [cur["key"], False, True], shown1093)
                 js("async () => { const m = MEDS.find(m => m.own); if (m) await mmSend('DELETE', `own/${m.own.id}`); }")
                 settle(300)
+                # ---- #1161: Stopped taking and Started again (meds_stopped_check)
+                errs1161 = meds_stopped_check(browser, base, [c for c in page.context.cookies() if c["name"] == "sg_session"], check)
+                check("…no script errors on the Medications tab", not errs1161, errs1161)
                 # ---- #1134: family history on the Overview, added, changed, removed and hidden (family_check)
                 errs1134 = family_check(browser, base, [c for c in page.context.cookies() if c["name"] == "sg_session"], check)
                 check("…no script errors on the family history page", not errs1134, errs1134)
@@ -13875,7 +14578,7 @@ def main():
             js("localStorage.removeItem(stateKey())")   # nothing chosen in this browser: Trends starts with the default view
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
-            js("switchTab('labs')")
+            js("switchTab('labs', 'chart')")   # (its charts: Labs opens on Latest, #1160)
             settle(300)
             check("with nothing chosen in this browser, Trends starts with the default view",
                   picked() == sorted(labs3[:2]) and js("document.getElementById('viewPick').value") == "CBC (browser check)", picked())
@@ -13902,7 +14605,7 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
-            js("switchTab('labs')")
+            js("switchTab('labs', 'chart')")   # (its charts: Labs opens on Latest, #1160)
             settle(300)
             check("a view removed on Settings is gone from Trends", js("[...document.querySelectorAll('#viewPick option')].map(o => o.value)") == ["CBC (browser check)"])
             # #263: deleting a view asks nothing now; a toast says it, with an Undo that puts it back
@@ -13944,7 +14647,7 @@ def main():
             js("v => api('profiles/1/settings/trends.views', {method: 'PUT', body: JSON.stringify({value: v})}).then(r => r.status)", abg)
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
-            js("switchTab('labs')")
+            js("switchTab('labs', 'chart')")   # (its charts: Labs opens on Latest, #1160)
             settle(300)
             steps = []
             for n in ("Alpha", "Beta"):
@@ -14049,7 +14752,7 @@ def main():
                 js(f"localStorage.setItem(stateKey(), {json.dumps(kept)})")
             page.reload()
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0", timeout=20000)
-            js("switchTab('labs')")
+            js("switchTab('labs', 'chart')")   # (its charts: Labs opens on Latest, #1160)
             settle(300)
 
             # ---- keyboard and screen-reader basics (#209) on the records page (light theme): "Skip to content" readable;
@@ -14913,7 +15616,7 @@ def main():
             tctx = browser.new_context(viewport={"width": 844, "height": 390}, bypass_csp=True, has_touch=True, is_mobile=True)
             tctx.add_cookies([{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"])
             tpg = tctx.new_page()
-            tpg.goto(base + "/?profile=1#labs")
+            tpg.goto(base + "/?profile=1#labs-chart")   # (its charts: Labs opens on Latest, #1160)
             tpg.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
             lost724.update(presets724(tpg, "844×390 touch"))
             tctx.close()
@@ -15835,7 +16538,7 @@ def main():
             c_want = js("(r => `Showing ${r.filter(x => x.cat === 'Pharmacy').length.toLocaleString()} of ${r.length.toLocaleString()} claims · type of care: Pharmacy · Reset filters`)(costRows())")
             check("…a type of care picked: “Showing 13 of 96 claims · type of care: Pharmacy · Reset filters”, the totals for the claims shown",
                   fsum("#costTable .fsum") == c_want and js(claims_hint).startswith("For the claims shown: billed $"), [fsum("#costTable .fsum"), c_want, js(claims_hint)])
-            page.click("#costView button:text-is('What you paid')")
+            page.click("#costView button:text-is('Payments and bills')")
             settle(300)
             check("…What you paid, unfiltered: no line by its amounts", fsum("#paidTable .fsum") is None, fsum("#paidTable .fsum"))
             page.click("#paidTable .toggle")   # HSA only
@@ -15847,7 +16550,7 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             for theme in ("light", "dark"):
                 set_theme(theme)
-                for view, sel in (("What you paid", "#paidTable .fsum"), ("Claims", "#costTable .fsum")):
+                for view, sel in (("Payments and bills", "#paidTable .fsum"), ("Claims", "#costTable .fsum")):
                     page.click(f"#costView button:text-is('{view}')")
                     settle(200)
                     bad, look = phone_fits(page, f"Costs filtered, {view}, {theme}"), line_look(sel)
@@ -15861,7 +16564,7 @@ def main():
                   fsum("#costTable .fsum") is None and js("[costState.q, costState.cat, costState.deniedOnly]") == ["", "", False]
                   and js("paidState.q") == "HSA" and js("document.activeElement.matches('#costTable input.search')"),
                   [js("[costState.q, costState.cat, costState.deniedOnly, paidState.q]"), js("document.activeElement.outerHTML.slice(0, 90)")])
-            page.click("#costView button:text-is('What you paid')")
+            page.click("#costView button:text-is('Payments and bills')")
             settle(300)
             check("…What you paid still filtered", fsum("#paidTable .fsum") == p_want, [fsum("#paidTable .fsum"), p_want])
             page.click("#paidTable .fsum-reset")
@@ -15872,7 +16575,7 @@ def main():
             page.set_viewport_size({"width": 375, "height": 800})
             for theme in ("light", "dark"):
                 set_theme(theme)
-                for view in ("What you paid", "Claims"):
+                for view in ("Payments and bills", "Claims", "Summary"):
                     page.click(f"#costView button:text-is('{view}')")
                     settle(200)
                     bad = phone_fits(page, f"Costs unfiltered, {view}, {theme}")
@@ -16702,7 +17405,7 @@ def main():
               const free = e => { for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) if (getComputedStyle(a).overflowX !== 'visible') return false; return true; };
               const wide = doc <= vw ? [] : [...document.querySelectorAll('body *')].filter(e => r(e).right > vw + 0.5 && !e.closest('svg *') && free(e));
               return doc <= vw ? null : [doc, wide.filter(e => !wide.some(p => p !== e && p.contains(e))).slice(0, 4).map(e => `${e.tagName.toLowerCase()}.${e.className} “${e.textContent.trim().slice(0, 24)}” to ${Math.round(r(e).right)}`)]; }"""
-            PAGES1012 = [("?profile=1", ["overview", "health", "medications", "timeline", "timeline-journal", "labs", "labs-heatmap", "labs-compare", "costs", "costs-paid"]),
+            PAGES1012 = [("?profile=1", ["overview", "health", "medications", "timeline", "timeline-journal", "labs", "labs-heatmap", "labs-compare", "costs", "costs-claims", "costs-paid"]),
                          ("sources.html?profile=1", ["overview", "portals", "phone", "upload", "manual", "link", "history"]),
                          ("sharing.html?profile=1", ["people", "links", "calendar", "summary", "export", "activity"]),
                          ("settings.html?profile=1", ["dashboard", "about", "labs", "milestones", "activity", "profile", "display", "more"]),
@@ -16731,7 +17434,7 @@ def main():
                 c1012.close()
             check("At 320 px with text at 150% and 200% (#1012, #622, 1.4.10): every page no wider than the screen, every records tab and view and every "
                   "group of Sources, Sharing, Settings, Account and Admin, the guide and the other pages (the Overview's appointments and Costs' groups ran "
-                  "past it, and the tab bar's More with them)", n1012 == 92 and not bad1012, [n1012, bad1012])
+                  "past it, and the tab bar's More with them; #1163: Costs' three views)", n1012 == 94 and not bad1012, [n1012, bad1012])
             # ---- #1047: every key/value list (.kv) at 320, 412 and 1400 px with text at 200%: no label's words over its value or
             # past its own box, and no page wider than the screen; as usual (360, 412, 1400 px), each value beside its label.
             # General's Host, Backups (its Folder and key), Logs and activity's Logging, Connected sources, About (General's
@@ -18228,7 +18931,7 @@ def main():
             page.wait_for_function("state.tab === 'timeline'", timeout=5000)
             tl500 = js("[window._page500, location.pathname + location.search + location.hash]")
             check("from “/?profile=N”, the dialog's Open Labs and “See them on the timeline” change the tab without a reload (#500)",
-                  labs500 == [1, f"/?profile={dpid497}#labs-chart"] and tl500 == [1, f"/?profile={dpid497}#timeline"], [labs500, tl500])   # (#labs: Labs where it opens, then at its view's own, #1026)
+                  labs500 == [1, f"/?profile={dpid497}#labs-latest"] and tl500 == [1, f"/?profile={dpid497}#timeline"], [labs500, tl500])   # (#labs: Labs where it opens, Latest, then at its view's own, #1026, #1160)
             # (#513) that import's lab draw open in the drawer, then its toast's Undo: the drawer doesn't show it any more
             iid513 = js(f"fetch('api/profiles/{dpid497}/imports', {{cache: 'no-store'}}).then(r => r.json()).then(j => j.imports[0].id)")
             js(f"openEvent(EV.find(e => e.imp === {iid513} && e.k === 'lab'))")
@@ -18787,6 +19490,8 @@ def main():
             settle()
             js("applyPreset('all')")
             settle(200)
+            page.click("#costView button:text-is('Claims')")   # (#1163: Costs opens on its Summary)
+            settle(200)
             rows = js("[...document.querySelectorAll('#costTable tbody tr')].map(tr => [...tr.cells].map(td => td.textContent))")
             day = {js("d => fmtD(dayTs(d))", d): d for d in ("2026-10-07", "2026-06-24", "2026-02-03")}   # in their date format (#248)
             by = {(day.get(r[0], r[0]), r[2]): r for r in rows}
@@ -19272,7 +19977,7 @@ def main():
                   "which opens a tab only when it's pressed (#1113)",
                   seen1113 == {"Pixel 7": [False, False, "Typed referral letter", True, 0, 1, True],
                                "Galaxy Tab S4": [True, False, "Typed referral letter", True, 0, 1, True]}, seen1113)
-            js("closeDrawer(); switchTab('costs')")
+            js("closeDrawer(); costState.view = 'claims'; switchTab('costs')")   # (#1163: the claims are on Claims)
             page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
             js("applyPreset('all')")
             settle(300)
@@ -19284,7 +19989,7 @@ def main():
             # on the Costs tab; HSA/FSA totals; the list fits 375 px
             share = js("oopRows().filter(r => r.type === 'claim' && r.claim.title === 'Typed office visit claim').map(r => [r.counted, srcText(r)])")
             check("the typed claim's share is counted out of pocket, saying it came from the claim",
-                  len(share) == 1 and share[0][0] == 50 and share[0][1].startswith("Claim: your share"), share)
+                  len(share) == 1 and share[0][0] == 50 and share[0][1].startswith("Your share, per ") and share[0][1].endswith("claim; no payment recorded"), share)
             page.goto(base + "/import.html?profile=2#payment")
             page.wait_for_selector(".man-item[data-kind=payment]", timeout=10000)
             settle(300)
@@ -19322,12 +20027,12 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE && PROFILE.name === 'Second person' && DATA.oop", timeout=20000)
             page.wait_for_function("!document.getElementById('view-costs').hidden && !!document.getElementById('costView')", timeout=5000)
             paid443 = js("[state.tab, costState.view, document.querySelector('#costView [aria-pressed=true]')?.textContent]")   # the address #costs-paid (#442)
-            check("…followed, “See them on Costs” opens Costs on What you paid (#443)", paid443 == ["costs", "paid", "What you paid"], paid443)
+            check("…followed, “See them on Costs” opens Costs on Payments and bills (#443, #1163)", paid443 == ["costs", "paid", "Payments and bills"], paid443)
             js("switchTab('costs')")
             page.wait_for_function("!document.getElementById('view-costs').hidden", timeout=5000)
             js("paidState.q = ''; applyPreset('all')")
             settle(300)
-            page.click("#costView button:text-is('What you paid')")   # payments are under What you paid, the HSA's and FSA's
+            page.click("#costView button:text-is('Payments and bills')")   # payments are under What you paid, the HSA's and FSA's
             page.click("#view-costs > .cost-figs > details.cost-more summary")      # totals under its More figures (#278)
             settle(300)
             pay = js("oopRows().filter(r => r.type === 'pay' && r.who === 'Lakeside Clinic (fictional)' && r.amount === 50)"
@@ -19358,21 +20063,32 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             only = js("""(() => { const had = DATA.costs, o = DATA.oop; DATA.costs = []; DATA.oop = {payments: o.payments.map(p => ({...p, claim: null})), claims: []};
                            renderCosts(); const out = [!!document.getElementById('paidCard'), !!document.getElementById('costTable'),
-                           document.getElementById('oopTotal').textContent, !!document.getElementById('costView')]; DATA.costs = had; DATA.oop = o; return out; })()""")
-            check("with no claims at all, Costs shows the payments alone, with no Claims | What you paid (#278)",
-                  only[0] and not only[1] and "Total out of pocket" in only[2] and not only[3], only)
+                           document.getElementById('oopTotal').textContent, [...document.querySelectorAll('#costView button')].map(b => b.textContent)]; DATA.costs = had; DATA.oop = o; return out; })()""")
+            check("with no claims at all, Costs shows the payments, and no Claims view: Summary | Payments and bills (#278, #1163)",
+                  only[0] and not only[1] and "Total out of pocket" in only[2] and only[3] == ["Summary", "Payments and bills"], only)
             js("paidState.open = null; Object.assign(costState, {view: 'claims', more: false}); renderCosts()")
 
             # ---- plan years (#1127): the deductible and out-of-pocket max per plan year, typed in on Costs: by calendar
             # year with none typed; one typed in (an out-of-pocket max under the deductible refused first), its sums as
-            # text with each bar hidden from screen readers; 320 px; removed
-            js("applyPreset('all'); planState.edit = null; Object.assign(costState, {view: 'claims'}); renderCosts()")
+            # text with each bar hidden from screen readers; 320 px; removed. (#1163) In the Summary, for its year
+            js("applyPreset('all'); planState.edit = null; summaryState.year = DATA.oop.years[0].start; Object.assign(costState, {view: 'summary'}); renderCosts()")
             settle(300)
             y1127 = js("DATA.oop.years[0]")
             cal1127 = js("[...document.querySelectorAll('#planCard h3.sub')].map(h => h.textContent)")
+            # (#1163) this profile's claims (UHC's, BCBS's and the spreadsheet's) say nothing of the deductible: that's said,
+            # not "$0 toward the deductible"; with them saying (as the server would count them), the part toward it; and
+            # the demo's medical claims (profile 1's) say it, as an EOB file does
+            plan_text = page.inner_text("#planCard")
+            told1127 = js("""(() => { const y = DATA.oop.years[0], had = [y.noSplit, y.towardDeductible]; y.noSplit = 0; y.towardDeductible = 420; renderCosts();
+                const t = document.getElementById('planCard').innerText; [y.noSplit, y.towardDeductible] = had; renderCosts(); return t; })()""")
+            demo1127 = js("api('profiles/1/data').then(r => r.json()).then(d => d.oop.years[0])")
             check("Costs sums each calendar year's claims toward the deductible and out of pocket, with no plan year typed (#1127)",
-                  bool(cal1127) and cal1127[0] == y1127["start"][:4] and js("v => `${usd(v[0])} toward the deductible · ${usd(v[1])} out of pocket`",
-                  [y1127["towardDeductible"], y1127["outOfPocket"]]) in page.inner_text("#planCard"), [cal1127, y1127])
+                  bool(cal1127) and cal1127[0] == y1127["start"][:4] and y1127["noSplit"] == len(y1127["claims"]) > 0
+                  and js("v => `${usd(v)} your share of claims`", y1127["share"]) in plan_text
+                  and "Your claims don't say how much went to the deductible." in plan_text and "toward the deductible ·" not in plan_text
+                  and js("v => `${usd(420)} toward the deductible · ${usd(v)} your share of claims`", y1127["share"]) in told1127
+                  and not re.search(r"\bnull\b", told1127)   # (each claim saying: no hint under it, not a stray "null")
+                  and demo1127["towardDeductible"] > 0 and demo1127["noSplit"] < len(demo1127["claims"]), [cal1127, y1127, told1127, demo1127])
             page.click("#planAdd")
             page.wait_for_selector("#planEdit", timeout=5000)
             focus1127 = js("document.activeElement.id")
@@ -19389,12 +20105,22 @@ def main():
             page.click("#planEdit button:text-is('Save')")
             page.wait_for_function("(DATA.oop.plans || []).length === 1 && !document.getElementById('planEdit')", timeout=10000)
             settle(300)
-            rows1127 = js("[...document.querySelectorAll('#planCard .ov-row')].map(r => [r.querySelector('.n').textContent, r.querySelector('.v').textContent, r.querySelector('.cost-bar-run').getAttribute('aria-hidden')])")
+            ROWS1127 = "[...document.querySelectorAll('#planCard .ov-row')].map(r => [r.querySelector('.n').textContent, r.querySelector('.v').textContent, r.querySelector('.cost-bar-run')?.getAttribute('aria-hidden') ?? null, r.querySelector('.cost-bar-note')?.textContent ?? ''])"
+            rows1127 = js(ROWS1127)
             yp1127 = js("DATA.oop.years.find(y => y.plan != null)")
+            # (#1163) this profile's claims say nothing of the deductible: no meter at $0, that's said; with some saying
+            # (one year's, as the server would count them), the meters, and how many claims don't say under the deductible's
+            some1163 = js(f"""(() => {{ const y = DATA.oop.years.find(y => y.plan != null), had = [y.noSplit, y.towardDeductible];
+                y.noSplit = 1; y.towardDeductible = 420; keepFocus(renderCosts); const out = {ROWS1127}; [y.noSplit, y.towardDeductible] = had; keepFocus(renderCosts); return out; }})()""")
             check("…a plan year typed in: its deductible, out-of-pocket max and family deductible met so far as text, each bar hidden from screen readers (#1127)",
-                  [r[0] for r in rows1127] == ["Deductible", "Out-of-pocket max", "Family deductible"]
-                  and rows1127[0][1] == js("v => usd(v) + ' of $3,000'", yp1127["towardDeductible"])
-                  and rows1127[1][1] == js("v => usd(v) + ' of $7,500'", yp1127["outOfPocket"]) and all(r[2] == "true" for r in rows1127), rows1127)
+                  [r[0] for r in rows1127] == ["Deductible", "Out-of-pocket max", "Family deductible"] and yp1127["noSplit"] == len(yp1127["claims"])
+                  and some1163[0][1] == "$420 of $3,000" and some1163[2][1] == "$420 of $6,000"
+                  and rows1127[1][1] == js("v => usd(v) + ' of $7,500'", yp1127["share"]) and all(r[2] == "true" for r in some1163) and rows1127[1][2] == "true",
+                  [rows1127, some1163])
+            check("…claims that say nothing of the deductible: “Not said” and “Your claims don't say how much went to the deductible”, no bar; "
+                  "some not saying, the meter with how many under it (#1163)",
+                  rows1127[0][1:] == ["Not said", None, "Your claims don't say how much went to the deductible"] and rows1127[2][1] == "Not said"
+                  and some1163[0][3].endswith("claims don't say how much went to the deductible"), [rows1127, some1163])
             check("…an out-of-pocket max under the deductible refused, said beside the form; Add a plan year focused the form, and has focus back after the save",
                   "at least the deductible" in said1127 and focus1127 == "plan-start" and js("document.activeElement.id") == "planAdd",
                   [said1127, focus1127, js("document.activeElement.id")])
@@ -19481,18 +20207,20 @@ def main():
             page.select_option("#taxMonth", "1")
             page.wait_for_function("CFG.costs.taxStart === 1 && /Jan 1/.test(document.getElementById('taxSays')?.textContent || '')", timeout=10000)
             js("costState.view = 'claims'; renderCosts()")
-            # ---- found from the top (#1127, #1128, #1136): a line of links near the top of Costs to Plan years, Bills and
-            # the Tax-year report, each opening its view with focus on its card's heading; the command palette finds them
-            # by "deductible", "add a bill" and "tax report"; and the empty Costs page offers Add a bill beside Type in
-            js("applyPreset('all'); costState.view = 'claims'; renderCosts(); scrollTo(0, 0)")
+            # ---- each card in the view it belongs to (#1127, #1128, #1136; #1163: the views replace "Further down"):
+            # the plan years in the Summary, Payments and bills with its bills first, the tax-year report, then every
+            # amount and the running totals last; the command palette finds them by "deductible", "add a bill" and "tax
+            # report"; and the empty Costs page offers Add a bill beside the other ways in
+            js("applyPreset('all'); billState.edit = null; costState.view = 'paid'; renderCosts(); scrollTo(0, 0)")
             settle(300)
-            links1146 = js("[...document.querySelectorAll('#view-costs nav[aria-label] a')].map(a => a.textContent)")
-            top1146 = js("document.querySelector('#view-costs nav[aria-label]').getBoundingClientRect().top < innerHeight")
-            page.click("#view-costs nav[aria-label] a:text-is('Bills')")
-            page.wait_for_function("(r => r.top >= 0 && r.bottom <= innerHeight)(document.activeElement.getBoundingClientRect())", timeout=5000)   # (a smooth scroll)
-            at1146 = js("[costState.view, document.activeElement.textContent, document.activeElement.closest('.card')?.id, (r => r.top >= 0 && r.bottom <= innerHeight)(document.activeElement.getBoundingClientRect())]")
-            check("Costs' top says what's further down, Plan years · Bills · Tax-year report, in sight; Bills opens What you paid with focus on its heading, in sight",
-                  links1146 == ["Plan years", "Bills", "Tax-year report"] and top1146 and at1146 == ["paid", "Bills", "billCard", True], [links1146, top1146, at1146])
+            cards1146 = {}
+            for v in ("summary", "claims", "paid"):
+                cards1146[v] = js("v => { costState.view = v; renderCosts(); return [...document.querySelectorAll('#view-costs > .card[id]')].map(c => c.id); }", v)
+            check("Costs' cards are each in their view, nothing saying what's further down (#1163): the plan years in the Summary, "
+                  "Payments and bills its bills, the tax-year report, every amount, then the running totals",
+                  cards1146["summary"] == ["sumCard", "planCard", "sumMore"] and "planCard" not in cards1146["claims"] and "billCard" not in cards1146["claims"]
+                  and [c for c in cards1146["paid"] if c in ("billCard", "taxCard", "paidCard", "paidRun")] == ["billCard", "taxCard", "paidCard", "paidRun"]
+                  and js("!document.querySelector('#view-costs nav[aria-label]')"), cards1146)
             pal1146 = {}
             for q, want in (("deductible", "planCard"), ("add a bill", "billCard"), ("tax report", "taxCard")):
                 js("costState.view = 'claims'; switchTab('overview')")
@@ -19506,12 +20234,14 @@ def main():
             check("…the command palette finds them: “deductible” Plan years, “add a bill” Bills, “tax report” the Tax-year report, each focused on Costs",
                   all(pal1146.values()), pal1146)
             empty1146 = js("""(() => { const had = [DATA.costs, DATA.outOfPocket, DATA.oop]; DATA.costs = []; DATA.outOfPocket = {payments: []}; DATA.oop = {...DATA.oop, bills: [], payments: [], claims: []};
-                               costState.view = 'claims'; renderCosts(); const b = document.getElementById('billFirst'), out = [!!b && b.previousElementSibling?.textContent, b?.textContent];
+                               costState.view = 'claims'; renderCosts(); const b = document.getElementById('billFirst'), out = [[...document.querySelectorAll('#view-costs .empty-next')].map(n => n.textContent).join(' · '), b?.textContent];
                                b.click(); out.push(document.activeElement.id, !!document.getElementById('billEdit'));
                                document.querySelector('#billEdit button.btn:not(.primary)').click(); out.push(document.activeElement.id);
                                [DATA.costs, DATA.outOfPocket, DATA.oop] = had; billState.first = false; renderCosts(); return out; })()""")
-            check("…the empty Costs page offers Add a bill beside Type in a claim or payment; it opens the bill's form, and Cancel comes back to it",
-                  empty1146 == ["Type in a claim or payment", "Add a bill", "bill-service", True, "billFirst"], empty1146)
+            check("…the empty Costs page offers Add a bill beside the uploads and Type in a claim or a payment (#1163); it opens the bill's form, and Cancel comes back to it",
+                  # (and Connect your health plan: connected sources are on in this run, off by default, the fresh install's check)
+                  empty1146 == ["Upload claims files · Upload a payments file · Type in a claim · Type in a payment · Add a bill · Connect your health plan",
+                                "Add a bill", "bill-service", True, "billFirst"] and js("sgConnected(ME)"), empty1146)
             js("costState.view = 'claims'; renderCosts()")
 
             # ---- readings typed in at home (#224): blood pressure, glucose, temperature and blood oxygen typed on Sources
@@ -19771,7 +20501,7 @@ def main():
             check("…saved, saying the name went into an existing series", card.startswith("Imported.") and "1 lab name put in an existing series" in card, card)
             page.goto(base + "/")
             page.wait_for_function("typeof SERIES !== 'undefined' && SERIES.length > 0 && PROFILE && PROFILE.name === 'Second person'", timeout=20000)
-            js("switchTab('labs')")
+            js("switchTab('labs', 'chart')")   # (its charts: Labs opens on Latest, #1160)
             settle(300)
             hgb = js("SERIES.filter(s => s.name === 'Hemoglobin').flatMap(s => s.pts.map(p => [p[0].slice(0, 10), p[1]]))")
             check("…and its result is on Trends in the existing Hemoglobin series",
@@ -20324,14 +21054,15 @@ def main():
             page.click(".set-nav-list a[data-group=dashboard]")
             page.wait_for_selector("#sec-overview .set-labs li", timeout=10000)
             check("Settings shows every section", js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)") ==
-                  ["Overview", "Lab charts", "Names", "Lab name matches", "Workouts", "Visit summary", "Milestones", "Tabs", "Appearance", "Dates and times", "Units", "Reference ranges"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
+                  ["Overview", "Labs", "Names", "Lab name matches", "Body and activity", "Visit summary", "Milestones", "Appearance", "Dates and times", "Units", "Reference ranges",
+                   "Costs", "Tabs"], js("[...document.querySelectorAll('#sections > section h2')].map(h => h.textContent)"))
             check("…but not the server's sync defaults among them: those, with outside connections, are its Install's (#167, #991), and Connected sources isn't a group",
                   js("document.getElementById('sec-sync').parentElement.matches('main') && !!document.getElementById('outside') && !document.querySelector('.set-nav-list a[data-group=sources]')"
                      " && !!document.querySelector('.set-nav-list a[data-group=outside]')"))
             # ---- the Settings sidebar (settings-nav.js) and the top bar's menus (nav.js)
             check("Settings: a sidebar of groups, one shown at a time (an owner's ending This person with Rename or delete, #402; then You's, #991)",
-                  js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:10] == ["Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Workouts", "Rename or delete",
-                                                                                                       "Sign-in and security", "This device", "Display"]
+                  js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:9] == ["Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Rename or delete",
+                                                                                                      "Sign-in and security", "This device", "Display"]   # (Workouts Dashboard's, #1165)
                   and js(display, "sec-overview") != "none" and js(display, "sec-units") == "none", js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)"))
             page.fill("#setFind", "time zone")
             check("…Find in Settings shows the settings that match, from every group",
@@ -21327,10 +22058,11 @@ def main():
                   set441[0] == want441 and set441[1] == want441 and set441[2] == ov441[1], [set441, ov441[1]])
             page.click("#sec-overview button[aria-label='Remove Magnesium']")   # the demo has just the 12 default labs
             check("…a lab taken out leaves the preview", "Magnesium" not in js(preview))
-            sugg_ = js("[...document.querySelectorAll('#sec-overview .set-sugg .chip')].map(b => b.getAttribute('aria-label'))")
-            check("…and is suggested among the profile's most-measured labs",   # first: the vitals taken at visits (#180, #184, #226) have fewer
-                  sugg_ == ["Add Magnesium", "Add Blood pressure, diastolic", "Add Blood pressure, systolic", "Add Respiratory rate", "Add SpO2 (clinic)", "Add Temperature"], sugg_)
-            page.click("#sec-overview .set-sugg .chip")
+            # (#1165: every lab in the records listed to tick, in place of a few of the most measured as chips)
+            sugg_ = js("[...document.querySelectorAll('#sec-overview .set-pick label[data-lab]')].filter(l => !l.querySelector('input').checked).map(l => l.dataset.lab)")
+            check("…and is listed, unticked, among the profile's labs to choose from",   # the vitals taken at visits (#180, #184, #226) among them
+                  "Magnesium" in sugg_ and {"Blood pressure, diastolic", "Respiratory rate", "Temperature"} <= set(sugg_), sugg_)
+            page.check("#sec-overview .set-pick label[data-lab='Magnesium'] input")
             check("…to put back", js(preview) == p0, js(preview)[-2:])
             grips = page.locator("#sec-overview .set-grip")
             grips.nth(0).scroll_into_view_if_needed()   # (the section is taller since #186: the chip's click scrolled them away)
@@ -22140,11 +22872,11 @@ def main():
             page.goto(base + "/#timeline")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
             check("…while a link to a shown tab opens it", js("state.tab") == "timeline", js("state.tab"))
-            for old, view in (("heatmap", "heatmap"), ("trends", "chart"), ("labs", "chart")):   # #172: the old tabs' links open Labs
+            for old, view in (("heatmap", "heatmap"), ("trends", "chart"), ("labs", "latest")):   # #172: the old tabs' links open Labs; #labs Latest (#1160)
                 page.goto(base + "/#" + old)
                 page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records' && booted", timeout=20000)
                 check(f"…a link to #{old} opens Labs as a {view}", js("[state.tab, state.labsView]") == ["labs", view]
-                      and js("id => !document.getElementById('view-labs').hidden && !document.getElementById(id).hidden", "labsHeatmap" if view == "heatmap" else "labsChart"),
+                      and js("id => !document.getElementById('view-labs').hidden && !document.getElementById(id).hidden", {"heatmap": "labsHeatmap", "chart": "labsChart", "latest": "labsLatest"}[view]),
                       js("[state.tab, state.labsView]"))
             page.goto(base + "/settings.html?profile=1#sec-tabs")
             page.wait_for_selector("#sec-tabs input[data-tab=costs]", timeout=10000)
@@ -22271,7 +23003,7 @@ def main():
                         break
                 return bad
             more_whole = {}
-            js("switchTab('labs')")
+            js("switchTab('labs', 'chart')")   # (its list and charts: Labs opens on Latest, #1160)
             for w in (701, 740, 900, 1100, 1200, 1280):
                 for docked in ((False, True) if w >= 1200 else (False,)):
                     page.set_viewport_size({"width": w, "height": 900})
@@ -22413,17 +23145,17 @@ def main():
             addr = lambda: tp.evaluate("[location.search, location.hash, state.tab, state.labsView, history.length]")
             n0 = tp.evaluate("history.length")
             check("tab address: opening the page with no # names the tab it opens, without a history entry of its own",
-                  addr()[1:] == ["#overview", "overview", "chart", n0] and n0 == blank + 1, [addr(), blank])
+                  addr()[1:] == ["#overview", "overview", "latest", n0] and n0 == blank + 1, [addr(), blank])
             for t in ("timeline", "labs", "costs"):
                 tab_click(tp, "#tab-" + t)
-            check("…picking Timeline, Labs and Costs adds an entry each, the address naming the tab", addr()[1:] == ["#costs", "costs", "chart", n0 + 3], addr())
+            check("…picking Timeline, Labs and Costs adds an entry each, the address naming the tab", addr()[1:] == ["#costs", "costs", "latest", n0 + 3], addr())
             tp.go_back()
             tp.go_back()
             tp.wait_for_function("state.tab === 'timeline'", timeout=5000)
             check("…Back twice lands on Timeline", addr()[1:3] == ["#timeline", "timeline"] and tp.evaluate("!document.getElementById('view-timeline').hidden"), addr())
             tp.go_forward()
             tp.wait_for_function("state.tab === 'labs'", timeout=5000)
-            check("…and Forward on Labs", addr()[1:3] == ["#labs-chart", "labs"], addr())   # (its charts' own address, #1026)
+            check("…and Forward on Labs", addr()[1:3] == ["#labs-latest", "labs"], addr())   # (the view it opened on's own address, Latest, #1026, #1160)
             tp.evaluate("switchTab('overview'); switchTab('costs'); switchTab('heatmap')")
             check("…the app's own switches replace the entry (Labs as the heatmap: #labs-heatmap)", addr()[1:] == ["#labs-heatmap", "labs", "heatmap", n0 + 3], addr())
             # a view switch is picked, as a tab is (#442): an entry each, and Back returns to the view before, on the tab
@@ -22464,16 +23196,21 @@ def main():
             paid442 = [tp.evaluate("[costState.view, !!document.getElementById('paidCard'), document.querySelector('#costView [aria-pressed=true]').textContent, document.getElementById('costView').getAttribute('aria-label')]")]
             tp.click("#costView button:text-is('Claims')")
             claims442 = tp.evaluate("[location.hash, costState.view, history.length]")
-            tp.click("#costView button:text-is('What you paid')")
+            tp.click("#costView button:text-is('Payments and bills')")
             tp.reload()
             tp.wait_for_function(ready + " && state.tab === 'costs'", timeout=20000)
             paid442.append(tp.evaluate("[location.hash, costState.view, !!document.getElementById('paidCard')]"))
             tp.go_back()
             tp.wait_for_function("costState.view === 'claims'", timeout=5000)
             back442 = tp.evaluate("[location.hash, state.tab, !!document.getElementById('costTable'), !document.getElementById('paidCard')]")
-            check("…#costs-paid opens Costs' What you paid, its switch named for what it shows, and a reload keeps it (#442)",
-                  paid442 == [["paid", True, "What you paid", "Show the costs as"], ["#costs-paid", "paid", True]] and claims442[:2] == ["#costs", "claims"], [paid442, claims442])
-            check("…and Back from What you paid returns to the claims, on Costs (#442)", back442 == ["#costs", "costs", True, True], back442)
+            check("…#costs-paid opens Costs' Payments and bills, its switch named for what it shows, and a reload keeps it (#442)",
+                  paid442 == [["paid", True, "Payments and bills", "Show the costs as"], ["#costs-paid", "paid", True]] and claims442[:2] == ["#costs-claims", "claims"], [paid442, claims442])
+            check("…and Back from Payments and bills returns to the claims, on Costs (#442)", back442 == ["#costs-claims", "costs", True, True], back442)
+            # (#1163) #costs alone is the Summary, the view Costs opens on; #costs-claims the claims
+            tp.goto(base + "/?profile=1#costs")
+            tp.wait_for_function(ready + " && state.tab === 'costs'", timeout=20000)
+            sum1163 = tp.evaluate("[location.hash, costState.view, !!document.getElementById('sumCard'), document.querySelector('#costView [aria-pressed=true]').textContent]")
+            check("…#costs opens Costs' Summary (#1163)", sum1163 == ["#costs", "summary", True, "Summary"], sum1163)
             tab_click(tp, "#tab-health")
             tab_click(tp, "#tab-labs")
             tp.click("#labsView button[data-view=heatmap]")
@@ -22504,10 +23241,10 @@ def main():
             tp.wait_for_function(ready, timeout=20000)
             paid452 = tp.evaluate("[location.hash, state.tab, costState.view, !!document.getElementById('paidCard')]")
             check("…and in the view last used: / after #costs-paid opens Costs' What you paid (#452)", paid452 == ["#costs-paid", "costs", "paid", True], paid452)
-            # (#456) and when the switch picked it: Claims, the switch to What you paid, then / lands on What you paid
-            tp.goto(base + "/?profile=1#costs")
+            # (#456) and when the switch picked it: Claims, the switch to Payments and bills, then / lands on it
+            tp.goto(base + "/?profile=1#costs-claims")
             tp.wait_for_function(ready + " && state.tab === 'costs' && costState.view === 'claims'", timeout=20000)
-            tp.click("#costView button:text-is('What you paid')")
+            tp.click("#costView button:text-is('Payments and bills')")
             tp.goto(base + "/")
             tp.wait_for_function(ready, timeout=20000)
             paid456 = tp.evaluate("[location.hash, state.tab, costState.view, !!document.getElementById('paidCard')]")
@@ -22822,7 +23559,7 @@ def main():
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && typeof booted !== 'undefined' && booted", timeout=20000)
             js("window._was353 = [state.tab, state.preset, state.from, state.to]; setPeriod('all')")
             for t in ("health", "costs"):
-                js("t => switchTab(t)", t)
+                js("t => { if (t === 'costs') costState.view = 'claims'; switchTab(t); }", t)   # (Costs' Denied only: its Claims', #1163)
                 settle(300)
                 c353[t] = js(CONTROLS353_JS)
                 bad353 += [f"{t}: a bare checkbox “{x}”" for x in c353[t]["bare"]]
@@ -22834,7 +23571,7 @@ def main():
             page.keyboard.press("Escape")
             settle(200)
             page.set_viewport_size({"width": 375, "height": 800})
-            js("() => { switchTab('labs'); for (const s of SERIES.filter(s => !s.watch).slice(0, 2)) state.sel.add(s.name); renderLabs(); }")
+            js("() => { switchTab('labs', 'chart'); for (const s of SERIES.filter(s => !s.watch).slice(0, 2)) state.sel.add(s.name); renderLabs(); }")   # (its charts: Labs opens on Latest, #1160)
             settle(400)
             c353["labs 375"] = js(CONTROLS353_JS)
             c353["cards 375"] = js("""() => { const c = getComputedStyle(document.querySelector('#charts .chart')), l = document.getElementById('series'),
@@ -22933,7 +23670,7 @@ def main():
             check("…the weight tile in kg, with the reported lb", "kg" in wtile and re.search(r"Reported [\d.]+ lb", wtile), wtile)
             # over all of the records: the period earlier checks can leave saved (the last 30 days) starts hours after the
             # demo's last creatinine, so the charts had no results and the table no rows in some runs
-            js("state.sel = new Set(['Creatinine', 'Total Bilirubin']); state.tables.clear(); setPeriod('all'); switchTab('labs'); renderLabs()")
+            js("state.sel = new Set(['Creatinine', 'Total Bilirubin']); state.tables.clear(); setPeriod('all'); switchTab('labs', 'chart'); renderLabs()")   # (its charts: Labs opens on Latest, #1160)
             page.wait_for_selector("#charts .chart .unit", timeout=10000)
             heads = js("[...document.querySelectorAll('#charts .chart .unit')].map(u => u.textContent)")
             check("Trends: the chart says it's converted; bilirubin's doesn't", len(heads) == 2   # charts come in the series' order
@@ -23848,7 +24585,7 @@ def main():
             # "labs" opens Labs where it opens (#1026: as from another page; it was the charts here), whichever view it was
             # left in; "compare" Labs › Compare (#297)
             views452, home452 = {}, js("labsHome()")
-            for q in ("heatmap", "what you paid", "out of pocket", "journal", "compare", "labs"):
+            for q in ("heatmap", "what you paid", "out of pocket", "journal", "compare", "chart", "labs"):
                 js("switchTab('overview')")
                 pal(q)
                 first = js(marked)
@@ -23858,12 +24595,13 @@ def main():
                 views452[q] = [first, ctx452, js("[location.hash, state.tab]")]
             js("costState.view = 'claims'; state.tlView = 'timeline'; switchTab('overview')")   # (the views as the checks after expect them)
             check("…views with an address are found by name, Enter opening them: “heatmap”, “what you paid”, “out of pocket”, “journal” (before Add's "
-                  "Journal entry), “compare” (#297), and “labs” Labs where it opens, whichever view it was left in (#452, #1026)",
+                  "Journal entry), “compare” (#297), “chart” Labs › Chart (#1160: Latest is Labs' first view), and “labs” Labs where it opens, whichever view it was left in (#452, #1026)",
                   views452 == {"heatmap": [["Records tabs", "Heatmap"], ", Records tab › Labs", ["#labs-heatmap", "labs"]],
-                               "what you paid": [["Records tabs", "What you paid"], ", Records tab › Costs", ["#costs-paid", "costs"]],
-                               "out of pocket": [["Records tabs", "What you paid"], ", Records tab › Costs", ["#costs-paid", "costs"]],
+                               "what you paid": [["Records tabs", "Payments and bills"], ", Records tab › Costs", ["#costs-paid", "costs"]],
+                               "out of pocket": [["Records tabs", "Payments and bills"], ", Records tab › Costs", ["#costs-paid", "costs"]],
                                "journal": [["Records tabs", "Journal"], ", Records tab › Timeline", ["#timeline-journal", "timeline"]],
                                "compare": [["Records tabs", "Compare"], ", Records tab › Labs", ["#labs-compare", "labs"]],
+                               "chart": [["Records tabs", "Chart"], ", Records tab › Labs", ["#labs-chart", "labs"]],
                                "labs": [["Records tabs", "Labs"], ", Records tab", ["#labs-" + home452, "labs"]]}, [views452, home452])
             # opened from inside a menu, its item gone with the menu: Escape puts focus on the menu's button
             back403 = []
@@ -24899,7 +25637,7 @@ def main():
             check("…saved by the bar in a group of one section (Milestones), focus on the group's heading, in sight (#1077: on its own, hidden 1 px)",
                   foc1077 == ["groupTitle", True], foc1077)
             rules = "[data-key=visitWorkouts]"
-            page.click(".set-nav-list a[data-group=activity]")   # Workouts: a group of its own since #267
+            page.click(".set-nav-list a[data-group=dashboard]")   # Workouts: a group of its own from #267, Dashboard's Body and activity since #1165
             page.click(f"{rules} button:text-is('Add a row')")
             page.fill(f"{rules} .set-line:last-child input[data-k=match]", "(a+)+$")
             page.fill(f"{rules} .set-line:last-child input[data-k=name]", "Browser check rule")
@@ -24924,6 +25662,7 @@ def main():
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
             tab_click(page, "#tab-labs")
+            js("switchTab('labs', 'chart')")   # (its charts: Labs opens on Latest, #1160)
             js("applyPreset('all')")
             settle()
             check("…the new milestone is marked on Trends",
@@ -24942,9 +25681,9 @@ def main():
             check("…and says so", f"{days} browser check rule appointment" in js("document.getElementById('view-health').innerText"))
             page.goto(base + "/settings.html?profile=1#sec-milestones")
             page.wait_for_selector("#sec-milestones", timeout=10000)
-            for sec, group in (("milestones", "milestones"), ("health", "activity")):
+            for sec, group, reset in (("milestones", "milestones", "#setReset"), ("health", "dashboard", "#sec-health button:text-is('Reset to defaults')")):
                 page.click(f".set-nav-list a[data-group={group}]")
-                page.click("#setReset")   # (a card alone in its group: its Reset beside the h1, #409)
+                page.click(reset)   # (a card alone in its group: its Reset beside the h1, #409; Workouts' in Dashboard since #1165)
                 page.wait_for_function(f"document.querySelector('#sec-{sec} .set-msg').textContent.includes('back to their defaults')", timeout=10000)
             page.goto(base + "/")
             page.wait_for_function("typeof EV !== 'undefined' && EV.length > 0 && PROFILE.name === 'My records'", timeout=20000)
@@ -25140,6 +25879,7 @@ def main():
             za.wait_for_selector("#dbody dl.kv", timeout=5000)
             stay_btns = za.evaluate(btns_js)
             za.evaluate("closeDrawer(); applyPreset('all'); switchTab('costs')")
+            za.click("#costView button:text-is('Claims')")   # (#1163: Costs opens on its Summary)
             za.wait_for_selector("#costTable tbody tr td", timeout=10000)
             claim_days = za.evaluate("[...document.querySelectorAll('#costTable tbody tr')].slice(0, 5).map(r => r.cells[0].textContent)")
             check("…a result's Collected and Resulted, a claim's services and the Costs claims table too (#248)",
@@ -25483,7 +26223,7 @@ def main():
                     sdb.execute("DELETE FROM sessions WHERE user_id=?", (uid991,))
                     sdb.execute("DELETE FROM users WHERE id=?", (uid991,))
                 sdb.execute("DELETE FROM activity WHERE actor IN ('own991', 'edit991', 'once991')")   # (their sign-ins)
-            person991 = ["Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Workouts"]   # (insurance cards, #1137)
+            person991 = ["Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones"]   # (insurance cards, #1137; Workouts Dashboard's, #1165)
             want991 = {r: {"profile": ["Sources", "Sharing", "Emergency card", "New profile"], "you": ["Settings", "Getting started", menus991.get(r, {}).get("you", [""] * 3)[2], "Log out"],   # (#1126: Emergency card)
                            "gone": [], "focus": ["Sign-in and security"] * 2,
                            "parts": {"This person": person991 + (["Rename or delete"] if r in ("admin", "owner") else []),
@@ -25846,7 +26586,7 @@ def main():
             check("…never over a report's own range or flag, nor in another unit",
                   [g[3:] for g in got if g[2].startswith(days[3])][0] == [30, 400, "", ""] and [g for g in got if g[2].startswith(days[11])][0][5:] == ["L", ""]
                   and all(g[6] == "" for g in got if g[1] == "ug/L"))
-            js("state.sel = new Set(['Ferritin']); applyPreset('all'); switchTab('labs'); renderLabs()")
+            js("state.sel = new Set(['Ferritin']); applyPreset('all'); switchTab('labs', 'chart'); renderLabs()")   # (its charts: Labs opens on Latest, #1160)
             settle(400)
             card = "[...document.querySelectorAll('#charts .chart')].find(c => c.querySelector('.unit').textContent.startsWith('ng/mL'))"
             check("Trends: the chart says where the range came from, and colours the results outside it",
@@ -27234,7 +27974,7 @@ def main():
             db = dbm.connect()
             prof_r.delete_profile(db, apid)
             db.close()
-            # ---- Labs' Latest (#993, latest.js): Labs' fourth view, at #labs-latest. A row for each lab with a result in the
+            # ---- Labs' Latest (#993, latest.js): Labs' first view (#1160), at #labs-latest. A row for each lab with a result in the
             # period, its latest as its chart's table gives it (latest993: value and unit, flag, range and day), a line
             # saying how many have none in it; a list of links, each named by its lab and its latest. Activating a row (a
             # click, Enter, a tap) charts the lab, focus on its chart, the address #labs-chart; Back returns to Latest, focus on
@@ -27529,13 +28269,14 @@ def main():
                   and other996[0] == {"Hemoglobin": None, "WBC": None} and other996[2] == first996[1][2] != again996[2]
                   and [b[0] for b in blocked996] == [{"Hemoglobin": None, "WBC": None, "Ferritin": None}] * 2 and [b[1:] for b in blocked996] == [["Latest results", "blocked"]] * 2 and not err996,
                   [first996, again996, other996, blocked996, err996])
-            # ---- #997: Labs opens on Latest on a phone. In a browser that's shown nothing yet, Labs' own address (another
-            # page's tab bar links to it, ./#labs) opens Latest at 360 and 412 px and Chart at 900 and 1400 px; on a phone
+            # ---- #997, #1160: Labs opens on Latest, its first view. In a browser that's shown nothing yet, Labs' own address
+            # (another page's tab bar links to it, ./#labs) opens Latest at 360, 412, 900 and 1400 px, Latest first in the
+            # view switch, and each view's own address (#labs-chart, #labs-heatmap, #labs-compare) that view; on a phone
             # the tab bar's Labs too, marked as the tab shown, focus and the scroll as Body's tab leaves them. A view picked
             # is where Labs opens from then on: on a reload, and from another page's bar (Sources'), for that profile only
             cookies997 = [{k: c[k] for k in ("name", "value", "domain", "path", "httpOnly", "sameSite")} for c in page.context.cookies() if c["name"] == "sg_session"]
             OPEN997 = "[state.tab, state.labsView, location.hash, !document.getElementById({latest: 'labsLatest', chart: 'labsChart', heatmap: 'labsHeatmap', compare: 'labsCompare'}[state.labsView]).hidden]"
-            opens997 = {}
+            opens997, order1160, named1160 = {}, {}, {}
             for w997 in (360, 412, 900, 1400):
                 c997 = browser.new_context(viewport={"width": w997, "height": 800}, bypass_csp=True, is_mobile=w997 < 700, has_touch=w997 < 700)
                 c997.add_cookies(cookies997)
@@ -27543,6 +28284,11 @@ def main():
                 p997.goto(base + "/?profile=1#labs")
                 p997.wait_for_function("typeof booted !== 'undefined' && booted", timeout=20000)
                 opens997[w997] = p997.evaluate(OPEN997)
+                order1160[w997] = p997.evaluate("[...document.querySelectorAll('#labsView button')].map(b => [b.dataset.view, b.textContent, b.checkVisibility()])")
+                for v1160 in ("chart", "heatmap", "compare"):
+                    p997.goto(base + "/?profile=1#labs-" + v1160)
+                    p997.wait_for_function("v => typeof booted !== 'undefined' && booted && state.labsView === v", arg=v1160, timeout=20000)
+                    named1160.setdefault(w997, []).append(p997.evaluate(OPEN997))
                 c997.close()
             c997 = browser.new_context(viewport={"width": 412, "height": 860}, bypass_csp=True, is_mobile=True, has_touch=True)
             c997.add_cookies(cookies997)
@@ -27580,12 +28326,15 @@ def main():
             db = dbm994.connect()
             prof994.delete_profile(db, o997)
             db.close()
-            check("Labs opens on Latest on a phone (#997): in a browser that's shown nothing yet, Labs' address (another page's tab bar) opens Latest at "
-                  "360 and 412 px and Chart at 900 and 1400 px; the phone's tab bar's Labs opens Latest, marked as the tab shown, focus and the scroll as "
-                  "Body's tab leaves them", opens997 == {360: ["labs", "latest", "#labs-latest", True], 412: ["labs", "latest", "#labs-latest", True],
-                                                         900: ["labs", "chart", "#labs-chart", True], 1400: ["labs", "chart", "#labs-chart", True]}
+            check("Labs opens on Latest (#997, #1160): in a browser that's shown nothing yet, Labs' address (another page's tab bar) opens Latest at "
+                  "360, 412, 900 and 1400 px; the phone's tab bar's Labs opens Latest, marked as the tab shown, focus and the scroll as "
+                  "Body's tab leaves them", opens997 == {w: ["labs", "latest", "#labs-latest", True] for w in (360, 412, 900, 1400)}
                   and bar997["labs"][:3] == ["labs", "latest", "page"] and bar997["health"][2] == "page"
                   and [bar997["labs"][3], bar997["labs"][4]] == [bar997["health"][3].replace("health", "labs"), bar997["health"][4]], [opens997, bar997])
+            check("…Latest is the first of Labs' views at every width, then Chart, Heatmap and Compare, and an address naming another view opens that "
+                  "view (#1160)", order1160 == {w: [["latest", "Latest", True], ["chart", "Chart", True], ["heatmap", "Heatmap", True], ["compare", "Compare", True]]
+                                                for w in (360, 412, 900, 1400)}
+                  and named1160 == {w: [["labs", v, "#labs-" + v, True] for v in ("chart", "heatmap", "compare")] for w in (360, 412, 900, 1400)}, [order1160, named1160])
             check("…a view picked is where it opens from then on, on a reload and from another page's tab bar (Heatmap, Latest, Chart), for that profile "
                   "only: another opens on Latest still", picked997 == {v: [["labs", v, "#labs-" + v, True]] * 2 for v in ("heatmap", "latest", "chart")}
                   and other997 == ["labs", "latest", "#labs-latest", True], [picked997, other997])
@@ -28886,7 +29635,7 @@ def main():
             on_day = js(hgb_day)
             check("Trends: the same result from the file and the sync is one point, with both sources (#96)",
                   len(on_day) == 1 and on_day[0].count(";") == 1 and "same result" in on_day[0], on_day)
-            js("setRange(Date.parse('2025-01-01'), Date.parse('2025-12-31')); state.sel = new Set(['Hemoglobin']); state.tables.add('Hemoglobin'); switchTab('labs')")
+            js("setRange(Date.parse('2025-01-01'), Date.parse('2025-12-31')); state.sel = new Set(['Hemoglobin']); state.tables.add('Hemoglobin'); switchTab('labs', 'chart')")   # (its charts: Labs opens on Latest, #1160)
             page.wait_for_selector("#charts table.data tbody tr", timeout=10000)
             rows = js("[...document.querySelectorAll('#charts .chart')].filter(c => c.querySelector('.name').textContent === 'Hemoglobin')"
                       ".map(c => c.querySelectorAll('tbody tr').length)")
@@ -29789,11 +30538,14 @@ def main():
                         axe_at(page, f"{theme} {t} as a table")
                         page.click(f"{seg} >> nth=0")
                         settle(200)
-                    if t == "costs" and js("!!document.getElementById('costView')"):   # and Costs' What you paid (#278)
-                        page.click("#costView button:text-is('What you paid')")
+                    if t == "costs" and js("!!document.getElementById('costView')"):   # and Costs' other views (#278; #1163: its Summary first)
+                        page.click("#costView button:text-is('Payments and bills')")
                         settle(300)
-                        axe_at(page, f"{theme} costs, what you paid", outline=True)
+                        axe_at(page, f"{theme} costs, payments and bills", outline=True)
                         page.click("#costView button:text-is('Claims')")
+                        settle(300)
+                        axe_at(page, f"{theme} costs, claims", outline=True)
+                        page.click("#costView button:text-is('Summary')")
                         settle(200)
                 for k in ("lab", "claim", "med", "letter", "visit"):   # an event's drawer
                     if js("k => !!EV.find(e => e.k === k && !e.hidden)", k):
@@ -30605,6 +31357,9 @@ def main():
             # #1137: insurance cards, in This person → Insurance cards, and in a share link only when ticked
             errs1137 = insurance_check(browser, base, [c for c in page.context.cookies() if c["name"] == "sg_session"], check)
             check("…and no script fails there (#1137)", not errs1137, errs1137)
+            # #1165: Settings → Dashboard by tab, every lab to tick, each edit keeping its place
+            errs1165 = dashboard_edit_check(browser, base, [c for c in page.context.cookies() if c["name"] == "sg_session"], check)
+            check("…and no script fails there (#1165)", not errs1165, errs1165)
             # the old Profiles tab's address opens Sharing → People (#168); a section link still lands on its card, in Settings (#991)
             page.goto(base + "/account.html#profiles")
             page.wait_for_url(re.compile(r"/sharing\.html(\?[^#]*)?#people$"), timeout=10000)
@@ -32713,6 +33468,14 @@ def main():
             ph.goto(base + "/?profile=1")
             until(LOADED, 20000)
             until(copy_is428([picked424[-1][1], mine428["dates.format"], mine428["units"]["weight"]]), 5000)
+            # (#1168) a plan with its card's photo: kept with the copy, for the card at the desk
+            made1168 = ph.evaluate("""async png => { const j = await (await api('profiles/1/insurance', {method: 'POST', body: JSON.stringify({name: 'Fictional Desk Plan', member: 'FICT-DESK-1168'})})).json();
+              const b = new Blob([Uint8Array.from(atob(png), c => c.charCodeAt(0))], {type: 'image/png'});
+              return (await api('profiles/1/insurance/' + j.id + '/front', {method: 'PUT', body: b, headers: {'Content-Type': 'image/png'}})).status; }""",
+                                   __import__("base64").b64encode(png_square(60)).decode())
+            ph.reload()
+            until(LOADED, 20000)
+            until(COPY + ".then(c => !!c && !!c.cards && Object.keys(c.cards.photos).length === 1)", 10000)
             ctx.set_offline(True)
             ph.reload()
             until(LOADED, 20000)
@@ -32720,6 +33483,22 @@ def main():
             name = ph.evaluate("PROFILE.name")
             check("offline, records on: the last profile opens read-only, with when it was loaded",
                   "Offline · read-only" in text and f"{name}, as loaded on" in text, text)
+            ph.keyboard.press("Control+k")
+            ph.wait_for_selector("dialog.palette[open]", timeout=5000)
+            ph.fill("#palQ", "insurance card")
+            ph.wait_for_timeout(300)
+            ph.keyboard.press("Enter")
+            ph.wait_for_selector("dialog.ins-desk[open] .dk-card img", timeout=10000)
+            ph.wait_for_function("document.querySelector('.dk-card img').naturalWidth > 0", timeout=10000)
+            desk1168 = ph.evaluate("[document.querySelector('.dk-card img').alt, document.querySelector('.dk-ids').innerText.replace(/\\s+/g, ' ')]")
+            ph.keyboard.press("Escape")
+            check("offline, records on (#1168): the command palette's Insurance card at the desk shows the card from the copy, its photo and member ID",
+                  made1168 == 201 and desk1168 == ["Front of the card for Fictional Desk Plan", "Member ID FICT-DESK-1168"], [made1168, desk1168])
+            db = sg_db.connect()
+            for (iid1168,) in db.execute("SELECT id FROM insurance_plans WHERE profile_id=1").fetchall():
+                with sg_db.transaction(db):
+                    __import__("server.insurance", fromlist=["remove"]).remove(db, 1, iid1168)
+            db.close()
             check("…in the theme picked online last (#424), not the one the records were loaded with",
                   ph.evaluate(SHOWN) == picked424[-1][1], [ph.evaluate(SHOWN), picked424])
             # (#439) today's doses, on the Medications tab and the Overview: each button says why it does nothing (its tip,
@@ -33535,7 +34314,8 @@ def main():
                 body: JSON.stringify({{save: true, items: [{{kind: 'visit', date: '2026-10-01', title: 'Fictional check-up', who: 'Dr. Example', where: 'Example Clinic'}}]}})}}).then(r => r.status)""")
             want = {"overview": [["Add lab results", f"sources.html?profile={pid2}#manual"]], "health": [["Connect a phone", f"sources.html?profile={pid2}#phone"]],
                     "timeline": [["Show everything", None]], "labs": [["Add lab results", f"sources.html?profile={pid2}#manual"]],
-                    "costs": [["Type in a claim or payment", f"sources.html?profile={pid2}#payment"], ["Add a bill", None]]}   # (and a provider's bill, #1128)
+                    "costs": [["Upload claims files", f"sources.html?profile={pid2}#upload"], ["Upload a payments file", f"sources.html?profile={pid2}#upload"],   # (#1163: every way in,
+                              ["Type in a claim", f"sources.html?profile={pid2}#claim"], ["Type in a payment", f"sources.html?profile={pid2}#payment"], ["Add a bill", None]]}   # a provider's bill too, #1128)
             got, bad = {}, []
             fp.goto(fbase + f"/?profile={pid2}#overview")
             f_until("typeof booted !== 'undefined' && booted && EV.length > 0")

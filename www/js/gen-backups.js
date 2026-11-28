@@ -5,7 +5,7 @@
    activity.days, ACTIVITY_DAYS), kept as typed and marked "not saved" until the group's bar saves it (genBkSave,
    settings-nav.js ADM) or puts it back (genBkDiscard); keeping fewer days, where that deletes entries, says how
    many and goes ahead only once that count is typed (admin.js confirmed, the server's one rule), with the fresh
-   check; set by the environment, it's text (util.js envRow, #1119), naming its variable. Then where the app's output and its security log are read (read-only). call(), say(), plural() and
+   check (#1158: the environment sets it no longer). Then where the app's output and its security log are read (read-only). call(), say(), plural() and
    fresh() are settings.js's and admin.js's. */
 "use strict";
 let GB = null, gbTyped = null;   // what the cards were drawn from: {where, st (the setting), at}; the days typed, not saved
@@ -31,8 +31,7 @@ const gbLines = rows => el("dl", {class: "kv"}, ...rows.flatMap(([dt, dd, by]) =
 function drawGenBackups() {
   const {where: w, st} = GB, card = $("#genBk"), had = card.contains(document.activeElement) ? document.activeElement.id : null;
   let row, days = null;
-  if (!st.can_change) row = envRow(st, GB.at, {value: plural(st.value, "day"), head: ["h3", {class: "sub"}]});   // (#1119) set by the environment
-  else {
+  {
     days = el("input", {type: "number", id: "genActDays", class: "set-num", min: 30, max: 3650, step: 1, value: gbTyped ?? st.value, "aria-describedby": "genActHint"});
     row = setRow([el("h3", {class: "sub"}, el("label", {for: days.id, text: st.label}), el("span", {class: "tag set-unsaved", text: "not saved"})),
       el("p", {class: "hint", id: "genActHint", text: st.help})], days);

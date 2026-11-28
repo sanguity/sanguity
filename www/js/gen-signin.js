@@ -1,6 +1,7 @@
 /* Sanguity · Settings → Install → Accounts and sign-in: Sign-in provider (#1109; General's before #1119). One OpenID Connect provider for the install
    (routes_oidc.py): its issuer, client ID, client secret (never shown back: only whether one is saved, or set by
-   OIDC_CLIENT_SECRET in the server's environment), the button's name on the sign-in page, the scopes and the acr that
+   OIDC_CLIENT_SECRET in the server's environment), each of which the environment may manage (#1158, opt-in: shown
+   locked, util.js envRow), the button's name on the sign-in page, the scopes and the acr that
    counts as two factors, kept as typed and marked "not saved" until the group's bar (settings-nav.js) saves them
    (signinSave, after the fresh check, in the card: admin.js fresh) or puts them back (signinDiscard). Beside them, the
    redirect URI to register, Test connection (the provider's discovery document and keys, read again), and Sign in with
@@ -40,11 +41,12 @@ function drawSignin(d, note) {
     : "None saved: Sanguity signs in as a public client, with PKCE alone. Type the provider's secret for a confidential one.";
   const rows = SIGNIN_FIELDS.map(([k, label, type, placeholder, hint]) => {
     const id = "signin-" + k;
-    // (#1119) what can't be changed here is text, never a field: the secret the environment sets (only that it's set),
-    // and with OIDC only on, all but the button's name
-    if (k === "secret" && d.secret === "environment")
-      return envRow({key: "oidc.secret", label, env: d.secret_env, help: "The provider's secret, for a confidential client. Never shown."}, d.settings_at,
-        {value: "Set there (never shown here)", head: ["p", {class: "set-row-name", id: id + "-lbl"}]});
+    // (#1119) what can't be changed here is text, never a field: what the environment manages (#1158: the secret only
+    // that it's set), and with OIDC only on, all but the button's name
+    if (d.managed?.[k])
+      return envRow({key: "oidc." + k, label, env: d.managed[k], help: k === "secret" ? "The provider's secret, for a confidential client. Never shown." : hint},
+        d.settings_at, {value: k === "secret" ? "Set there (never shown here)" : k === "issuer" ? el("code", {text: d[k]}) : d[k] || "None",
+          head: ["p", {class: "set-row-name", id: id + "-lbl"}]});
     if (locked && k !== "label")
       return setRow([el("p", {class: "set-row-name", id: id + "-lbl"}, label), el("p", {class: "hint", text: (k === "secret" ? "" : hint + " ") + "Turn off Sign in with OIDC only, below, to change it."})],
         el("p", {}, k === "secret" ? (d.secret ? "Saved (never shown)" : "None: a public client, with PKCE alone") : k === "issuer" ? el("code", {text: d[k]}) : d[k] || "None"),
@@ -67,7 +69,7 @@ function drawSignin(d, note) {
   }});
   // (#1119) what can't be used yet is said, never a disabled control: Test connection before it's set up, OIDC only
   // before this admin's own identity there has signed in
-  const offered = d.configured && (d.only || d.may_go_only);
+  const offered = d.configured && (d.only || d.may_go_only) && !d.managed?.only;   // (#1158: OIDC_ONLY's, shown as text)
   const only = offered ? el("input", {type: "checkbox", role: "switch", id: "signinOnly", checked: d.only, "aria-describedby": "signinOnlyH signinOnlyMsg",
     onchange: () => signinOnly(only)}) : null;
   const onlyHint = `Passwords, and passkeys on their own, stop signing in: everyone signs in with ${d.label}, then with their own code or passkey where ` +
@@ -86,7 +88,9 @@ function drawSignin(d, note) {
       ? `Reads the provider's discovery document and signing keys, from ${d.hosts.join(", ")}. ${d.linked === 1 ? "1 identity" : `${d.linked} identities`} linked.`
       : "Set the issuer and the client ID, and save them, first."})], d.configured ? el("div", {class: "row"}, test, testMsg) : el("p", {text: "Not set up yet."})),
     setRow([el("p", {class: "set-row-name", id: "signinOnlyL"}, "Sign in with OIDC only"), el("p", {class: "hint", id: "signinOnlyH", text: onlyHint})],
-      [only ? el("label", {class: "check switch"}, only, ` Sign in with ${d.label} only`) : el("p", {text: "Off"}), el("p", {class: "msg", id: "signinOnlyMsg", role: "status"})])));
+      [only ? el("label", {class: "check switch"}, only, ` Sign in with ${d.label} only`)
+        : el("p", {}, d.only ? "On" : "Off", d.managed?.only ? envTag(d.managed.only).map(t => typeof t === "string" ? t : (t.textContent = "Managed by the environment: " + d.managed.only, t)) : null),
+       el("p", {class: "msg", id: "signinOnlyMsg", role: "status"})])));
   if (note) sayIn(msg, note, false, {say: false});
   mark();
 }

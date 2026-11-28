@@ -191,6 +191,10 @@ const SgPalette = (() => {
       if (RANK[profile().role] >= RANK.editor) out.push({icon: sgIcon("family"), title: "Add a relative", ctx: "Family history",
         words: "family history relative mother father sister brother grandparent conditions", server: !onRecords, go: fam("#add-relative")});
     }
+    // (#1168) the insurance card full screen, where the page has it (ins-desk.js): the records page, offline too, and Settings
+    if (profile() && typeof insDesk === "function" && !document.getElementById("barSearch").hidden)
+      out.push({icon: sgIcon("settings/insurance"), title: "Insurance card at the desk", ctx: "Insurance cards", words: "insurance member id group number front back show plan",
+        server: !(onRecords && OFFLINE.copy), go: () => insDesk(pid())});   // (offline, from the copy kept: offline.js)
     const th = document.getElementById("theme");
     if (th && !th.hidden) out.push({icon: sgIcon("theme"), title: th.textContent.trim(), ctx: "Your menu", words: "theme dark light", go: () => th.click()});
     return out;
@@ -215,16 +219,19 @@ const SgPalette = (() => {
     labs: "tests results charts blood work", costs: "money bills claims payments insurance", medications: "meds medicine prescriptions pills doses taking reminders"};
   /* the views with an address of their own (#452, app.js HASH_TABS), each listed as well, once something's typed: [tab,
      view, its # after the tab's, title, words]; a tab itself opens its first view, as its address does */
-  const TAB_VIEWS = [["labs", "heatmap", "-heatmap", "Heatmap", "grid colors colours every result table"],
+  const TAB_VIEWS = [["labs", "latest", "-latest", "Latest", "latest results newest last every lab list now"],
+    ["labs", "chart", "-chart", "Chart", "charts graph lines over time values table"],
+    ["labs", "heatmap", "-heatmap", "Heatmap", "grid colors colours every result table"],
     ["labs", "compare", "-compare", "Compare", "side by side within ranges milestone before after"],
-    ["labs", "latest", "-latest", "Latest", "latest results newest last every lab list now"],
     ["timeline", "journal", "-journal", "Journal", "notes diary entries photos symptoms"],
-    ["costs", "paid", "-paid", "What you paid", "out of pocket spent spending payments total hsa fsa premiums"],
+    // Costs' three views (#1163): Summary its first, the tab itself
+    ["costs", "claims", "-claims", "Claims", "insurance claims billed denied by month year type of care providers prescriptions"],
+    ["costs", "paid", "-paid", "Payments and bills", "what you paid out of pocket spent spending payments total hsa fsa premiums"],
     // (#1127, #1128, #1136) cards of Costs' views, opened with focus on their heading (costs.js costJump)
-    ["costs", "claims", "", "Plan years", "deductible oop maximum max plan year limits family met", "plan"],
+    ["costs", "summary", "", "Plan years", "deductible oop maximum max plan year limits family met", "plan"],
     ["costs", "paid", "-paid", "Bills", "add a bill bills provider statement owe billed due", "bill"],
     ["costs", "paid", "-paid", "Tax-year report", "tax report taxes year deduction itemized receipts zip csv pdf hsa", "tax"]];
-  const FIRST_VIEW = {labs: "home", timeline: "timeline", costs: "claims"};   // (Labs where it opens, here as from another page: #1026)
+  const FIRST_VIEW = {labs: "home", timeline: "timeline", costs: "summary"};   // (Labs where it opens, here as from another page: #1026)
   function tabs(all) {
     if (document.querySelector("header.topbar nav.tabs")?.hidden) return [];
     // on the records page that tab, in that view; elsewhere the records page at its address
@@ -307,7 +314,7 @@ const SgPalette = (() => {
   const unlisted = w => w ? ` · ${w.toLocaleString("en-US")} workout${w === 1 ? "" : "s"}, not listed` : "";
 
   /* how well something matches what's typed (#403), the same in every group, lower better: 0 its title is what's typed
-     (#452: the Journal view before Add's Journal entry), .5 its title starts with it all, 1 each word typed starts a word of the title, 2 the first does, 3 only what else it's known by has them;
+     (#452: the Journal view before Add's Journal entry), or its singular ("activities" Sharing's Activity before Body and activity), .5 its title starts with it all, 1 each word typed starts a word of the title, 2 the first does, 3 only what else it's known by has them;
      -1 not at all. A word typed is found only at the start of a word, never inside one ("hem" isn't in "theme").
      Words are letters and digits: "two-factor" is "two factor", as "mg/dL" is "mg dl". A plural typed finds its
      singular too (#502: "codes" finds "code", "matches" "match"; #506: "activities" "activity"). where: where it is
@@ -330,7 +337,7 @@ const SgPalette = (() => {
     const away = words.filter(w => !at(own, w));
     if (away.length && away.length < words.length && !words.every(w => away.includes(w) || at(t, w))) return -1;
     const all = " " + typed.join(" "), less = away.length ? .5 : 0;
-    return t === all ? 0 : t.startsWith(all) ? .5 : words.every(w => at(t, w)) ? 1 : away.length && away.length < words.length ? 1 + less : (at(t, words[0]) ? 2 : 3) + less;
+    return t === all || t === " " + typed.map(singular).join(" ") ? 0 : t.startsWith(all) ? .5 : words.every(w => at(t, w)) ? 1 : away.length && away.length < words.length ? 1 + less : (at(t, words[0]) ? 2 : 3) + less;
   }
   /* between pages and settings found as well (#524): one with more of the words typed whole first ("use" is Admin's
      "Use it", not "users"), then one on this page ("Turn off" on Account is two-factor sign-in's, not cycle tracking's) */

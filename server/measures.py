@@ -638,7 +638,7 @@ def _scheduled(c, key, keep):
     doses = [{"t": d["t"], "status": d.get("status"), "slot": d.get("slot"), "asneeded": d.get("asneeded")} for d in c.data.get("doses") or []
              if isinstance(d, dict) and d.get("med") == key and _day(d.get("t"))]
     doses += [{**d, "phone": True} for d in med_log.phone_doses(c.watch, c.tz) if medications.med_key(d["name"]) == key]
-    return med_log.schedule_counts(lines, doses, days, now, med.get("stop"))
+    return med_log.schedule_counts(lines, doses, days, now, med.get("stop"), medications.gaps(med))   # (#1161: not between its times taken)
 
 
 def medlog(c, keep, most):

@@ -28,7 +28,8 @@ timeline and with status "Replaced" and amounts of 0 on Costs (its own amounts u
 reads the adjustment later can update the one it saved before in place (sync._touched) and nothing counts twice.
 
 Coverage is read for the insurer's and plan's names (insurance.coverage -> payor, class "plan"); it makes no
-records of its own.
+records of its own. What its card would say (the member ID, group, pharmacy numbers, period and relationship) is kept
+on the claim's detail as "coverage", for an insurance card's suggestions (insurance.from_records, #1168).
 
 Linking to visits: as the claims importers, a facility bill (revenue-code lines) inside a hospital stay from the
 same import (an Encounter) is "Hospital stay (facility)", and every claim's detail carries `visit`.
@@ -154,17 +155,29 @@ def _related(r, idx):
 
 
 def _coverage(r, idx):
-    """(insurer name, plan name) from the EOB's focal Coverage."""
+    """(insurer name, plan name, what the card says) from the EOB's focal Coverage: {payor, plan, member (its
+    subscriberId, else an identifier of type MB), group, rxbin, rxpcn, rxgroup (its classes' values), start, end (its
+    period), relationship (the subscriber-relationship code)}, the parts it has, for an insurance card's suggestions
+    (insurance.from_records, #1168)."""
     ins = sorted(r.get("insurance") or [], key=lambda i: not (isinstance(i, dict) and i.get("focal")))
     for i in ins:
         cov = idx.get((i or {}).get("coverage"), r) if isinstance(i, dict) else None
         if not cov or cov.get("resourceType") != "Coverage":
             continue
         payor = next((idx.name(p, cov) for p in cov.get("payor") or [] if idx.name(p, cov)), "")
-        plan = next((c.get("name") or c.get("value") for c in cov.get("class") or []
-                     if isinstance(c, dict) and ({"plan", "group"} & _codes(c.get("type"))) and (c.get("name") or c.get("value"))), "")
-        return payor, plan
-    return "", ""
+        classes = [c for c in cov.get("class") or [] if isinstance(c, dict)]
+        plan = next((c.get("name") or c.get("value") for c in classes
+                     if ({"plan", "group"} & _codes(c.get("type"))) and (c.get("name") or c.get("value"))), "")
+        card = {"payor": payor, "plan": plan}
+        card["member"] = cov.get("subscriberId") or next((x.get("value") for x in cov.get("identifier") or [] if isinstance(x, dict)
+                                                         and "mb" in _codes(x.get("type")) and x.get("value")), "")
+        for k in ("group", "rxbin", "rxpcn", "rxgroup"):
+            card[k] = next((c.get("value") for c in classes if k in _codes(c.get("type")) and c.get("value")), "")
+        period = cov.get("period") if isinstance(cov.get("period"), dict) else {}
+        card.update(start=str(period.get("start") or "")[:10], end=str(period.get("end") or "")[:10],
+                    relationship=next(iter(sorted(_codes(cov.get("relationship")))), ""))
+        return payor, plan, {k: str(v) for k, v in card.items() if v and isinstance(v, (str, int))}
+    return "", "", {}
 
 
 def _support(r, code):
@@ -214,7 +227,7 @@ def add_claims(eobs, idx, rkey, b, warnings):
         kinds = _codes(r.get("type"))
         pharmacy = bool(kinds & PHARMACY)
         institutional = "institutional" in kinds or bool(kinds & {"inpatient", "outpatient", "snf", "hha", "hospice"})
-        payor, plan = _coverage(r, idx)
+        payor, plan, card = _coverage(r, idx)
         insurer = _name(idx.name(r.get("insurer"), r) or payor) or "Insurance"
         prov = _name(idx.name(r.get("provider"), r) or idx.name(r.get("facility"), r))
 
@@ -261,6 +274,8 @@ def add_claims(eobs, idx, rkey, b, warnings):
                   "claimId": _claim_id(r), "billed": billed, "paid": paid, "owe": owe, "status": status}
         if plan:
             detail["plan"] = plan
+        if card:
+            detail["coverage"] = card
         if ded is not None:
             detail["deductible"] = ded
         if network:

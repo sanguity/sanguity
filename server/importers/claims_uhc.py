@@ -2,7 +2,8 @@
 
 claims.json holds `list` (one entry per claim: claimKey, claimId, claimType, serviceDate, providerName, claimStatus,
 and the `balance` amounts) and `details` (per claimKey, the service lines with their procedure codes, charges and
-denials). Medical claims become `claim` events and pharmacy fills (claimType "RX") `rx` events, each with a Costs
+denials; the part toward the deductible where the file gives one, in `balance` or each line's adjudication:
+_claims.deductible, #1163). Medical claims become `claim` events and pharmacy fills (claimType "RX") `rx` events, each with a Costs
 row: billed, plan paid, your share, status and the care category, as build.py computes them.
 
 Source keys: "uhc:<claimId>" ("|<service date>" added when one claim number appears on two dates), else
@@ -11,7 +12,7 @@ How claims link to visits: see `_claims`.
 """
 import posixpath
 
-from ._claims import Claims, hkey, head, iso, json_candidates, load_json, money, claim_keys, nice_drug
+from ._claims import Claims, deductible, hkey, head, iso, json_candidates, load_json, money, claim_keys, nice_drug
 
 NAME = "uhc"
 LABEL = "UnitedHealthcare claims (claims.json)"
@@ -72,12 +73,17 @@ def parse(files, insurer=None):
                            c.get("prescriptionNumber"), billed, paid, owe))
         if not key:
             continue
+        line_ded = [deductible(ln.get("serviceAdjudication")) for ln in d.get("serviceLines") or [] if isinstance(ln, dict)]
+        ded = deductible(b)
+        if ded is None and any(x is not None for x in line_ded):
+            ded = round(sum(x or 0.0 for x in line_ded), 2)
         if c.get("claimType") == "RX":
             drug = nice_drug(c.get("medicationName"))
             i = out.add(iso(date), "rx", drug, f"Pharmacy fill · {c.get('providerName') or ''} · {insurer}".replace(" ·  ·", " ·"),
                         {"type": "claim", "insurer": insurer, "kind": "Pharmacy", "drug": c.get("medicationName"), "rxNumber": c.get("prescriptionNumber"),
-                         "provider": c.get("providerName"), "billed": billed, "paid": paid, "owe": owe, "status": status}, key)
-            out.cost(i, date, insurer, billed, paid, owe, status, "pharmacy", "Pharmacy", c.get("providerName"), drug)
+                         "provider": c.get("providerName"), "billed": billed, "paid": paid, "owe": owe, "status": status,
+                         **({"deductible": ded} if ded is not None else {})}, key)
+            out.cost(i, date, insurer, billed, paid, owe, status, "pharmacy", "Pharmacy", c.get("providerName"), drug, ded=ded)
             continue
         lines = []
         for ln in d.get("serviceLines") or []:
@@ -90,11 +96,12 @@ def parse(files, insurer=None):
         i = out.add(iso(date), "claim", title, f"{(c.get('providerName') or '').title()} · {insurer}" + (" · denied" if "DENIED" in status else ""),
                     {"type": "claim", "insurer": insurer, "kind": "Medical", "provider": c.get("providerName"), "claimId": c.get("claimId"),
                      "billed": billed, "paid": paid, "owe": owe, "status": status, "lines": lines,
-                     "network": d.get("claimNetworkStatus"), "end": c.get("lastServiceDate")}, key,
+                     "network": d.get("claimNetworkStatus"), "end": c.get("lastServiceDate"),
+                     **({"deductible": ded} if ded is not None else {})}, key,
                     end=iso(c["lastServiceDate"]) if c.get("lastServiceDate") and c["lastServiceDate"] != date else None,
                     abn=1 if "DENIED" in status else None)
         out.cost(i, date, insurer, billed, paid, owe, status, "medical", out.category(title, lines, c.get("providerName"), date),
-                 c.get("providerName"), title)
+                 c.get("providerName"), title, ded=ded)
     if not out.events and not no_date:
         raise ValueError(f"{rel} has no claims in it.")
     return out.result(no_date)

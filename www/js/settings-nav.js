@@ -2,7 +2,7 @@
    scripts that draw them, and the page's start. One page in three parts (#991), each a list in the sidebar named by
    it:
    - This person: the profile shown (Dashboard, About this person and its targets, Labs and ranges, Milestones,
-     Workouts, Rename or delete; settings.js, about.js, profile-card.js);
+     Rename or delete; settings.js, about.js, profile-card.js);
    - You: Sign-in and security and This device (account.js, pwa.js; the Account page before), and Display;
    - Install, for admins only: General (#998), Accounts and sign-in, Backups, Logs and activity, Connected sources
      (experimental), Outside connections and About (#1153; admin.js and the scripts after it; the Admin page before),
@@ -27,7 +27,7 @@ let SET_NAV = null;   // the sidebar (sideNav), for account.js's and admin.js's 
   const GROUPS = SG_PAGES.settings.groups;   // groups.js: one list, which the command palette searches too (#273)
   /* whose settings each group holds: the registry's sections say it by their settings' scope (data-scope); a group
      missing here goes by that */
-  const WHO = {dashboard: "profile", about: "profile", insurance: "profile", labs: "profile", milestones: "profile", activity: "profile", profile: "profile",
+  const WHO = {dashboard: "profile", about: "profile", insurance: "profile", labs: "profile", milestones: "profile", profile: "profile",
     security: "you", device: "you", display: "you"};
   const SAY = {
     profile: ["This profile", ", for everyone it's shared with."],
@@ -73,7 +73,7 @@ let SET_NAV = null;   // the sidebar (sideNav), for account.js's and admin.js's 
   const nav = SET_NAV = sideNav({id: "setNav", page: "Settings", groups: GROUPS, find: "Find in Settings", none: q => `Nothing in Settings matches “${q}”.`,
     // the groups with something to show: a part that's there, not hidden by its own script; locked, Sign-in and security alone
     allowed: (g, parts) => ready && parts.some(p => !p.hidden) && (!locked || g.id === "security"),
-    alias: {install: "installApp", offline: "offlineRecords", sources: "connected"},   // Account's short ones; Settings' Connected sources before #167 (and since #1153)
+    alias: {install: "installApp", offline: "offlineRecords", sources: "connected", activity: "sec-health"},   // Account's short ones; Settings' Connected sources before #167 (and since #1153); Workouts before #1165
     shown: () => { if (told && said.textContent === told) sayIn(said, ""); },   // (whyNot's, said for the group first shown)
     label: g => { const w = SAY[whoOf(g)]; return g.title + (w ? " · " + w[0] : ""); },
     intro: (g, q) => {

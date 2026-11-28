@@ -2,7 +2,8 @@
    app.js, so it sits between app.js and the API without app.js knowing:
 
    - online, with offline records turned on for this device (Account), it keeps a copy of what app.js loads for the
-     profile it shows (its records, settings and watch data) through SgOffline (pwa.js), explicitly, in its own cache;
+     profile it shows (its records, settings and watch data) through SgOffline (pwa.js), explicitly, in its own cache,
+     and the profile's insurance cards with their photos (keepCards, #1168: for the card at the desk, ins-desk.js);
      the API's answers themselves stay no-store and nothing else from the API is kept. With the option off, or after
      a 401, any copy is deleted. A record's details come when it's opened (details.js, #217), so the copy keeps those
      of the records opened on this device, with the records they belong to (X-Records-Rev: while those stay the same,
@@ -10,8 +11,8 @@
      same reply the page puts in place, with the records' revision after it (#405), so the copy stays as the page is
      and keeps the details of what's opened after it;
    - when the server can't be reached, app.js is answered from that copy (only that profile, and the person's own
-     settings as its settings have them: the theme, the date format, units, #428; anything else, and every
-     change, is refused as needing the server), and the page says it's offline, read-only, and when the records were
+     settings as its settings have them: the theme, the date format, units, #428; the insurance cards, #1168;
+     anything else, and every change, is refused as needing the server), and the page says it's offline, read-only, and when the records were
      loaded. Without a copy it says records aren't available offline.
    - a copy whose profile the server no longer lists for the person (removed from it, left it, or it was deleted:
      #591) is deleted as soon as the page hears so (SgOffline.still), here and on the other pages (offline-page.js). */
@@ -76,10 +77,43 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
         const same = before && before.profile.id === pid && rev && before.rev === rev && before.details;   // #217
         copy = {v: 1, loaded: Date.now(), ends: who.session_ends, user: who.user.username,
           profile: {id: profile.id, name: profile.name, role: profile.role}, data: await text, settings: null, watch: null,
-          rev, details: same ? before.details : {}};
+          rev, details: same ? before.details : {}, cards: before && before.profile.id === pid ? before.cards || null : null};
         await write();
+        await keepCards(pid);
       } else if (text && copy && copy.profile.id === pid) { copy[part] = await text; await write(); }
     }).catch(e => console.warn("offline copy not kept:", e.message));
+  }
+
+  /* the profile's insurance cards (#1168), for the card at the desk (ins-desk.js): the plans, and each side's photo
+     as a data: address, fetched again only once its plan has changed since */
+  async function keepCards(pid) {
+    const r = await realFetch(API + `profiles/${pid}/insurance`, {credentials: "same-origin", cache: "no-store"});
+    if (!copy || copy.profile.id !== pid) return;
+    if (!r.ok) { copy.cards = null; await write(); return; }
+    const list = await r.json(), had = (copy.cards && copy.cards.photos) || {}, photos = {};
+    for (const c of list.plans || []) for (const s of ["front", "back"]) {
+      if (!c[s]) continue;
+      const k = `${c.id}/${s}`, v = c.changed || c.at;
+      if (had[k] && had[k].v === v) { photos[k] = had[k]; continue; }
+      const got = await realFetch(API + `profiles/${pid}/insurance/${k}`, {credentials: "same-origin", cache: "no-store"});
+      if (got.ok) photos[k] = {v, url: await dataUrl(await got.blob())};
+    }
+    if (!copy || copy.profile.id !== pid) return;
+    copy.cards = {plans: list.plans || [], photos};
+    await write();
+  }
+  const CARDS = /^profiles\/(\d+)\/insurance$/, CARD = /^profiles\/(\d+)\/insurance\/(\d+\/(?:front|back))$/;
+  function fromCards(c, path) {   // the kept plans, read-only, and their photos
+    const m = path.match(CARDS), p = path.match(CARD);
+    if (m && +m[1] === c.profile.id) return c.cards ? json({plans: c.cards.plans, can_change: false, can_read: false}) : json({detail: "Not kept for offline viewing."}, 404);
+    if (p && +p[1] === c.profile.id) {
+      const got = c.cards && c.cards.photos[p[2]];
+      if (!got) return json({detail: "Not kept for offline viewing."}, 404);
+      const [head, b64] = got.url.split(","), bin = atob(b64), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new Response(bytes, {headers: {"Content-Type": head.slice(5).split(";")[0], "Cache-Control": "no-store"}});
+    }
+    return null;
   }
 
   /* a change's reply, for the copy's profile, with the records' revision after it: the records whole (an edit, a link
@@ -160,6 +194,8 @@ const OFFLINE = {on: false, copy: null};   // on: showing the kept copy, without
     if (path === "me") return json({user: {id: 0, username: c.user, is_admin: false, must_change_pw: false, two_factor: false, needs_two_factor: false},
       profiles: [c.profile], two_factor_required: false, session_ends: c.ends, offline: true});
     if (path === "settings/user") return mine(c);
+    const card = fromCards(c, path);
+    if (card) return card;
     const m = path.match(PART);
     if (m && +m[1] === c.profile.id) return c[m[2]] == null ? json({detail: "Not kept for offline viewing."}, 404) : json(c[m[2]]);
     return json({detail: NEEDS_SERVER}, 503);

@@ -42,19 +42,22 @@ const beside = (text, label, onclick) => el("button", {class: "btn", type: "butt
    a panel the labs are in Labs' order, the most measured first (#458). Add takes the name a lab is shown by or its
    name in the records, suggests the names shown, and refuses one this profile has no lab by, as Key labs does. What
    it saves keeps the order saved, a lab added after them. */
-function labsEditor(value, changed, ro) {
+function labsEditor(value, changed, ro, st, opts = {}) {
   const count = n => LABS.reduce((a, s) => a + (s.name === n ? s.pts.length : 0), 0);
   const tidy = l => labGroups([...l].sort((a, b) => count(b) - count(a) || nick(a).localeCompare(nick(b))), LABS).flatMap(g => g.labs);
   let list = tidy(value);
   const box = el("div", {class: "set-list"}), lists = el("div", {class: "set-groups"}), msg = el("span", {class: "msg", role: "status"});
-  const input = el("input", {list: "labShown", placeholder: "Lab name", "aria-label": "Lab to add", maxlength: 120});
+  const input = labFind("Lab to add");
+  const take = (n, focus) => {   // (#1165) out, said with an Undo; focus on the next one's Remove, else the last's
+    const at = [...lists.querySelectorAll("li[data-lab]")].findIndex(li => li.dataset.lab === n);
+    list = list.filter(x => x !== n); draw(); changed(); pick?.sync();
+    if (focus) (lists.querySelectorAll("li button")[at] || lists.querySelectorAll("li button")[at - 1] || input).focus();
+    editSaid(msg, `${nick(n)} taken out.`, () => { put(n); (focus ? lists.querySelector(`li[data-lab="${CSS.escape(n)}"] button`) : pickBox(pick, n))?.focus(); editSaid(msg, `${nick(n)} put back.`); });
+  };
+  const put = n => { if (!list.includes(n)) { list = tidy([...list, n]); draw(); changed(); pick?.sync(); } };
   const row = n => el("li", {"data-lab": n},
     el("span", {class: "set-name"}, nick(n), nick(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null),
-    ro ? null : el("span", {class: "set-acts"}, small("Remove", `Remove ${nick(n)}`, () => {
-      const at = [...lists.querySelectorAll("li")].findIndex(li => li.dataset.lab === n);
-      list = list.filter(x => x !== n); draw(); changed();
-      (lists.querySelectorAll("li button")[at] || lists.querySelectorAll("li button")[at - 1] || input).focus();   // the next one's Remove, else the last's
-    })));
+    ro ? null : el("span", {class: "set-acts"}, small("Remove", `Remove ${nick(n)}`, () => take(n, true))));
   function draw() {
     const gs = labGroups(list, LABS);
     lists.replaceChildren(...(list.length ? gs.flatMap(g => present(gs.length > 1 ? el("h4", {class: "lab-panel set-grp", text: g.panel}) : null,
@@ -64,16 +67,79 @@ function labsEditor(value, changed, ro) {
     const typed = input.value.trim().replace(/\s+/g, " "), n = labNamed(typed);
     if (!typed) return;
     if (LABS.length && !n) { sayIn(msg, `This profile has no lab called “${typed}”. Pick one from the list.`, true); return; }
-    if (!list.includes(n)) { list = tidy([...list, n]); draw(); changed(); }
-    input.value = ""; sayIn(msg, ""); input.focus();
+    const had = list.includes(n);
+    put(n);
+    input.value = ""; pick?.filter(); editSaid(msg, had ? `${nick(n)} is in the list already.` : `${nick(n)} added.`); input.focus();
   };
   input.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); add(); } });
   draw();
+  const pick = ro ? null : labPicker(input, () => list, (n, on) => { if (on) { put(n); editSaid(msg, `${nick(n)} added.`); } else take(n); }, opts.fold);
   box.append(lists);
-  if (!ro) box.append(el("div", {class: "set-add"}, input, el("button", {class: "btn", type: "button", text: "Add", onclick: add})), msg);
+  if (!ro) box.append(el("div", {class: "set-add"}, input, el("button", {class: "btn", type: "button", text: "Add", onclick: add})), msg, pick.node);
   return {node: box, get: () => { const l = [...value.filter(n => list.includes(n)), ...list.filter(n => !value.includes(n))];   // (the order saved: it does nothing)
     return same(l, value) ? value : l; }};
 }
+
+/* (#1165) what a change in an editor did, said in its line (msg), with an Undo where it took something out */
+function editSaid(msg, text, undo) {
+  sayIn(msg, undo ? [text + " ", el("button", {class: "btn small", type: "button", text: "Undo", onclick: undo})] : text);
+}
+/* a list's field to add a lab by name (#458: the names shown suggested, #labShown), which narrows its picker too */
+const labFind = label => el("input", {list: "labShown", placeholder: "Find or add a lab", "aria-label": label, maxlength: 120, autocomplete: "off"});
+/* (#1165) every lab in this profile's records, to choose from where a list of labs is chosen, so what could be added
+   is in sight: by panel (labGroups), in Labs' order (the most measured first), each with its results' count and latest
+   date, the chosen ones ticked, in a box that scrolls; a chosen lab with no results here is listed after them, said so.
+   The list's field (find) narrows it as it's typed; its count says how many of the records' labs are chosen and,
+   narrowed, how many match. chosen() and toggle(n, on) are the list's; sync() ticks it again after a change made there.
+   fold: behind a disclosure (a saved view's, one picker each). Narrowed, the box keeps its full height, so nothing
+   below it moves up and the page doesn't jump at its foot. */
+function labPicker(find, chosen, toggle, fold) {
+  const meta = new Map();
+  for (const s of LABS) {
+    if (s.watch) continue;
+    const m = meta.get(s.name) || {n: 0, last: -Infinity};
+    m.n += s.pts.length;
+    for (const p of s.pts) m.last = Math.max(m.last, zParse(p[0]));
+    meta.set(s.name, m);
+  }
+  const names = [...meta.keys()].sort((a, b) => meta.get(b).n - meta.get(a).n || nick(a).localeCompare(nick(b)));
+  const count = el("p", {class: "hint set-pick-n", id: "pickN" + (++labPickers)});
+  find.setAttribute("aria-describedby", count.id);
+  const row = n => { const m = meta.get(n);
+    return el("label", {class: "check", "data-lab": n}, el("input", {type: "checkbox", value: n, onchange: ev => toggle(n, ev.target.checked)}),
+      el("span", {}, nick(n), nick(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null,
+        el("small", {class: "muted", text: m ? ` · ${plural(m.n, "result")}, latest ${fmtD(m.last)}` : " · no results here"}))); };
+  const set = (panel, labs) => el("fieldset", {class: "pre-sys"}, el("legend", {text: panel}), ...labs.map(row));
+  const missing = set("Not in these records", []);
+  const box = el("div", {class: "pre-list set-pick"}, ...labGroups(names, LABS).map(g => set(g.panel, g.labs)), missing);
+  function sync() {
+    // a chosen lab with no results here: listed (and kept once unticked, to tick again)
+    for (const n of chosen()) if (!meta.has(n) && !missing.querySelector(`[data-lab="${CSS.escape(n)}"]`)) missing.append(row(n));
+    missing.hidden = !missing.querySelector("[data-lab]");
+    for (const i of box.querySelectorAll("input")) i.checked = chosen().includes(i.value);
+    filter();
+  }
+  function filter() {
+    const q = find.value.trim().toLowerCase();
+    box.classList.toggle("narrowed", !!q);   // (its full height kept: app.css)
+    let hits = 0;
+    for (const l of box.querySelectorAll("label[data-lab]")) {
+      const n = l.dataset.lab, hit = !q || n.toLowerCase().includes(q) || nick(n).toLowerCase().includes(q);
+      l.hidden = !hit; hits += hit && meta.has(n);
+    }
+    for (const f of box.querySelectorAll("fieldset")) f.hidden = ![...f.querySelectorAll("label[data-lab]")].some(l => !l.hidden);
+    const now = chosen(), n = names.filter(x => now.includes(x)).length;
+    count.textContent = (q ? (hits ? `${hits} match “${find.value.trim()}” · ` : `None match “${find.value.trim()}” · `) : "") + `${n} of ${plural(names.length, "lab")} chosen`;
+  }
+  find.addEventListener("input", () => filter());
+  sync();
+  const node = !names.length ? el("p", {class: "hint", text: "This profile has no lab results yet."})
+    : fold ? el("details", {class: "set-pick-fold"}, el("summary", {text: `Choose from the ${plural(names.length, "lab")} in these records`}), count, box)
+    : el("div", {}, count, box);
+  return {node, sync, filter};
+}
+let labPickers = 0;
+const pickBox = (pick, n) => pick?.node.querySelector(`label[data-lab="${CSS.escape(n)}"] input`);   // a lab's tick in a picker
 
 /* rows of inputs (a table on wide screens, stacked on phones); cols: [{key, label, type, only, ...attrs}]. A
    checkbox column with only: true is ticked in one row at most (ticking it in one row unticks the others); a radio
@@ -281,13 +347,28 @@ function tilesEditor(value, changed, ro, setting) {
   const sugg = el("div", {class: "set-sugg"});
   const groups = list => labGroups(list, LABS), grouped = list => groups(list).flatMap(g => g.labs);
   const isDefault = list => same(list, grouped(setting.default));
-  const update = () => { drawPreview(); drawSuggestions(); changed(); };
+  const update = () => { drawPreview(); pick?.sync(); changed(); };
+  /* (#1165) taken out (from: its row's Remove, its menu, the picker), said with an Undo that puts it back where it was,
+     focus back on its handle, or its tick; from its Remove, focus on the next one's (or its menu's, on a phone), else
+     the last one's, else the field */
+  const take = (n, from) => {
+    const was = ol.get(), at = was.indexOf(n);
+    ol.set(was.filter(x => x !== n)); update();
+    if (from === "row") {
+      const rows = [...ol.node.querySelectorAll("li[data-i]")], li = rows[at] || rows[at - 1];
+      (li && [...li.querySelectorAll(`[aria-label^="Remove "], [data-act=more]`)].find(b => b.getClientRects().length) || input).focus();
+    }
+    editSaid(msg, `${nick(n)} taken out.`, () => {
+      const l = ol.get().filter(x => x !== n); l.splice(Math.min(at, l.length), 0, n); ol.set(l); update();
+      (from === "pick" ? pickBox(pick, n) : ol.node.querySelector(`li[data-i="${ol.get().indexOf(n)}"] [data-act=grip]`))?.focus();
+      editSaid(msg, `${nick(n)} put back.`);
+    });
+  };
   const ol = orderList(value, {ro, changed: update, name: nick, group: groups,
     body: n => { const s = labInfo(n); return [el("span", {class: "set-name"}, nick(n), nick(n) !== n ? el("small", {class: "muted", text: ` (${n})`}) : null),
       el("span", {class: "set-count muted", text: s ? `${s.pts.length} result${s.pts.length === 1 ? "" : "s"}` : "no results here"})]; },
-    extra: n => [el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove ${nick(n)}`,
-      onclick: () => { ol.set(ol.get().filter(x => x !== n)); update(); input.focus(); }})],
-    more: n => [{text: "Remove", run: () => { ol.set(ol.get().filter(x => x !== n)); update(); }}]});
+    extra: n => [el("button", {class: "btn small", type: "button", text: "Remove", "aria-label": `Remove ${nick(n)}`, onclick: () => take(n, "row")})],
+    more: n => [{text: "Remove", run: () => take(n, "menu")}]});
   function drawPreview() {
     const names = keyLabTiles(ol.get(), LABS, isDefault(ol.get())), gs = groups(names);
     preview.replaceChildren(...gs.flatMap(g => [gs.length > 1 ? el("h5", {class: "lab-panel", text: g.panel}) : null, ...g.labs.map(n => {
@@ -301,27 +382,30 @@ function tilesEditor(value, changed, ro, setting) {
     else if (isDefault(ol.get()) && names.some(n => !ol.get().includes(n)))
       preview.prepend(el("p", {class: "hint set-wide", text: "Few of the default labs have results here, so the Overview shows this profile's most-measured labs until you choose."}));
   }
-  function drawSuggestions() {
-    if (ro) return;
-    const top = mostMeasured(LABS).filter(n => !ol.get().includes(n)).slice(0, 8);
-    sugg.replaceChildren(...(top.length ? [el("span", {class: "muted", text: "Most measured here: "}),
-      ...top.map(n => el("button", {class: "chip", type: "button", "aria-label": `Add ${nick(n)}`,
-        onclick: () => { ol.set([...ol.get(), n]); update(); }}, icon("plus"), nick(n))),
-      el("button", {class: "btn small", type: "button", text: "Use the most-measured labs",
-        onclick: () => { ol.set(mostMeasured(LABS).slice(0, 12)); update(); sayIn(msg, "Now the 12 most-measured labs; Save to keep them."); }})] : []));
-  }
-  const input = el("input", {list: "labShown", placeholder: "Lab name", "aria-label": "Lab to add as a tile", maxlength: 120});
+  /* (#1165) every lab in the records to pick from (labPicker) in place of a few of the most measured as chips, and
+     the most-measured labs at once, with an Undo */
+  const input = labFind("Lab to add as a tile");
   const add = () => {
     const typed = input.value.trim().replace(/\s+/g, " "), n = labNamed(typed);
     if (!typed) return;
     if (LABS.length && !n) { sayIn(msg, `This profile has no lab called “${typed}”. Pick one from the list.`, true); return; }
-    if (!ol.get().includes(n)) { ol.set([...ol.get(), n]); update(); }
-    input.value = ""; sayIn(msg, ""); input.focus();
+    const had = ol.get().includes(n);
+    if (!had) { ol.set([...ol.get(), n]); update(); }
+    input.value = ""; pick.filter(); editSaid(msg, had ? `${nick(n)} is a tile already.` : `${nick(n)} added.`); input.focus();
   };
   input.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); add(); } });
-  drawPreview(); drawSuggestions();
+  const pick = ro ? null : labPicker(input, () => ol.get(), (n, on) => {
+    if (!on) { take(n, "pick"); return; }
+    ol.set([...ol.get(), n]); update(); editSaid(msg, `${nick(n)} added.`);
+  });
+  if (!ro && LABS.length) sugg.append(el("button", {class: "btn small", type: "button", text: "Use the most-measured labs", onclick: () => {
+    const was = ol.get();
+    ol.set(mostMeasured(LABS).slice(0, 12)); update();
+    editSaid(msg, "Now the 12 most-measured labs; Save to keep them.", () => { ol.set(was); update(); editSaid(msg, "The labs are back as they were."); });
+  }}));
+  drawPreview();
   const box = el("div", {class: "set-list"}, ol.node);
-  if (!ro) box.append(el("div", {class: "set-add"}, input, el("button", {class: "btn", type: "button", text: "Add", onclick: add})), sugg, msg);
+  if (!ro) box.append(el("div", {class: "set-add"}, input, el("button", {class: "btn", type: "button", text: "Add", onclick: add})), sugg, msg, pick.node);
   box.append(el("h4", {class: "set-ph", text: "Preview"}), preview);
   return {node: box, get: () => { const l = ol.get(); return same(l, grouped(setting.value)) ? setting.value : l; }};
 }
@@ -329,8 +413,23 @@ function tilesEditor(value, changed, ro, setting) {
 /* #40 the main tabs: shown or hidden, in order; one at least stays shown */
 const TAB_LABEL = {overview: "Overview", health: "Body and activity", medications: "Medications", timeline: "Timeline", labs: "Labs", costs: "Costs"};   // #172, #275
 function tabsEditor(value, changed, ro) {
-  const hidden = new Set(value.hidden);
+  const hidden = new Set(value.hidden), msg = el("span", {class: "msg", role: "status"});
   let ol = null;
+  /* (#1165) a tab shown or hidden (its switch, or Show it beside a Dashboard section's name: tabLinks), said with an
+     Undo; the last shown one stays shown */
+  const flip = (t, on) => {
+    if (!on && ol.get().filter(x => !hidden.has(x) && x !== t).length < 1) return false;
+    if (on) hidden.delete(t); else hidden.add(t);
+    const cb = ol.node.querySelector(`input[data-tab="${t}"]`);
+    if (cb) cb.checked = on;
+    sync(); changed(); tabLinks();
+    return true;
+  };
+  const said = (t, on) => editSaid(msg, `${TAB_LABEL[t] || t} ${on ? "shown" : "hidden"}.`, () => {
+    if (!flip(t, !on)) return;
+    ol.node.querySelector(`input[data-tab="${t}"]`)?.focus();
+    editSaid(msg, `${TAB_LABEL[t] || t} ${on ? "hidden" : "shown"} again.`);
+  });
   const sync = () => {   // the last shown tab can't be hidden
     if (!ol) return;
     const shown = ol.get().filter(t => !hidden.has(t)).length;
@@ -338,11 +437,12 @@ function tabsEditor(value, changed, ro) {
   };
   ol = orderList(value.order, {ro, name: t => TAB_LABEL[t] || t, changed, drawn: () => sync(),
     body: t => [el("label", {class: "set-name set-check switch"},   // a switch each (#259)
-      el("input", {type: "checkbox", role: "switch", checked: !hidden.has(t), "data-tab": t, onchange: ev => { ev.target.checked ? hidden.delete(t) : hidden.add(t); sync(); changed(); }}),
+      el("input", {type: "checkbox", role: "switch", checked: !hidden.has(t), "data-tab": t, onchange: ev => { flip(t, ev.target.checked); said(t, ev.target.checked); }}),
       ` Show ${TAB_LABEL[t] || t}`,
       t === "costs" && !HAS_CLAIMS ? el("small", {class: "muted", text: " · no claims in this profile"}) : null)]});
   sync();
-  return {node: ol.node, get: () => ({order: ol.get(), hidden: ol.get().filter(t => hidden.has(t))})};
+  return {node: el("div", {}, ol.node, msg), get: () => ({order: ol.get(), hidden: ol.get().filter(t => hidden.has(t))}),
+    show: t => { if (flip(t, true)) said(t, true); }};
 }
 
 /* a pick-one group of radios (#193): the labels, each with its radio, drawn as one segmented control (app.css .seg) */
@@ -423,20 +523,38 @@ function formatEditor(value, changed, ro) {
 }
 EDITORS.timezone = zoneEditor;
 EDITORS.dateformat = formatEditor;
+/* (#1165) a month (Costs' tax year's first, as Costs sets it: costs.js), saved as it's picked */
+EDITORS.month = (value, changed, ro, st) => {
+  const sel = el("select", {class: "set-select", id: st.key, "aria-label": st.label, disabled: ro, onchange: changed},
+    ...Array.from({length: 12}, (_, i) => el("option", {value: i + 1, text: new Date(2026, i, 15).toLocaleDateString("en-US", {month: "long"})})));
+  sel.value = String(value || 1);
+  return {node: el("div", {class: "set-add"}, sel), get: () => +sel.value};
+};
 
 /* #37 saved Trends views: each a name, its labs and whether it's the default (one at most); renamed, changed,
    removed or added here, saved from Trends too (trends-views.js) */
 function viewsEditor(value, changed, ro) {
-  const box = el("div", {class: "set-views"}), list = el("div", {class: "set-vlist"});
-  let n = 0;
+  const box = el("div", {class: "set-views"}), list = el("div", {class: "set-vlist"}), msg = el("span", {class: "msg", role: "status"});
+  let n = 0, addBtn = null;
+  /* (#1165) a view taken out: focus on the next one's name, else (the last) on Add a view, below, where it was; said with an Undo */
+  const take = item => {
+    const at = [...list.children].indexOf(item), named = item.querySelector("[data-k=name]").value.trim();
+    const next = item.nextElementSibling;
+    item.remove(); changed();
+    (next?.querySelector("[data-k=name]") || addBtn)?.focus();
+    editSaid(msg, named ? `The view “${named}” taken out.` : "The view taken out.", () => {
+      list.insertBefore(item, list.children[at] || null); none.remove(); changed();
+      item.querySelector("[data-k=name]").focus(); editSaid(msg, "The view put back.");
+    });
+  };
   const make = v => {
     const id = "tv" + (++n), name = el("input", {id: id + "n", value: v.name, maxlength: 60, disabled: ro, oninput: changed, "data-k": "name"});
     const def = el("input", {type: "radio", name: "tvDefault", checked: v.default ? "" : null, disabled: ro, onchange: changed, "data-k": "default"});
-    const labs = labsEditor(v.labs, changed, ro);
+    const labs = labsEditor(v.labs, changed, ro, null, {fold: true});   // (its picker behind a disclosure: one a view)
     const item = el("div", {class: "set-view"},
       el("div", {class: "row"}, el("label", {for: id + "n", text: "Name"}), name,
         el("label", {class: "check"}, def, "Default"),
-        ro ? null : beside("Remove", `Remove the view ${v.name || "without a name"}`, () => { item.remove(); changed(); })),
+        ro ? null : beside("Remove", `Remove the view ${v.name || "without a name"}`, () => take(item))),
       labs.node);
     item._labs = labs;
     return item;
@@ -445,8 +563,8 @@ function viewsEditor(value, changed, ro) {
   const none = el("p", {class: "hint", text: "No saved views yet. Pick labs on Labs and press Save view…"});
   box.append(...present(list, value.length ? null : none));
   if (!ro) box.append(el("div", {class: "set-add"},
-    small("Add a view", "Add a view", () => { none.remove(); const it = make({name: "", labs: [], default: false}); list.append(it); it.querySelector("input").focus(); changed(); }),
-    small("No default", "No default view", () => { list.querySelectorAll("[data-k=default]").forEach(r => { r.checked = false; }); changed(); })));
+    addBtn = small("Add a view", "Add a view", () => { none.remove(); const it = make({name: "", labs: [], default: false}); list.append(it); it.querySelector("input").focus(); changed(); }),
+    small("No default", "No default view", () => { list.querySelectorAll("[data-k=default]").forEach(r => { r.checked = false; }); changed(); editSaid(msg, "No view is the default now."); })), msg);
   return {node: box, get: () => [...list.children].map(it => ({name: it.querySelector("[data-k=name]").value.trim(),
     labs: it._labs.get(), default: it.querySelector("[data-k=default]").checked}))};
 }
@@ -539,7 +657,7 @@ EDITORS.ranges = rangesEditor;
    default. A section of one setting named as it is (Tabs, Units, Milestones) has one heading, the section's (#398). */
 const FROM = {default: "default", install: "set for this server", profile: "set for this profile", user: "your own"};
 const SCOPE_TAG = {install: "for this server", profile: "for this profile", user: "just for you"};
-const INSTANT = new Set(["theme", "timezone", "dateformat", "units", "choices", "choice"]);
+const INSTANT = new Set(["theme", "timezone", "dateformat", "units", "choices", "choice", "month"]);
 /* at its default: the server's, or for the time zone and date format (set from the browser at the first sign-in,
    dates.js) this browser's own */
 const atDefault = st => same(st.value, st.default) || (st.kind === "timezone" && st.value === browserZone()) || (st.kind === "dateformat" && st.value === browserFormat());
@@ -563,7 +681,7 @@ function settingNode(st, changed, mixed, solo) {
   const node = el("div", {class: "set set-row" + (WIDE.has(st.kind) ? " wide" : solo ? " wide set-solo" : ""), "data-key": st.key, "data-scope": st.scope});   // a setting row (#286)
   const tag = () => { from.textContent = FROM[st.from] || st.from; from.hidden = atDefault(st); };
   let ed = null;
-  const item = {st, node, msg, instant: INSTANT.has(st.kind) && !ro, held: false,
+  const item = {st, node, msg, instant: INSTANT.has(st.kind) && !ro, held: false, editor: () => ed,   // (editor: the Tabs one's show, tabLinks)
     dirty: () => !ro && !!ed && !same(ed.get(), st.value),
     counts: () => item.dirty() && (!item.instant || item.held),
     value: () => ed.get(),
@@ -641,7 +759,11 @@ const quoted = labels => labels.map((l, i) => (i === 0 ? "" : i === labels.lengt
 
 /* a section: its title, Reset to defaults (when something in it isn't the default), a line for what's said about it,
    and its settings. opts.note is said in that line once drawn (shown only, with opts.quiet: a toast says it). The
-   card keeps its items and section (sgItems, sgSec), and sgChanged() and sgTidy() for after a save. */
+   card keeps its items and section (sgItems, sgSec), and sgChanged() and sgTidy() for after a save; sgWith, what else
+   it was drawn with (drawnWith). A section of a tab's (#1165: Settings → Dashboard's, TAB_OF) is named by it, with a
+   link to it. */
+const TAB_OF = {overview: "overview", trends: "labs", health: "health", costs: "costs"};
+const drawnWith = () => JSON.stringify([NICK, RANGE_CFG, LAB_NAMES.length]);
 function sectionCard(sec, opts = {}) {
   const msg = el("span", {class: "msg set-msg"}); sayIn(msg, opts.note || "", false, {say: !opts.quiet});   // said too (util.js, #209), or by a toast
   const mixed = new Set(sec.settings.map(st => st.scope)).size > 1;
@@ -657,12 +779,52 @@ function sectionCard(sec, opts = {}) {
   const reset = el("button", {class: "btn small", type: "button", text: "Reset to defaults", onclick: () => resetSection(card)});
   const tidy = () => { reset.hidden = !items.some(it => it.st.can_change && isOwn(it.st) && !atDefault(it.st)); };
   tidy();
+  const tab = PID != null && TAB_OF[sec.id];
   card = el("section", {class: "card", id: "sec-" + sec.id},
-    el("div", {class: "set-hd"}, el("h2", {id: `sec-${sec.id}-hd`, tabindex: -1, text: sec.title}), reset),
+    el("div", {class: "set-hd"}, el("h2", {id: `sec-${sec.id}-hd`, tabindex: -1, text: sec.title}),
+      tab ? el("span", {class: "set-tab", "data-tab": tab}) : null, reset),   // (its link, or that it's hidden: tabLinks)
     helpNodes(sec.help, ...(solo ? solo.settings[0].help.split("\n") : [])),   // the card's head: one line of hint, the rest behind its ⓘ (#494)
     sec.id === "overview" ? presetsBlock(sec) : null,   // "Start from a condition" (presets.js, #186)
     ...items.map(it => it.node), msg);   // (at its foot: words changing there move nothing in it)
-  return Object.assign(card, {sgItems: items, sgSec: sec, sgChanged: () => changed(), sgTidy: tidy});
+  holdPlace(card);
+  tabLinks(card);
+  return Object.assign(card, {sgItems: items, sgSec: sec, sgChanged: () => changed(), sgTidy: tidy, sgWith: drawnWith()});
+}
+/* (#1165) beside a Dashboard section's name, a link to its tab; its tab hidden (in the Tabs section, saved or not),
+   that it is, and Show it, which shows it there, as its switch does (said there, with an Undo), focus then on the
+   link. in: a card not in the page yet */
+function tabLinks(within = document.getElementById("sections")) {
+  const tb = SET_ITEMS.tabs, hid = tb?.node.isConnected ? tb.value().hidden : [];
+  for (const s of within?.querySelectorAll(".set-hd > .set-tab") || []) {
+    const t = s.dataset.tab, off = hid.includes(t);
+    if (s.dataset.off === String(off)) continue;
+    const had = s.contains(document.activeElement);
+    s.dataset.off = off;
+    s.replaceChildren(...(off ? [el("span", {class: "muted", text: "This tab is hidden"}),
+        tb.st.can_change ? el("button", {class: "btn small", type: "button", text: "Show it", "aria-label": `Show the ${TAB_LABEL[t]} tab`, onclick: () => tb.editor().show(t)}) : null]
+      : [el("a", {href: `./?profile=${PID}#${t}`}, `Open ${TAB_LABEL[t]}`, icon("arrow-right"))]).filter(Boolean));
+    if (had) s.querySelector("a, button")?.focus();
+  }
+}
+/* (#1165) an edit made in a card keeps the control used where it was on the screen: a row added or taken out above
+   it, a line said, a list drawn again move the page by as much, before it's painted; the control gone (a Remove, an
+   Undo), the one focus went to takes its place. A move (up or down, a drag, a menu's Move) keeps the page as it is,
+   focus going with the row; a link goes where it goes. */
+function holdPlace(card) {
+  const mark = ev => {
+    if (ev.type === "keydown" && ev.key !== "Enter") return;
+    const t = ev.target.closest?.("button, input, select, summary, label");
+    if (!t || t.closest("[data-act=up], [data-act=down], [data-act=grip]") || (t.matches(".menu-item") && /^Move /.test(t.textContent))) return;
+    const at = t.closest(".menu")?.querySelector(".set-more-btn") || t, top = at.getBoundingClientRect().top;
+    requestAnimationFrame(() => {
+      const kept = at.isConnected && at.getClientRects().length, now = kept ? at : document.activeElement;
+      if (!now || !card.contains(now)) return;
+      const r = now.getBoundingClientRect(), d = r.top - top;
+      // (gone, and focus on one in sight already, as an Undo's row put back: the page stays)
+      if (Math.abs(d) >= 1 && (kept || r.bottom <= 0 || r.top >= innerHeight)) scrollBy(0, d);
+    });
+  };
+  for (const k of ["click", "change", "keydown"]) card.addEventListener(k, mark, true);
 }
 
 /* a simple preference, saved as it's changed (#272): the latest value, one save at a time per setting, a toast
@@ -771,7 +933,9 @@ async function saveSections(cards, msg, had) {
   const said = `Saved ${quoted(done)}.`, ids = secs.map(sec => sec.id);
   sayIn(msg, "");
   await load({sections: ids, text: said, quiet: true});
-  if (had) document.getElementById(`sec-${ids[0]}-hd`)?.focus({preventScroll: true});
+  // (#1165) the first saved one in sight, the page not moving: the sections stay as they are (load)
+  const inSight = id => { const r = document.getElementById(`sec-${id}`)?.getBoundingClientRect(); return r && r.bottom > 0 && r.top < innerHeight; };
+  if (had) document.getElementById(`sec-${ids.find(inSight) || ids[0]}-hd`)?.focus({preventScroll: true});
   // what the server keeps now (as it stored it), for the Undo to tell whether a setting was changed again since
   const kept = await stored(base).catch(() => null);
   if (kept) for (const w of was) if (kept[w.key]) w.wrote = kept[w.key];
@@ -788,6 +952,7 @@ function discardSections(cards) {
     c.replaceWith(fresh);
     first ||= fresh;
   }
+  tabLinks();
   first?.querySelector("h2").focus();
 }
 /* Reset to defaults: at once, with an Undo that puts back what each setting was (#272); asked first only when the
@@ -847,16 +1012,27 @@ async function load(note, force, all = false) {
   document.querySelector("main.sets").dataset.role = d.role || "";   // whose settings each group's are (settings-nav.js)
   const forced = [].concat(force || []);
   const cards = d.sections.map(sec => {
-    const old = document.getElementById("sec-" + sec.id);
+    const old = document.getElementById("sec-" + sec.id), said = note && (note.sections || []).includes(sec.id) ? note.text : "";
     if (!all && old && old.parentNode === box && (old.hasAttribute("data-dirty") || old.sgItems?.some(x => x.dirty())) && !forced.includes(sec.id)) return old;   // (one on its way, #407)
-    return sectionCard(sec, {note: note && (note.sections || []).includes(sec.id) ? note.text : "", quiet: !!(note && note.quiet)});
+    // (#1165) one shown as it is now (a save's, the settings it saved marked so), and drawn with the same names and
+    // ranges, stays as it is: its controls, and focus in one, in place, the page not moving; what's said, said in it
+    if (!all && old && old.parentNode === box && !old.hasAttribute("data-dirty") && same(old.sgSec, sec) && old.sgWith === drawnWith()) {
+      if (said) sayIn(old.querySelector(".set-msg"), said, false, {say: !note.quiet});
+      old.sgTidy();
+      return old;
+    }
+    return sectionCard(sec, {note: said, quiet: !!(note && note.quiet)});
   });
+  // (#1165) Tabs after the other sections of Dashboard (the server's order puts Costs' after it), as the tabs' own last
+  { const tb = cards.findIndex(c => c.id === "sec-tabs"), co = cards.findIndex(c => c.id === "sec-costs");
+    if (tb >= 0 && co > tb) cards.splice(co, 0, ...cards.splice(tb, 1)); }
   // (#1097) Lab name matches (lab-matches.js, its card in the page) between Names and Ranges, as its group lists it
   const lm = $("#labmatches"), at = cards.findIndex(c => c.id === "sec-names");
   if (lm && at >= 0) cards.splice(at + 1, 0, lm);
   const inPlace = !all && box.children.length === cards.length && cards.every((c, i) => box.children[i].id === c.id);
   if (inPlace) cards.forEach((c, i) => { if (box.children[i] !== c) box.children[i].replaceWith(c); });
   else box.replaceChildren(...cards);
+  tabLinks();   // (as the Tabs section has them now, #1165)
   // the visit summary's measures are ticked on Sharing → Visit summary (#402, summary.js): their section stays here out
   // of sight, for Start from a condition to fill in (presets.js) and the group's bar to save
   const ticks = document.getElementById("sec-summary");

@@ -2,7 +2,9 @@
 
 One row per claim, or per service line of a claim, with columns for the date of service, the provider, the amount
 billed, what the plan paid and what the member owes; optionally the claim status, claim number, a description of
-the service, its CPT/HCPCS/revenue code, the claim type (medical or pharmacy), the insurer and a last date of service.
+the service, its CPT/HCPCS/revenue code, the claim type (medical or pharmacy), the insurer, a last date of service and
+the part of what the member owes that went toward the deductible (#1163: costplan.py counts it; a file without that
+column says nothing of the deductible).
 Headers are matched by common spellings, and a caller can pass `mapping` to `parse` for files whose headers differ,
 as with the lab spreadsheet importer (csv_labs), whose delimiter, encoding, number and date handling this reuses.
 
@@ -48,6 +50,9 @@ FIELDS = {
             "patient pays", "your cost", "out of pocket", "patient balance", "member pays", "your total cost",
             "member cost", "patient responsibility amount", "patient share", "member share", "you pay", "amount owed",
             "your portion", "patient portion", "total you owe", "you may be billed", "member responsibility amount"],
+    "ded": ["deductible", "toward deductible", "toward the deductible", "applied to deductible", "applied to the deductible",
+            "deductible applied", "deductible amount", "amount applied to deductible", "your deductible", "member deductible",
+            "deductible paid", "paid toward deductible", "deductible met"],
     "status": ["status", "claim status", "claim state", "processing status"],
     "claim": ["claim", "claim id", "claim number", "claim no", "claim ref", "claim reference", "claim num",
               "claim nbr", "claim identifier", "reference number", "eob number"],
@@ -205,7 +210,7 @@ def parse(files, mapping=None, insurer=None):
     """Claims from every spreadsheet in the upload, as {"data": data.json shape, "warnings": [...]}.
 
     mapping: optional {field: header text or column index} for files whose headers aren't recognised, with fields
-    date, end, provider, billed, paid, owe, status, claim, desc, code, kind and insurer. insurer: the plan's name
+    date, end, provider, billed, paid, owe, ded, status, claim, desc, code, kind and insurer. insurer: the plan's name
     for files without an insurer column (default "Insurance"). Raises ValueError when no file can be read."""
     warn = _csv._Warnings()
     found, errors = [], []
@@ -226,7 +231,7 @@ def parse(files, mapping=None, insurer=None):
     claims = collections.OrderedDict()   # claim number (or row) -> rows, in file order
     for rel, rows, cols in found:
         get = lambda cells, f: cells[cols[f]].strip() if f in cols and cols[f] < len(cells) else ""   # noqa: E731
-        amounts = [get(c, f) for _, c in rows for f in ("billed", "paid", "owe")]
+        amounts = [get(c, f) for _, c in rows for f in ("billed", "paid", "owe", "ded")]
         decimal_comma = any(re.search(r"\d,\d{2}\)?$", a) for a in amounts) and \
             not any(re.search(r"\d\.\d{2}\)?$", a) for a in amounts)
         order, guessed = _csv._date_order([get(c, "date") for _, c in rows] + [get(c, "end") for _, c in rows])
@@ -247,7 +252,8 @@ def parse(files, mapping=None, insurer=None):
                 warn.row("with a date that couldn't be read", f"{where} ({raw_date!r})")
                 continue
             amt = {f: _money(get(cells, f), decimal_comma) for f in ("billed", "paid", "owe")}
-            bad = [f for f, x in amt.items() if x is None]
+            amt["ded"] = _money(get(cells, "ded"), decimal_comma) if get(cells, "ded") else None   # none said: none
+            bad = [f for f, x in amt.items() if x is None and (f != "ded" or get(cells, f))]
             if bad:
                 warn.row("with an amount that couldn't be read", f"{where} ({get(cells, bad[0])!r})")
                 continue
@@ -278,6 +284,7 @@ def _add(out, rows, default_insurer):
     date = t[:10]
     last = max((r["end"] or r["t"]) for r in rows)[:10]
     billed, paid, owe = (round(sum(r[f] for r in rows), 2) for f in ("billed", "paid", "owe"))
+    ded = round(sum(r["ded"] or 0.0 for r in rows), 2) if any(r["ded"] is not None for r in rows) else None
     insurer = first["insurer"] or default_insurer
     prov = first["provider"]
     status = next((r["status"] for r in rows if r["status"]), "")
@@ -295,17 +302,17 @@ def _add(out, rows, default_insurer):
         drug = nice_drug(name) if name and name == name.upper() else (name or "Prescription")
         i = out.add(t, "rx", drug, " · ".join(x for x in ["Pharmacy fill", prov, insurer] if x),
                     {"type": "claim", "insurer": insurer, "kind": "Pharmacy", "drug": name or None, "provider": prov or None,
-                     "claimId": claim_id, "billed": billed, "paid": paid, "owe": owe, "status": status}, key,
-                    abn=1 if denied else None)
-        out.cost(i, date, insurer, billed, paid, owe, status, "pharmacy", "Pharmacy", prov, drug)
+                     "claimId": claim_id, "billed": billed, "paid": paid, "owe": owe, "status": status,
+                     **({"deductible": ded} if ded is not None else {})}, key, abn=1 if denied else None)
+        out.cost(i, date, insurer, billed, paid, owe, status, "pharmacy", "Pharmacy", prov, drug, ded=ded)
         return
     lines = [{"date": (r["end"] or r["t"])[:10], "desc": r["desc"][:140], "code": r["code"], "billed": r["billed"], "denied": []}
              for r in rows if r["desc"] or r["code"]]
     title = next((l["desc"] for l in lines if l["desc"] and len(l["desc"]) < 70), "") or (prov or "Medical claim").title()
     detail = {"type": "claim", "insurer": insurer, "kind": "Medical", "provider": prov or None, "claimId": claim_id,
-              "billed": billed, "paid": paid, "owe": owe, "status": status, "lines": lines}
+              "billed": billed, "paid": paid, "owe": owe, "status": status, "lines": lines, **({"deductible": ded} if ded is not None else {})}
     if last != date:
         detail["end"] = last
     i = out.add(t, "claim", title, " · ".join(x for x in [prov.title(), insurer] if x) + (" · denied" if denied else ""),
                 detail, key, end=last + "T12:00:00" if last != date else None, abn=1 if denied else None)
-    out.cost(i, date, insurer, billed, paid, owe, status, "medical", out.category(title, lines, prov, date), prov, title)
+    out.cost(i, date, insurer, billed, paid, owe, status, "medical", out.category(title, lines, prov, date), prov, title, ded=ded)

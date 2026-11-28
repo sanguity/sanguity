@@ -29,18 +29,9 @@ def _check(db, s, pid, setting, role):
         raise HTTPException(403, "admin_two_factor_required")
 
 
-def _not_set_by_environment(d):
-    """(#999) A server setting whose variable is set in the server's environment can't be changed here: the
-    environment's value is the one in force, and a value saved here would be a promise that isn't kept."""
-    if d.env and config.source(d.env) == "environment":
-        raise HTTPException(409, f"“{d.label}” is set by the server's environment ({d.env}), so it can't be changed here. "
-                                 f"To change it here, take {d.env} out of where the server is set up (.env, or the app's "
-                                 "settings on TrueNAS or Unraid) and start it again.")
-
-
 def _held(db, d):
-    """(#1006) What an install setting holds in the app: its saved value, else its default (the one in force can be the
-    environment's instead, or the default while saved values are left out)."""
+    """(#1006) What an install setting holds in the app: its saved value, else its default (the one in force is the
+    default while saved values are left out)."""
     return settings.stored(db, "install").get(d.key, d.default)
 
 
@@ -65,19 +56,18 @@ def _confirmed(db, request, s, d, value, typed):
     wouldn't pass. The change is made only with that typed back ("confirm", on a change or a reset alike); else
     refused, 409 {"code": "confirm", "message", "confirm": {...}}, for the page to ask with (admin.js confirmed()).
     Asked at this moment: a count grown since it was shown is asked again. Asked too where the value doesn't apply yet
-    (#1042: saved values left out, SANGUITY_SAVED_SETTINGS=off, or the environment's in force, for a reset), from the
-    value that applies once it does, the one saved here: else it would take effect then, unasked."""
+    (#1042: saved values left out, SANGUITY_SAVED_SETTINGS=off, for a reset), from the value that applies once it
+    does, the one saved here: else it would take effect then, unasked."""
     if not d.confirm:
         return
-    later = config.saved_ignored() or (d.env and config.source(d.env) == "environment")
+    later = config.saved_ignored()
     before = _held(db, d) if later or not d.env else settings.in_force(d.key)[0]
     goes = d.confirm(db, before, value, request, s)
     if not goes:
         return
     goes = {"type": str(goes["count"]), **goes}
     if later:
-        goes["message"] += (" Saved settings are left out while SANGUITY_SAVED_SETTINGS=off is set: this takes effect once it's taken out."
-                            if config.saved_ignored() else f" The server's environment sets {d.env}: this takes effect if it's taken out.")
+        goes["message"] += " Saved settings are left out while SANGUITY_SAVED_SETTINGS=off is set: this takes effect once it's taken out."
     if _said(typed) != _said(goes["type"]):
         raise HTTPException(409, {"code": "confirm", "message": f"{goes['message']} Type {goes['type']} to confirm.", "confirm": goes})
 
@@ -198,7 +188,6 @@ def change(pid: int, key: str, body: Value, request: Request, s=Depends(user), d
     except settings.SettingError as e:
         raise HTTPException(404, str(e))
     _check(db, s, pid, d, role)
-    _not_set_by_environment(d)
     if d.scope == "install":
         _save_install(db, s, d, body, request, lambda: settings.effective(db, pid, s["id"])[key][0])
         return settings.merged(db, pid, s["id"], s["is_admin"])
@@ -350,15 +339,15 @@ def reset_user_section(body: Section, request: Request, s=Depends(user), db=Depe
 # ---------------------------------------------------------------- the install's own settings, without a profile (#167)
 # The Admin page shows these (connected sources' sync defaults): an admin may have no profile at all. Admins only,
 # with their own second factor once the server has more than one account (main.admin).
-# A setting that stands for a variable (#999) says which ("env"), and its value is the one in force: "from" is
-# "environment" when the variable is set, and then it can't be changed here ("can_change" false, a change refused, 409).
+# A setting that stands for a variable (#999) says which ("env"), and its value is the one in force: "install" or
+# "default" (#1158: the environment sets none of them; every one can be changed here).
 # "variables": every variable of config.VARS, its value in force, where it comes from and its default, and the
-# setting that stands for it, if one does (none of them is a secret).
+# setting that stands for it, if one does (none of them is a secret); "container": the container's own (RECEIVER_PORT).
 
 def _install_item(d, have):
-    if d.env:   # (#1006) "saved": a value saved here that isn't the one in force (the environment's is, or it's left out)
+    if d.env:   # (#1006) "saved": a value saved here that isn't the one in force (left out: SANGUITY_SAVED_SETTINGS=off)
         value, src = settings.in_force(d.key)
-        return {**d.public(), "value": value, "from": src, "env": d.env, "can_change": src != "environment",
+        return {**d.public(), "value": value, "from": src, "env": d.env, "can_change": True,
                 **({"saved": have[d.key]} if d.key in have and src != "install" else {})}
     return {**d.public(), "value": have.get(d.key, d.default), "from": "install" if d.key in have else "default", "can_change": True}
 
@@ -368,7 +357,8 @@ def _variables():
     for name, v in config.VARS.items():
         src, value = config.lookup(name)
         out[name] = {"value": list(value) if isinstance(value, tuple) else value, "from": src,
-                     "default": list(v.default) if isinstance(v.default, tuple) else v.default, "setting": v.setting}
+                     "default": list(v.default) if isinstance(v.default, tuple) else v.default, "setting": v.setting,
+                     **({"container": True} if name in config.CONTAINER else {})}
     return out
 
 
@@ -379,10 +369,11 @@ def _install_sections(db):
         items = [_install_item(d, have) for d in settings.SETTINGS.values() if d.section == sid and d.scope == "install"]
         if items:
             out.append({"id": sid, "title": title, "help": help, "settings": items})
-    # settings_at: where this install's environment is set (general.py, by the way it's deployed), named beside each
-    # setting the environment sets, which changes only there (#1119)
+    # settings_at: where this install's environment is set (general.py, by the way it's deployed), named beside each of
+    # the container's own (#1119); taken: what the first start of this version took from it, until an admin has seen it
+    from . import settings_import
     return {"sections": out, "variables": _variables(), "saved_ignored": config.saved_ignored(),
-            "settings_at": general.KINDS[general.deployment()]["settings"]}
+            "settings_at": general.KINDS[general.deployment()]["settings"], "taken": settings_import.notice(db)}
 
 
 @router.get("/api/settings/install")
@@ -399,7 +390,6 @@ def change_install_value(key: str, body: Value, request: Request, s=Depends(admi
         raise HTTPException(404, str(e))
     if d.scope != "install":
         raise HTTPException(404, "That setting isn't one of the server's.")
-    _not_set_by_environment(d)
     _save_install(db, s, d, body, request, lambda: _install_item(d, settings.stored(db, "install"))["value"])
     return _install_sections(db)
 
@@ -413,6 +403,15 @@ def reset_install_section(body: Section, request: Request, s=Depends(admin), db=
         raise HTTPException(404, "There's no such section.")
     gone = _reset_install(db, s, defs, request, body.section, titles[body.section], body.confirm)
     return {"reset": gone, **_install_sections(db)}
+
+
+@router.post("/api/settings/install/taken/seen")
+def taken_seen(s=Depends(admin), db=Depends(get_db)):
+    """(#1158) General's word on what was taken from the environment has been read: it isn't shown again."""
+    from . import settings_import
+    with dbm.transaction(db):
+        settings_import.seen(db)
+    return {"taken": None}
 
 
 @router.get("/api/settings/install/backups-logging")
@@ -448,7 +447,8 @@ def _proxies_guard(request, value, typed):
         raise HTTPException(409, f"Not saved: this page reached the server through a proxy at {peer}, which that list leaves "
                                  "out. After a restart the server would take the proxy's address for every visitor's (sign-in "
                                  f"limits, the activity log) and might not see HTTPS. Add {peer} to the list.")
-    if value == "*" and server_settings.next_values().get("FORWARDED_ALLOW_IPS") != "*" and _said(typed) != _said(TRUST_ALL):
+    d = server_settings.DEFS["FORWARDED_ALLOW_IPS"]
+    if value == "*" and server_settings.next_values().get(d.name, d.default) != "*" and _said(typed) != _said(TRUST_ALL):
         goes = {"count": 1, "type": TRUST_ALL, "title": "Trust every address's forwarded headers?", "action": "Trust everyone",
                 "message": "With * (or 0.0.0.0/0, ::/0), any client that can reach the app can claim to be any address and to "
                            "have come over HTTPS: sign-in limits, the activity log and the Secure cookie would believe it. "
@@ -459,7 +459,7 @@ def _proxies_guard(request, value, typed):
 def _restart_state():
     st = server_settings.state()
     if not settings.connected_sources():   # (#1096) none of theirs while they're off, as About's limits
-        st["settings"] = [r for r in st["settings"] if r["group"] != "Connected sources"]
+        st["settings"] = [r for r in st["settings"] if r["group"] != "Connected sources" and r["name"] not in ("CONNECT_TIMEOUT", "DIRECTORY_TIMEOUT")]
     kind = general.deployment()
     # (#1131's review) Restart now's question: it starts again only where something restarts it
     says = ("Sanguity stops, and starts again only because its container restarts it automatically (" +
@@ -485,15 +485,12 @@ def restart_state(s=Depends(admin)):
 @router.put("/api/settings/install/restart/values")
 def restart_values(body: RestartValues, request: Request, s=Depends(admin), db=Depends(get_db)):
     """Save values ({name: value, or null for the default}) for the next start: each checked against its bounds
-    (400), one the environment sets refused (409); the fresh check (403 reauth_required), then logged with its old and
+    (400); the fresh check (403 reauth_required), then logged with its old and
     new value. Nothing changes in the running server: General says Restart needed."""
     for name, v in body.values.items():   # every value checked before the fresh check, as an install setting's
         d = server_settings.DEFS.get(name)
         if d is None:
             raise HTTPException(404, f"There's no setting called {name} here.")
-        if server_settings.lookup(name)[0] == "environment":
-            raise HTTPException(409, f"“{d.label}” is set by the server's environment ({name}), so it can't be changed here. "
-                                     f"To change it here, take {name} out of where the server is set up and start it again.")
         try:
             v = d.default if v is None or v == "" else d.check(v)
         except server_settings.Refused as e:
@@ -505,7 +502,7 @@ def restart_values(body: RestartValues, request: Request, s=Depends(admin), db=D
         changed = server_settings.change(body.values, by=s["username"])
     except server_settings.Refused as e:
         raise HTTPException(400, str(e))
-    except (LookupError, PermissionError) as e:
+    except LookupError as e:
         raise HTTPException(409, str(e))
     except OSError as e:
         raise HTTPException(500, f"Not saved: {server_settings.path()} couldn't be written ({type(e).__name__}).")

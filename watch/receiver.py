@@ -84,8 +84,8 @@ DATA = os.environ.get("DATA", "/data")
 SECRET_FILE = os.environ.get("SECRET_FILE", "/run/secret/watch_secret")
 KEYS_FILE = os.environ.get("KEYS_FILE") or os.path.join(DATA, "keys", "receiver-secrets.json")
 # (#1121) the receiver's settings changed on the app's Settings → General (Needs a restart): the app copies them here, beside
-# the secrets, at Restart now (server/server_settings.py). Read once, as the receiver starts; settings_watch restarts it
-# when the file changes. The environment's (TZ_DEFAULT, SLOT_GRACE_DAYS, RESTORE_KEEP_DAYS) still wins where set.
+# the secrets, as the app starts and at Restart now (server/server_settings.py). Read once, as the receiver starts;
+# settings_watch restarts it when the file changes. (#1158) The app's copy alone: the environment sets none of them.
 SETTINGS_FILE = os.path.join(os.path.dirname(KEYS_FILE), "receiver-settings.json")
 
 
@@ -122,17 +122,17 @@ def _zone_given():
         return "UTC" if name == "UTC" else None
 
 
-DEFAULT_TZ = os.environ.get("TZ_DEFAULT", "").strip() or _zone_given() or "UTC"
+DEFAULT_TZ = _zone_given() or "UTC"
 PORT = int(os.environ.get("PORT", "8080"))
 MAX_BODY = 32 * 1024 * 1024
 BAD_FREE = 10   # bad signatures or secrets an address may send in 15 minutes before it waits (#222)
 
 
 def _days(name, default):
-    """A number of days from the environment, else the app's copy (#1121), in seconds; the default when neither is set,
-    or it's unreadable or below zero."""
+    """A number of days from the app's copy (#1121), in seconds; the default when it has none, or it's unreadable or
+    below zero."""
     try:
-        v = float(os.environ.get(name) or GIVEN.get(name) or default)
+        v = float(GIVEN.get(name) or default)
     except (TypeError, ValueError):
         v = default
     return (v if 0 <= v < 1e6 else default) * 86400   # (NaN isn't >= 0)

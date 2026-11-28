@@ -2,8 +2,8 @@
    the bar's Save asks the server what the change does first (routes_host.py: the address given out, the connected
    sources' return and the phone upload address, with the counts of what must be changed elsewhere), then opens a
    confirmation to type, then the fresh check; a list this page's own address wouldn't pass is refused before. Beside
-   it, read-only (util.js factRow, #1119): the passkeys' names, what this page's request carried and the published web port;
-   set by the environment, the addresses are text (util.js envRow). admin.js starts it (adminStart: loadHost);
+   it, read-only (util.js factRow, #1119): the passkeys' names, what this page's request carried and the published web port.
+   (#1158) Above it, once, which settings the first start of this version took from the environment (hostTaken). admin.js starts it (adminStart: loadHost);
    settings-nav.js's bar saves it (ADM: hostSave, hostDiscard). */
 "use strict";
 
@@ -11,7 +11,7 @@ let HOST = null, HOST_ZONE = null, HOST_REAUTH = null;
 const hostReauth = () => HOST_REAUTH || (HOST_REAUTH = el("div", {id: "hostReauth", class: "reauth", hidden: true}));
 /* the text typed, as the list it would be saved as (the server cleans it again) */
 const hostList = () => $("#hostOrigins").value.split(/[\s,]+/).filter(Boolean);
-const hostDirty = () => !!HOST && HOST.st.can_change && !same(hostList(), HOST.st.value);
+const hostDirty = () => !!HOST && !same(hostList(), HOST.st.value);
 
 async function loadHost(note) {
   const card = $("#gen-host");
@@ -20,7 +20,7 @@ async function loadHost(note) {
   catch (e) { card.replaceChildren(el("h2", {text: "Host"}), el("p", {class: "msg bad", text: e.message})); return; }
   const sec = d.sections.find(s => s.id === "host");
   if (!sec) { card.hidden = true; return; }
-  drawHost(sec, h, note, d.settings_at);
+  drawHost(sec, h, note, d.taken);
 }
 
 /* (#1096) connected sources switched on or off: the public addresses' words (whether they name their return address)
@@ -34,17 +34,14 @@ async function hostWords() {
   HOST_ZONE?.node.setAttribute("hidden", "");
 }
 
-function drawHost(sec, h, note, at) {
+function drawHost(sec, h, note, taken) {
   const card = $("#gen-host"), st = sec.settings.find(s => s.key === "host.publicOrigins");
   HOST = {sec, st, h};
   const msg = el("span", {class: "msg set-msg"});
   let row;
   HOST_ZONE = dangerZone({title: "Change the public addresses", action: "Change addresses", says: () => HOST_ZONE.lines, run: hostChange});
   HOST_ZONE.node.hidden = true;
-  if (!st.can_change) {   // (#1119) set by the environment: the addresses as text, and where they're changed
-    row = envRow(st, at, {head: ["h3", {class: "sub", id: "hostOriginsName"}], helpId: "hostOriginsHint",
-      value: st.value.length ? st.value.flatMap((a, i) => [i ? el("br") : null, el("code", {text: a})]) : "None: each page gives the address it was opened at."});
-  } else {
+  {
     const box = el("textarea", {id: "hostOrigins", rows: Math.max(2, st.value.length + 1), spellcheck: "false", autocapitalize: "none",
       autocomplete: "off", "aria-labelledby": "hostOriginsName", "aria-describedby": "hostOriginsHint"});
     box.value = st.value.join("\n");
@@ -60,7 +57,7 @@ function drawHost(sec, h, note, at) {
   const port = (req.forwarded_host || req.host || "").match(/:(\d+)$/)?.[1];
   card.replaceChildren(...present(
     el("div", {class: "set-hd"}, el("h2", {id: "gen-host-hd", tabindex: -1, text: sec.title})),
-    helpNodes(sec.help), msg, hostReauth(), row, HOST_ZONE.node,
+    hostTaken(taken), helpNodes(sec.help), msg, hostReauth(), row, HOST_ZONE.node,
     factRow("Passkey names", "A passkey works only at the name it was made at: at another address, people sign in another way and can make one there.",
       h.passkeys.length ? h.passkeys.map(p => el("p", {}, el("code", {text: p.name}), `: ${plural(p.count, "passkey")}`)) : "None made yet."),
     factRow("This page's request", "What reached the server for this page, after any reverse proxy in front of it.",
@@ -73,6 +70,23 @@ function drawHost(sec, h, note, at) {
       "WEB_PORT in .env (8730 unless set; compose.yaml's web ports line), WebUI Port on TrueNAS, Web UI port on Unraid")));
   if (note) sayIn(msg, note, false, {say: false});
   mark();
+}
+
+/* (#1158) once: the settings the first start of this version took from the environment (.env, or the app's settings
+   where it's deployed), which are changed on this page from now on; Got it says it's been read, for every admin */
+function hostTaken(taken) {
+  if (!taken?.names?.length) return null;
+  const as = taken.names.filter(n => !n.note), adj = taken.names.filter(n => n.note);   // (#1158's review: not as set, and why)
+  const box = el("div", {class: "set", role: "note", id: "hostTaken"},
+    as.length ? el("p", {}, el("b", {text: "Taken from the environment, once: "}), ...as.flatMap((n, i) => [i ? ", " : "", `${n.label} (`, el("code", {text: n.name}), ")"]), ".") : null,
+    adj.length ? el("p", {}, el("b", {text: "Not taken as set, so check each here: "})) : null,
+    adj.length ? el("ul", {}, ...adj.map(n => el("li", {}, `${n.label} (`, el("code", {text: n.name}), `): ${n.note}.`))) : null,
+    el("p", {class: "hint", text: "From now on these are changed here, in Settings, and kept in the data folder; a change to them in .env (or where the app is deployed) is ignored, with a warning in the log. You can take them out of there."}),
+    el("button", {type: "button", class: "btn", text: "Got it", onclick: async () => {
+      try { await call("settings/install/taken/seen", "POST"); } catch (e) { sayIn($("#gen-host .set-msg"), e.message, true); return; }
+      box.remove(); $("#gen-host-hd").focus();
+    }}));
+  return box;
 }
 
 /* the bar's Save: what the change does, from the server, then the confirmation to type (its red button saves) */
@@ -114,7 +128,6 @@ async function hostChange(typed) {
 }
 function hostDiscard() {
   if (!HOST) return;
-  if (!HOST.st.can_change) return;
   $("#hostOrigins").value = HOST.st.value.join("\n");
   HOST_ZONE.hide(); HOST_ZONE.node.hidden = true;
   $("#gen-host .set-row").classList.remove("set-changed");

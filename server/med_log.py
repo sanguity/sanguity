@@ -192,12 +192,14 @@ def _min(hm):
     return int(hm[:2]) * 60 + int(hm[3:5])
 
 
-def scheduled(lines, day, stop=None):
+def scheduled(lines, day, stop=None, gaps=()):
     """The doses a medication's schedule lines (med_reminders.listing's, its own) give on a day: [(time "HH:MM",
     {amount, unit})] by time, two at one time two; a paused line gives none. stop: the day the records say it stopped
-    (it ends its lines)."""
+    (it ends its lines); gaps: the days between the times it was taken (medications.gaps, #1161), which give none."""
     from . import med_reminders
     k, iso = med_reminders.DAYS[day.weekday()], day.isoformat()
+    if any(a <= iso <= b for a, b in gaps):
+        return []
     out = []
     for r in lines:
         if r.get("asneeded") or r.get("paused") or k not in (r.get("days") or ()) or not r.get("from") or r["from"] > iso:
@@ -236,7 +238,7 @@ def match(sched, doses):
     return got, other
 
 
-def schedule_counts(lines, doses, days, now, stop=None):
+def schedule_counts(lines, doses, days, now, stop=None, gaps=()):
     """{"scheduled", "taken" (late ones included), "late", "skipped", "other"} of the doses a medication's schedule
     gives on the days (dates), each counted once its time has come (now: the person's wall-clock datetime) or a dose
     is logged for it; other: the doses logged on those days that aren't one of them. doses: the medication's, typed
@@ -249,7 +251,7 @@ def schedule_counts(lines, doses, days, now, stop=None):
     for day in days:
         if day > today:
             continue
-        sched = scheduled(lines, day, stop)
+        sched = scheduled(lines, day, stop, gaps)
         got, other = match(sched, by.get(day.isoformat(), []))
         n["other"] += len(other)
         for (at, _), d in zip(sched, got):

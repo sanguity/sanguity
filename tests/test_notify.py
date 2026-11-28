@@ -71,6 +71,8 @@ class Notify(unittest.TestCase):
         dbm.init()
         db = dbm.connect()
         atrest.check_key(db); atrest.load_pepper(db); prof.bootstrap(db)
+        from server import settings_import   # (#1158) what the environment sets (PUBLIC_ORIGINS, above), taken in once
+        settings_import.take(db, say=lambda *a: None)
         cls.uid = {n: accounts.create(db, n, is_admin=n == "ada", password=pw)[0] for n, pw in PW.items()}
         db.execute("UPDATE users SET totp_secret=? WHERE id=?", (crypto.enc(twofactor.new_secret()), cls.uid["ada"]))
         cls.pid = prof.create_profile(db, "Ben", owner_id=cls.uid["kim"])
@@ -520,6 +522,21 @@ class Notify(unittest.TestCase):
             self.assertEqual(notify.due_doses(db, now=self.at("08:01")), 0)
         self.assertEqual(notify.due_doses(db, now=self.at("08:01")), 1)
 
+    def test_no_dose_is_due_between_the_times_it_was_taken(self):   # #1161
+        self.set_server()
+        db = self.db()
+        self.opt_in("kim", "doses", ago=3 * 86400)
+        self.line(times=("08:00",))
+        m = med_reminders.current(db, self.pid)[self.med]
+
+        def taken(again):   # stopped five days ago, started again on that day
+            first = {**m["spans"][0], "to": D(-5), "open": False, "stopped": True}
+            return {self.med: {**m, "stop": None, "spans": [first, {**first, "from": D(again), "to": None, "open": True, "stopped": False, "again": True}]}}
+        with mock.patch.object(med_reminders, "current", return_value=taken(2)):
+            self.assertEqual(notify.due_doses(db, now=self.at("08:01")), 0, "between the times it was taken: none due")
+        with mock.patch.object(med_reminders, "current", return_value=taken(0)):
+            self.assertEqual(notify.due_doses(db, now=self.at("08:01")), 1, "started again today: due")
+
     def test_times_before_the_opt_in_and_in_the_lines_zone(self):
         self.set_server()
         db = self.db()
@@ -625,6 +642,24 @@ class Notify(unittest.TestCase):
         with self.assertRaises(ValueError):
             notify.message("labs", "Ben")
         self.assertEqual(notify.message("results", "  Ben\n\tExample " + "x" * 100), "Sanguity: new results for Ben Example " + "x" * 48)
+
+
+    def test_the_token_may_come_from_a_file(self):
+        """#1158 (opt-in): NOTIFY_TOKEN_FILE, a Docker secret, as NOTIFY_TOKEN: it wins, read at each use (rotated, the new
+        one is sent), named on the page as the variable that sets it; a file that can't be read is as if unset."""
+        self.set_server()
+        db = self.db()
+        path = os.path.join(TMP, "notify-token")
+        with open(path, "w") as f:
+            f.write("tk_from_a_file_one\n")
+        with mock.patch.dict(os.environ, {"NOTIFY_TOKEN_FILE": path}):
+            self.assertEqual(notify.token_source(db), "environment")
+            self.assertEqual(notify.request(db, "test", claim=True)[1]["Authorization"], "Bearer tk_from_a_file_one")
+            with open(path, "w") as f:
+                f.write("tk_from_a_file_two")
+            self.assertEqual(notify.request(db, "test", claim=True)[1]["Authorization"], "Bearer tk_from_a_file_two")
+            os.unlink(path)
+            self.assertIsNone(notify.token_source(db))
 
 
 if __name__ == "__main__":

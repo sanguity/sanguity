@@ -113,9 +113,10 @@ CONFIG_FILES = ("sources.json", "settings.json", "corrections.json")   # read by
 
 
 def version():
-    """{"version": SANGUITY_VERSION or None, "checkout": True for a checkout of the source (no release number)}: the
-    released image sets it as it's built (docker/app.Dockerfile); "dev" is an image built without one."""
-    v = os.environ.get("SANGUITY_VERSION", "").strip()
+    """{"version": SANGUITY_IMAGE_VERSION or None, "checkout": True for a checkout of the source (no release number)}:
+    the released image sets it as it's built (docker/app.Dockerfile); "dev" is an image built without one. (#1158) Never
+    SANGUITY_VERSION: a release's .env sets that to pick the image's tag, and the compose files hand .env to the app."""
+    v = os.environ.get("SANGUITY_IMAGE_VERSION", "").strip()
     return {"version": v if v and v != "dev" else None, "checkout": deployment() == "compose" or not v or v == "dev"}
 
 

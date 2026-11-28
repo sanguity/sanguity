@@ -23,6 +23,7 @@ sys.path.insert(0, ROOT)
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import db as dbm, main, security as sec   # noqa: E402
+import given   # noqa: E402  (#1158: a setting as the app holds it)
 from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 import logging   # noqa: E402
 
@@ -1260,8 +1261,8 @@ class Api(unittest.TestCase):
         if not db.execute("SELECT 1 FROM users WHERE username='idle'").fetchone():
             db.execute("INSERT INTO users(username, pw_hash, created) VALUES('idle', ?, 0)", (sec.hash_password(PW["ben"]),))
         c = self.login("idle", PW["ben"])
-        env = mock.patch.dict(os.environ, {"SESSION_IDLE_MINUTES": "1"})   # read at each request (config.setting)
-        env.start()
+        env = given.settings(SESSION_IDLE_MINUTES="1")   # read at each request (config.setting)
+        env.__enter__()
         try:
             db.execute("UPDATE sessions SET last_seen=? WHERE user_id=(SELECT id FROM users WHERE username='idle')", (dbm.now() - 50,))
             self.assertEqual(c.get("/api/me").status_code, 200)   # used 50 s ago: still signed in, and that use counts...
@@ -1270,7 +1271,7 @@ class Api(unittest.TestCase):
             db.execute("UPDATE sessions SET last_seen=? WHERE user_id=(SELECT id FROM users WHERE username='idle')", (dbm.now() - 61,))
             self.assertEqual(c.get("/api/me").status_code, 401)   # unused for over a minute: signed out
         finally:
-            env.stop()
+            env.__exit__(None, None, None)
             db.close()
 
     def test_a_page_polling_doesnt_keep_an_idle_sign_in(self):   # #1063
@@ -1284,8 +1285,8 @@ class Api(unittest.TestCase):
         who = "user_id=(SELECT id FROM users WHERE username='idle-poll')"
         c, other = self.login("idle-poll", PW["ben"]), self.login("idle-poll", PW["ben"])
         polled = {"X-Sanguity-Background": "1"}
-        env = mock.patch.dict(os.environ, {"SESSION_IDLE_MINUTES": "1"})
-        env.start()
+        env = given.settings(SESSION_IDLE_MINUTES="1")
+        env.__enter__()
         try:
             seen = lambda: db.execute(f"SELECT last_seen FROM sessions WHERE {who} ORDER BY id LIMIT 1").fetchone()[0]   # noqa: E731
             db.execute(f"UPDATE sessions SET last_seen=? WHERE {who}", (dbm.now() - 50,))
@@ -1304,7 +1305,7 @@ class Api(unittest.TestCase):
             self.assertEqual([s_["current"] for s_ in listed], [True], listed)
             self.assertEqual(c.get("/api/me", headers=polled).status_code, 401)   # signed out by idle, poll or not
         finally:
-            env.stop()
+            env.__exit__(None, None, None)
             db.execute(f"DELETE FROM sessions WHERE {who}")
             db.close()
 
@@ -1344,14 +1345,14 @@ class Api(unittest.TestCase):
             db.execute("UPDATE users SET totp_secret=NULL, totp_last_step=0 WHERE username='lasting'")
             self.assertEqual(c.get("/api/me").status_code, 401)
             # SESSION_HOURS_WITHOUT_2FA=0: SESSION_DAYS for everyone, as before
-            env = mock.patch.dict(os.environ, {"SESSION_HOURS_WITHOUT_2FA": "0"})
-            env.start()
+            env = given.settings(SESSION_HOURS_WITHOUT_2FA="0")
+            env.__enter__()
             try:
                 r = client().post("/api/login", json={"username": "lasting", "password": PW["ben"]}, headers=H)
                 self.assertIn("Max-Age=2592000", r.headers["set-cookie"])
                 self.assertEqual(client().get("/api/setup").json()["session"], {"days": 30, "hours_without_2fa": 0, "idle_minutes": 0})
             finally:
-                env.stop()
+                env.__exit__(None, None, None)
             self.assertEqual(client().get("/api/setup").json()["session"]["hours_without_2fa"], 12)
         finally:
             db.execute("UPDATE users SET totp_secret=NULL, totp_last_step=0 WHERE username='lasting'")

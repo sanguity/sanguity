@@ -25,6 +25,7 @@ import logging, shutil   # noqa: E402
 from fastapi.testclient import TestClient   # noqa: E402
 
 from server import accounts, crypto, db as dbm, main, measures, medications, profiles as prof, records, share_links   # noqa: E402
+import given   # noqa: E402  (#1158: a setting as the app holds it)
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
 H = {"X-Sanguity": "1"}
@@ -180,12 +181,12 @@ class ShareLinks(unittest.TestCase):
         else the first), as "base" beside its path, which the page makes the link from in place of its own address;
         without one, none, and the page uses its own, as before. Read at each link: set or changed, it applies at once."""
         from unittest import mock
-        with mock.patch.dict(os.environ, {"PUBLIC_ORIGINS": ""}):
+        with given.settings(PUBLIC_ORIGINS=""):
             r = self.c["robin"].post(f"/api/profiles/{self.pid}/links", json={"sections": ["visits"]}, headers=H).json()
             self.assertNotIn("base", r)
         for origins, base in (("http://sanguity.lan:8730, https://health.example.test, https://zz-second.example.test", "https://health.example.test/"),
                               ("http://sanguity.lan:8730", "http://sanguity.lan:8730/")):
-            with mock.patch.dict(os.environ, {"PUBLIC_ORIGINS": origins}):
+            with given.settings(PUBLIC_ORIGINS=origins):
                 r = self.c["robin"].post(f"/api/profiles/{self.pid}/links", json={"sections": ["visits"]}, headers=H).json()
                 self.assertEqual((r["base"], r["path"][:11]), (base, "share.html#"))
                 self.view(r["path"].split("#", 1)[1])   # the same link, wherever it's opened
@@ -253,7 +254,10 @@ class ShareLinks(unittest.TestCase):
         "insurance": {"id": ["the photos of the card's front and back"], "name": ["each insurance plan's name"],   # #1137
                       "member": ["its member ID"], "group": ["group number"], "phones": ["the phone numbers on its card"],
                       "phones.label": ["the phone numbers on its card"], "phones.number": ["the phone numbers on its card"],
-                      "front": ["the photos of the card's front and back"], "back": ["the photos of the card's front and back"]},
+                      "front": ["the photos of the card's front and back"], "back": ["the photos of the card's front and back"],
+                      "kind": ["its type"], "order": ["primary or secondary"], "holder": ["the policyholder"],   # (#1168)
+                      "relation": ["the policyholder"], "start": ["its dates"], "end": ["its dates"], "rxbin": ["pharmacy numbers"],
+                      "rxpcn": ["pharmacy numbers"], "rxgroup": ["pharmacy numbers"], "payer": ["payer ID"], "website": ["website"]},
         "about": {"birthDate": ["the birth date"], "sex": ["the sex labs base reference ranges on"], "heights": ["each height"],
                   "heights.date": ["with its date"], "heights.cm": ["each height"], "heights.text": ["each height"]},
         # the measures (measures.py): by each column's heading, its unit and a glucose range's numbers left out

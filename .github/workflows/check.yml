@@ -58,7 +58,7 @@ jobs:
           python-version: "3.12"
 
       - name: Python files compile
-        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_first_run.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_recategorize.py tests/test_crossmatch.py tests/test_journal.py tests/test_milestones.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py server/importers/pdf_layouts/*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py tests/test_outside.py tests/netguard.py tests/whole_records.py tests/test_calendar.py tests/test_summary.py tests/test_share_links.py tests/test_security_refresh.py tests/test_host_check.py tests/test_general_host.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py tests/test_pwa.py tests/test_units.py tests/test_ranges.py tests/ranges_matrix.py tools/make_icons.py tools/make_wordmark.py tools/make_social_preview.py tools/site_screenshots.py tools/screenshots.py .github/scripts/changes.py tests/test_ci_changes.py tests/test_medications.py tests/test_costs.py tests/test_backups.py tests/test_performance.py tools/anonymise.py tests/test_anonymise.py tests/test_glucose.py tests/test_person.py tests/test_receiver_vitals.py tests/test_cycle.py tests/test_ecg.py tests/test_receiver_activity.py tests/test_growth.py tools/growth_tables.py tests/test_fhir_export.py tests/fhir_schema_check.py tools/fhir_schema_subset.py tests/test_med_log.py tests/test_export.py tests/test_condition_presets.py tests/test_lab_test_pages.py tests/test_css_tokens.py tests/test_palette.py tests/test_qr.py tests/test_ids.py tests/test_family.py tests/test_emergency.py tests/test_keydocs.py tests/test_server_settings.py tests/test_insurance.py tests/test_ocr.py tests/fake_tesseract.py
+        run: python -m py_compile build.py docker/setup.py demo/generate.py watch/receiver.py tests/browser_check.py tests/test_api.py tests/test_first_run.py tests/test_uploads.py tests/test_jobs.py tests/test_manual.py tests/test_preview.py tests/test_import_history.py tests/test_edits.py tests/test_recategorize.py tests/test_crossmatch.py tests/test_journal.py tests/test_milestones.py tests/test_lab_mapping.py tests/test_watch_store.py tests/docker_smoke.py tests/test_importer*.py server/*.py server/importers/*.py server/importers/pdf_layouts/*.py tests/test_fakefhir.py tests/test_connections.py tests/fakefhir/*.py tests/test_settings.py tests/test_shl.py tests/shl_server.py tests/test_outside.py tests/netguard.py tests/whole_records.py tests/test_calendar.py tests/test_summary.py tests/test_share_links.py tests/test_security_refresh.py tests/test_host_check.py tests/test_general_host.py docker/allinone.py deploy/check.py .github/scripts/changelog.py tests/test_directory.py server/directory/*.py tools/build_directory.py tests/test_pwa.py tests/test_units.py tests/test_ranges.py tests/ranges_matrix.py tools/make_icons.py tools/make_wordmark.py tools/make_social_preview.py tools/site_screenshots.py tools/screenshots.py .github/scripts/changes.py tests/test_ci_changes.py tests/test_medications.py tests/test_costs.py tests/test_backups.py tests/test_performance.py tools/anonymise.py tests/test_anonymise.py tests/test_glucose.py tests/test_person.py tests/test_receiver_vitals.py tests/test_cycle.py tests/test_ecg.py tests/test_receiver_activity.py tests/test_growth.py tools/growth_tables.py tests/test_fhir_export.py tests/fhir_schema_check.py tools/fhir_schema_subset.py tests/test_med_log.py tests/test_export.py tests/test_condition_presets.py tests/test_lab_test_pages.py tests/test_css_tokens.py tests/test_palette.py tests/test_qr.py tests/test_ids.py tests/test_family.py tests/test_emergency.py tests/test_keydocs.py tests/test_server_settings.py tests/test_insurance.py tests/test_cardcrop.py tests/test_ocr.py tests/fake_tesseract.py tests/test_env_audit.py tests/given.py
 
       - name: Which jobs a pull request runs (docs only, templates only, tests only, CI itself)
         run: python tests/test_ci_changes.py
@@ -74,6 +74,9 @@ jobs:
 
       - name: "QR codes (#284): our own encoder against published vectors and an independent encoder's symbols, every length read back (node, as the runner has it)"
         run: python tests/test_qr.py
+
+      - name: "Insurance cards' photos (#1168): the card found and straightened in fixture photos, straight, skewed, turned and in low contrast (node)"
+        run: python tests/test_cardcrop.py
 
       - name: JSON templates parse
         run: for f in *.example.json lab-aliases.json condition-presets.json lab-test-pages.json; do python -m json.tool "$f" > /dev/null || exit 1; done
@@ -238,8 +241,10 @@ jobs:
       - name: General → Host and Phone receiver (#1000, #1003; the public and upload addresses guarded, applied at once)
         run: python tests/test_general_host.py
 
-      - name: Settings that need a restart (#1121; applied at start, the environment wins, bounded, a value that fails falls back, Restart now, config reset)
+      - name: Settings that need a restart (#1121; applied at start, the environment's taken in once, bounded, a value that fails falls back, Restart now, config reset)
         run: python tests/test_server_settings.py
+      - name: Every variable read is a page setting or the container's, with why (#1158)
+        run: python tests/test_env_audit.py
       - name: Searchable scanned documents (#1129; read in the background, found by search, text encrypted, PDFs' own text, caps, language files checked, downloads only when on)
         run: python tests/test_ocr.py
 
@@ -501,7 +506,7 @@ jobs:
           never = ['/app/auth', '/app/data', '/app/sources.json', '/usr/share/nginx/html/data.json']
           assert all(os.path.isfile(f) for f in need), [f for f in need if not os.path.isfile(f)]
           assert not any(os.path.exists(f) for f in never), [f for f in never if os.path.exists(f)]
-          assert os.environ['SANGUITY_VERSION'] == 'ci'"
+          assert os.environ['SANGUITY_IMAGE_VERSION'] == 'ci'"
           docker run --rm sanguity-release:ci python3 -m server.ocr check   # (#1129) its Tesseract and English
           docker run --rm --user 1000:1000 --read-only --tmpfs /tmp --add-host app:127.0.0.1 sanguity-release:ci nginx -t -e stderr
 
@@ -614,8 +619,10 @@ jobs:
           docker compose down
           cp -a auth "$GITHUB_WORKSPACE/auth"   # its key and receiver secret, where this checkout's compose.yaml looks
 
-      - name: This commit, started on the same folders (the database is migrated as the app starts)
+      - name: This commit, started on the same folders (the database is migrated as the app starts), with settings in .env
         run: |
+          # (#1158) settings an older install kept in .env: taken into the app once on this first start
+          printf 'SESSION_DAYS=20\nSHL_TIMEOUT=30\n' > .env
           docker compose up -d --build
           for i in $(seq 1 90); do curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz && break; sleep 2; done
 
@@ -639,6 +646,20 @@ jobs:
           fi
           python3 tests/docker_smoke.py --receiver http://127.0.0.1:8731
 
+      - name: .env's settings taken in once, then a change to them ignored with a warning (#1158)
+        run: |
+          shown() { docker compose exec -T app python3 -m server.manage config show | tr -d '\r'; }
+          shown | grep -E '^SESSION_DAYS .* 20 +saved in the app$' || { echo "SESSION_DAYS wasn't taken in"; shown; exit 1; }
+          shown | grep -E '^SHL_TIMEOUT +30 +changed on the page' || { echo "SHL_TIMEOUT wasn't taken in"; shown; exit 1; }
+          docker compose logs app | grep -q 'Took these settings from the environment' || { echo "the copy wasn't said"; exit 1; }
+          printf 'SESSION_DAYS=25\nSHL_TIMEOUT=30\n' > .env
+          docker compose up -d
+          for i in $(seq 1 90); do curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz && break; sleep 2; done
+          shown | grep -E '^SESSION_DAYS .* 20 +saved in the app$' || { echo ".env overwrote the settings"; shown; exit 1; }
+          docker compose logs app | grep -q 'SESSION_DAYS is set in the environment, but the settings file is where it' \
+            || { echo "no warning for the changed .env line"; exit 1; }
+          if docker compose logs app | grep -q 'SHL_TIMEOUT is set in the environment'; then echo "warned about one unchanged"; exit 1; fi
+
       - name: Show the containers and their logs
         if: failure()
         run: |
@@ -649,4 +670,5 @@ jobs:
         if: always()
         run: |
           docker compose down -v
+          rm -f .env
           (cd "$RUNNER_TEMP/previous" 2>/dev/null && docker compose down -v) || true

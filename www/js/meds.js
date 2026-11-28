@@ -172,6 +172,7 @@ function openMedication(m) {
   // its key facts, as every record's (#406): what the head says (when it started, that the records give no end) isn't
   // said again
   body.append(...present(drawerFacts([["Started", m.spans.length ? fmtD(m.spans[0].ts) : ""], ["Stopped", m.stop ? fmtD(dayTs(m.stop)) : ""],
+    ["Why it stopped", m.stop && last.reason || ""],
     ["Dose changes", m.changes.length ? String(m.changes.length) : ""], ["Pharmacy fills", m.fills.length ? String(m.fills.length) : ""],
     ["RxNorm", (m.rxnorm || []).join(", ")]], "facts")));
   body.append(...medMineSection(m));   // your own entry, or your change beside the records', and Edit (medmine.js, #1092)
@@ -271,22 +272,26 @@ const mrTogether = as => as.length > 1 && as.every(a => a === as[0]) ? `${as.len
 const mrSays = r => `${mrWhat(r)}, from ${fmtD(dayTs(r.from))}` + (r.until ? ` until ${fmtD(dayTs(r.until))}` : ", no end date");
 function mrState(r, m) {
   const end = mrEnds(r, m);
-  if (end && end.why === "stopped") return {cls: "ended", text: `Ended ${fmtD(dayTs(end.day))}: the records say this medication stopped then`};
+  if (end && end.why === "stopped") return {cls: "ended", text: `Ended ${fmtD(dayTs(end.day))}: this medication stopped then`};
   if (end && end.day < zToday()) return {cls: "ended", text: `Ended ${fmtD(dayTs(end.day))}`};
   if (r.paused) return {cls: "paused", text: "Paused: not on Today, in the counts or the calendar feed until resumed"};
   if (r.asneeded) return {cls: "asneeded", text: "Logged when taken: no reminders"};
   if (!r.on) return {cls: "quiet", text: "Remind me off: not in the calendar feed"};
   return {cls: "remind", text: "Remind me on: in the calendar feed"};
 }
+/* (#1161) whether a day ("YYYY-MM-DD") falls between the times it was taken (after a span that stopped, before the
+   next starts: Started again), when its schedule gives nothing (server/medications.gaps) */
+const mrOff = (m, day) => m.spans.some((s, i) => i > 0 && s.from > day && (p => p.stopped && p.to && p.to < day)(m.spans[i - 1]));
 /* the doses its schedule gives on a day ("YYYY-MM-DD"), by time: [{at, amount, unit}], two at one time two (medlog.js) */
 function mrDoses(m, day) {
   const k = MR_DAYS[(new Date(day + "T12:00:00Z").getUTCDay() + 6) % 7][0];
+  if (mrOff(m, day)) return [];
   return mrOf(m).filter(r => !r.asneeded && r.days.includes(k) && r.from <= day && !(mrEnds(r, m) && mrEnds(r, m).day < day))
     .flatMap(r => r.times.map((at, i) => ({at, amount: null, unit: "", ...(r.amounts || [])[i]})))
     .sort((a, b) => (a.at > b.at) - (a.at < b.at));
 }
 /* its As needed line that day, or null */
-const mrAsNeeded = (m, day) => mrOf(m).find(r => r.asneeded && r.from <= day && !(mrEnds(r, m) && mrEnds(r, m).day < day)) || null;
+const mrAsNeeded = (m, day) => mrOff(m, day) ? null : mrOf(m).find(r => r.asneeded && r.from <= day && !(mrEnds(r, m) && mrEnds(r, m).day < day)) || null;
 function medReminderSection(m) {
   const rs = mrAll(m), write = canEdit(), cur = mrCurrent(m);
   if (!rs.length && !(write && cur)) return [];
@@ -314,7 +319,7 @@ function medReminderSection(m) {
   })));
   if (write && cur) out.push(el("div", {class: "btns"}, el("button", {class: "btn needs-server", type: "button", text: rs.length ? "Add another line" : "Add a schedule",
     onclick: () => medReminderForm(m, null)})));
-  else if (write && !cur && m.stop) out.push(el("p", {class: "hint", text: "The records say this medication stopped, so no new schedule can be set for it."}));
+  else if (write && !cur && m.stop) out.push(el("p", {class: "hint", text: "This medication is stopped, so no new schedule can be set for it. Started again, above, takes it up again."}));
   out.push(el("p", {class: "hint"}, "Today lists each dose it gives. With Remind me on, its times reach your calendar app through ",
     el("a", {href: `sharing.html?profile=${PROFILE.id}#calendar`, text: "Sharing → Calendar feed"}), "; nothing is sent unless you set up notifications to your own server."), msg);
   return out;

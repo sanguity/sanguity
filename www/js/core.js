@@ -38,7 +38,7 @@ const hasLane = c => EV.some(e => CAT_OF[e.k] === c) || (c.k === "watch" && STEP
 /* preset: the records bar's period (#171), shared by every tab with time ("period" below); labsView: the Labs tab's
    "chart", "heatmap" (#172), "compare" (#297) or "latest" (#993); tlView: the Timeline tab's "timeline" or "journal", and tlWork: its list has the
    workouts too (#277, timeline.js) */
-const state = { from: 0, to: 0, min: 0, max: 0, last: 0, preset: "2y", cats: savedCats(null), q: "", tab: "overview", labsView: "chart", tlView: "timeline", tlWork: false, marks: true, smooth: false, sel: new Set(), selEv: null, tables: new Set(), asc: false };
+const state = { from: 0, to: 0, min: 0, max: 0, last: 0, preset: "2y", cats: savedCats(null), q: "", tab: "overview", labsView: "latest", tlView: "timeline", tlWork: false, marks: true, smooth: false, sel: new Set(), selEv: null, tables: new Set(), asc: false };
 
 /* ---------------------------------------------------------------- persistence */
 /* the person's own period, saved in place of All while the palette shows everything for this visit (periodVisit) */
@@ -48,9 +48,9 @@ let catsKept = null, catsVisit = "";
 const catsKey = s => [...s].sort().join();
 /* the Labs view the person last picked with its switch (#997), kept with the rest; null till they pick one. labsHome():
    where Labs opens from its tab's own address, #labs alone (another page's bar; each view has its own, #1026): the view
-   picked, else Latest on a phone (700 px and under) and Chart wider */
+   picked, else Latest, the first, at every width (#1160) */
 let labsPicked = null;
-const labsHome = () => labsPicked || (PHONE.matches ? "latest" : "chart");
+const labsHome = () => labsPicked || "latest";
 function save() { if (state.preset !== "all") periodKept = null; if (catsKept && catsKey(state.cats) !== catsVisit) catsKept = null; const P = periodKept || state; try { localStorage.setItem(stateKey(), JSON.stringify({preset: P.preset, from: P.from, to: P.to, cats: [...(catsKept || state.cats)], known: CATS.map(c => c.k), tab: state.tab, labsView: state.labsView, labsPicked, tlView: state.tlView, costView: typeof costState === "object" ? costState.view : undefined, tlWork: state.tlWork, sel: [...state.sel], marks: state.marks, smooth: state.smooth, asc: state.asc, v: 2})); } catch (e) {} }
 function restore() {
   try {
@@ -66,7 +66,7 @@ function restore() {
     labsPicked = LABS_VIEWS.includes(s.labsPicked) ? s.labsPicked : !("labsPicked" in s) && ["heatmap", "compare"].includes(state.labsView) ? state.labsView : null;
     if (s.preset) state.preset = s.preset;
     if (s.tlView === "journal") state.tlView = "journal";
-    if (s.costView === "paid" && typeof costState === "object") costState.view = "paid";   // Costs' What you paid (#452), as Labs' and the Timeline's views
+    if (["claims", "paid"].includes(s.costView) && typeof costState === "object") costState.view = s.costView;   // Costs' view (#452: as Labs' and the Timeline's; #1163: Summary unless another)
     if (typeof s.tlWork === "boolean") state.tlWork = s.tlWork;
     if (typeof s.marks === "boolean") state.marks = s.marks; if (typeof s.smooth === "boolean") state.smooth = s.smooth; if (typeof s.asc === "boolean") state.asc = s.asc;
     if (s.preset === "custom" && s.from && s.to) { state.from = s.from; state.to = s.to; }
@@ -374,7 +374,7 @@ const isMsKey = k => k === "dx" || /^m\d+$/.test(k || "");
 const msOf = k => k === "dx" ? primaryMs() : isMsKey(k) ? MILESTONES[+k.slice(1)] || null : null;
 const lcLabel = s => /^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s;   // "Treatment start" -> "treatment start", "CAR-T" stays
 /* the old tab ids (#172): Trends and Lab heatmap are the Labs tab's chart and heatmap. -> [tab, labsView]. LABS_VIEWS:
-   Labs' views, Latest the fourth (#993) */
+   Labs' views, Latest the first (#993, #1160) */
 const TAB_ALIAS = {trends: ["labs", "chart"], heatmap: ["labs", "heatmap"]};
-const LABS_VIEWS = ["chart", "heatmap", "compare", "latest"];
+const LABS_VIEWS = ["latest", "chart", "heatmap", "compare"];
 const tabAlias = (t, view) => TAB_ALIAS[t] || [t, LABS_VIEWS.includes(view) ? view : "chart"];

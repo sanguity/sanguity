@@ -110,7 +110,8 @@ Everything on `main` so far; it becomes the first tagged release.
   provider (or by hand), counts each amount once, and totals HSA and FSA spending by year.
 - Costs' deductible and out-of-pocket max per plan year (#1127): plan years typed in on Costs (start, deductible, out-of-pocket max, optional family amounts), each claim's share summed against them, with the claims counted; by calendar year with none typed. FHIR claims keep their deductible part for it.
 - Costs' bills (#1128): a provider's bill typed in (date of service, provider, amount billed, due date, its file), lined up against the claim with the same provider and date of service: what the plan says you owe, the difference, and the payments matched to that claim; the claim chosen by hand, or "no claim yet".
-- Costs' tax-year report (#1136): a tax year's out-of-pocket payments as one zip (a PDF summary by kind and by who was paid, a CSV of every payment, and the receipts named by their rows), previewed first; the calendar year, or from the month set there. Plan years, Bills and the report are linked from the top of Costs and found by the command palette, and an empty Costs page offers Add a bill.
+- Costs' tax-year report (#1136): a tax year's out-of-pocket payments as one zip (a PDF summary by kind and by who was paid, a CSV of every payment, and the receipts named by their rows), previewed first; the calendar year, or from the month set there. Plan years, Bills and the report are found by the command palette (each in its view of Costs since #1163), and an empty Costs page offers Add a bill.
+- Costs, clearer (#1163): three views, a Summary of one plan or calendar year with its own year picker (your share of claims, what you paid for care, what's not yet paid, what insurance paid, the deductible and out-of-pocket max, premiums, HSA and FSA), Claims, and Payments and bills (bills first, then the tax-year report, then every amount); premiums apart, never in "out of pocket", defined once; "toward the deductible" on the typed claim and the EOB spreadsheet, read from UHC and BCBS files where they carry it, and "Your claims don't say how much went to the deductible" where none do; a payments spreadsheet (CSV) upload, from an export you download yourself; one plain label for where each amount came from, and nothing that suggests a bank link: Sanguity doesn't connect to banks, cards or HSA accounts.
 - A journal of dated notes, symptoms and side effects, with a 0–10 severity and an optional link to one of the
   profile's medications (#49). Entries have their own timeline lane, show as markers on Trends (bigger means more
   severe), can be added from any event's panel, and are listed with filters under Journal. Owners and editors
@@ -152,6 +153,12 @@ Everything on `main` so far; it becomes the first tagged release.
   number and phone numbers, with a photo of the card's front and back (encrypted, metadata taken out); a share link
   shows them only when its maker ticks Insurance cards, and they go with the export and backups. The emergency card's
   Insurance part lists each plan's name, member ID and group number (text only; never on the lock-screen image).
+- Insurance cards, easier (#1168): the photos are added as a plan is created (the phone's camera or its photos), the
+  card found in each, straightened and cropped in the browser (its corners adjusted by dragging or the arrow keys);
+  Read the card suggests the member ID, group, plan name, pharmacy and phone numbers by the server's text recognition,
+  and the imported claims suggest a plan, each used or left, none saved by itself; type and order, policyholder, dates
+  (ended plans under Past), RxBIN, RxPCN, RxGroup, payer ID and website, links to Costs' plan years and claims, and
+  what the emergency card says of it; Show at the desk shows a card full screen, offline too.
 - Searchable scanned documents (#1129): scanned letters and reports are read on the server by Tesseract (in the
   Docker images, with English), as they're added and in one background pass over those already there, so the
   Timeline's search and the palette find them by their words; a PDF with its own text uses it. The text is kept
@@ -168,6 +175,7 @@ Everything on `main` so far; it becomes the first tagged release.
 - CI upgrades the previous release's data to the current code on every pull request.
 
 ### Changed
+- The emergency card is your own (#1162): nothing goes on it by itself; its editor suggests from the records (allergies, medications with their dose, conditions, blood type, care team, insurance, key documents) and you add, reword, reorder and remove lines, with critical alerts in bold at the top, a full legal name and personal details, each section placed on the printed card (a full page or a folding wallet card), the lock screen or both, a note when the records have new suggestions, and an optional offline QR code of the card's text.
 - The static files' budget (stylesheets, fonts and icons as sent) is 320 KB, up from 310 KB, to give 0.2.0's new features room for their styles.
 - A new top bar on every page: the records' tabs, an **Add** menu (import records, connect a source, type records
   in, a journal entry) and your own menu (visit summary, share links, settings, account, light or dark, log out),
@@ -4067,6 +4075,31 @@ Everything on `main` so far; it becomes the first tagged release.
   glucose reading typed in or sent by the phone after its last day ended every period before it (its mark not drawn,
   its tooltip found at the edge); a long period's first and newest weeks, whose Thursdays fall outside it, are drawn
   at its ends; a week alone is a dot.
+- **Labs opens on Latest** (#1160, the owner's request): Latest is the first of Labs' views (Latest, Chart, Heatmap,
+  Compare) and where Labs opens at every width till another is picked (Chart was, wider than a phone); `#labs-chart`
+  and the other views' addresses open theirs, and the command palette finds Chart by name.
+- **Medications: Stopped taking** (#1161, the owner's request): your own medications and the records' have Stopped
+  taking in their drawer (the day, today unless changed, and why in your own words, optional): the medication moves
+  from Current to Past with its dates and reason, its history and doses kept, and its schedule ends that day (Today,
+  the calendar feed, notifications); Started again takes it up from a day, the time before kept, the days between
+  giving no dose (none counted as missed, in the calendar feed or notified); each has an Undo.
+  It's kept by the medication, as your other changes to the records' are, so a re-import keeps it; records that later
+  give an end date show as stopped the same way. The visit summary and the emergency card list current medications
+  only, and the FHIR export says stopped, with the end date and the reason.
+- **Configured like Sonarr and Radarr** (#1158): the settings file is the one source of truth for every server setting,
+  each changed under Settings → Install (the Secure sign-in cookie, the zip ratio and the timeouts for other servers now
+  too); `.env` and the templates hold only the container's own variables (TrueNAS's and Unraid's two old fields kept,
+  as legacy, for this release). An upgrade takes what `.env` still sets into the app once (Install activity
+  and General say which), then ignores a change there with a warning; `python -m server.manage config set NAME VALUE`
+  joins `config reset`. The sign-in provider's fields and the notification token may be kept in the environment on
+  purpose (`NAME` or `NAME_FILE`), and then win, shown locked.
+- **Settings → Dashboard by tab** (#1165): a section per tab it changes, each named by it with a link to it:
+  Overview (Start from a condition, key labs, home readings), Labs (Lab charts before: the labs charted at first and
+  saved views), Body and activity (Workouts, a group of its own before), Costs (the tax year's first month, chosen on
+  Costs until now) and Tabs. Every lab in the records is listed to tick, by panel, searchable, each with its results
+  and latest date, "6 of 12 labs chosen"; a change says what it did, with an Undo where it took something out; the
+  control used stays where it was on the screen, and Save leaves the sections drawn as they are. #activity,
+  #sec-trends and the palette's words find each part.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

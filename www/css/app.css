@@ -218,6 +218,8 @@ button.toggle,label.toggle{--tone:var(--accent);position:relative;display:inline
    three figures, Costs' and the Overview's alike (#448): in a row where a third is wide enough, else one under another,
    never two and one */
 .stats.three.one{grid-template-columns:1fr}   /* and where a figure is wider than its third (threeFigures, costs.js, #456) */
+.stats.four{grid-template-columns:repeat(auto-fit,minmax(clamp((100% - 3 * var(--sp-3)) / 4 - 1px,(40rem - 100%) * 999,clamp((100% - var(--sp-3)) / 2 - 1px,(18rem - 100%) * 999,100%)),1fr))}   /* Costs' Summary (#1163): four in a
+   row where a quarter is wide enough, else two by two, else one under another (320 px, 200% text); never three and one */
 .card :is(.tiles,.stats):last-child{margin-bottom:calc(-1 * var(--sp-3))}   /* the last row's margin is the card's padding */
 :is(.tile,.tile-tq){border:1px solid var(--ring);border-radius:var(--r-lg);background:var(--surface)}
 .tile{display:flex;flex-direction:column;gap:2px;min-width:0;padding:var(--sp-2) var(--sp-3);color:inherit;font:inherit;text-align:left}
@@ -966,6 +968,42 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct label:not(:where(.seg>label)){display:grid;gap:var(--sp-1);font-size:var(--fs-3);color:var(--ink2);font-weight:var(--fw-medium)}   /* (a pick-one's choice: its own look, components, #550) */
 .acct label.check{display:flex;align-items:center;gap:var(--sp-2);padding-bottom:var(--sp-2)}
 .acct label.ins-pick{display:inline-flex;align-items:center;color:var(--ink)}   /* an insurance card's photo picker (insurance.js), not every .pick: a primary one keeps its white text */
+/* an insurance plan's dialog (#1168, insurance.js), a photo's crop (cardcrop.js) and the card at the desk (ins-desk.js) */
+dialog.sg-ask.ins-dlg{width:min(40rem,calc(100vw - 32px))}
+dialog.sg-ask.cc-dlg{width:min(46rem,calc(100vw - 32px))}
+:is(.ins-dlg,.cc-dlg,.ins-desk) .row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin:var(--sp-2) 0}
+.ins-dlg .ins-set{border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-1) var(--sp-3) var(--sp-2);margin:var(--sp-3) 0;min-width:0}
+.ins-dlg legend{font-weight:var(--fw-semibold);padding:0 var(--sp-1)}
+.ins-dlg .sg-ask-msg label.btn{display:inline-flex;align-items:center;margin:0;color:var(--ink);font-size:var(--fs-2)}
+.ins-dlg .sg-ask-msg label.check{display:flex;align-items:flex-start;gap:var(--sp-2);margin:var(--sp-1) 0;color:var(--ink);font-weight:var(--fw-regular)}
+.ins-dlg .sg-ask-msg label.check>input{width:auto;margin:.2em 0 0;flex:none}
+.ins-dlg select{display:block;width:100%;margin-top:var(--sp-1)}
+.ins-side h3{margin:var(--sp-2) 0 var(--sp-1)}
+.ins-said:empty{display:none}
+.ins-said{color:var(--ink)}
+.ins-pv,.cc-prev{display:block;max-width:min(100%,320px);height:auto;border:1px solid var(--ring);border-radius:var(--r-md)}
+.ins-sug{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-2);margin:var(--sp-1) 0 0;padding:var(--sp-1) var(--sp-2);border-left:3px solid var(--accent);background:var(--raised);overflow-wrap:anywhere}
+.ins-sug .acts{display:flex;gap:var(--sp-1)}
+.sg-ask-msg .ins-used{outline:2px solid var(--accent);outline-offset:1px}
+.cc-wrap{padding:var(--sp-4);background:var(--raised);border-radius:var(--r-md)}
+.cc-stage{display:block;width:100%;height:auto;max-height:50dvh;touch-action:none;overflow:visible}
+.cc-stage polygon{fill:none;stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke}
+.cc-h{cursor:grab;touch-action:none;outline:none}
+.cc-hit{fill:transparent}
+.cc-ring{fill:color-mix(in srgb,var(--surface) 50%,transparent);stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke}
+.cc-h:focus-visible .cc-ring{stroke:var(--ink);stroke-width:4}
+dialog.ins-desk.sg-dlg{inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;border:0;border-radius:0;padding:var(--sp-3) var(--sp-4);display:flex;flex-direction:column;gap:var(--sp-2)}
+dialog.ins-desk:not([open]){display:none}
+.dk-top{display:flex;align-items:center;gap:var(--sp-2)}
+.dk-top h2{flex:1;min-width:0;margin:0;font-size:var(--fs-5);overflow-wrap:anywhere}
+.dk-main{display:flex;flex-direction:column;gap:var(--sp-2)}
+.dk-card{display:block;align-self:center;max-width:100%;padding:0;border:0;background:none;cursor:pointer;touch-action:pan-y}
+.dk-card img{display:block;max-width:100%;max-height:60dvh;height:auto;border:1px solid var(--ring);border-radius:var(--r-lg)}
+.dk-ids{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-5);margin:0}
+.dk-ids dt{color:var(--ink2)}
+.dk-ids dd{margin:0;font-size:clamp(1.75rem,8vw,2.75rem);font-weight:var(--fw-semibold);letter-spacing:.04em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.dk-rx{margin:0;font-size:var(--fs-4)}
+@media (forced-colors:active){ .cc-stage polygon,.cc-ring{stroke:Highlight} .cc-h:focus-visible .cc-ring{stroke:CanvasText} .ins-sug{border:1px solid CanvasText;border-left-width:3px} }
 .acct .ocr-langs>:first-child{margin-top:0}   /* General → Text recognition's first language level with its name (gen-ocr.js, #494) */
 .acct label.btn.small{font-size:var(--fs-2)}
 .acct .row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin:var(--sp-2) 0}   /* 8 px above and below: a row of buttons never sits on the heading or text after it (#309) */
@@ -1277,6 +1315,14 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .sets .set-count{font-size:var(--fs-2)}
 .sets .set-check{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
 .sets .set-sugg{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;margin-top:var(--sp-2);max-width:720px}
+/* (#1165) Dashboard: a section's link to its tab beside its name; every lab in the records to choose from (settings.js
+   labPicker), in the conditions' box (.pre-list, below) */
+.sets .set-hd>.set-tab{margin-right:auto;font-size:var(--fs-3)}
+.sets .set-tab,.sets .set-tab a{display:inline-flex;align-items:center;gap:var(--sp-1);flex-wrap:wrap}
+.sets .set-pick{max-width:560px}
+.sets .set-pick.narrowed{min-height:18rem}   /* as .pre-list's most, below: the page's foot stays where it is as a name is typed */
+.sets .set-pick-n{margin:var(--sp-3) 0 var(--sp-1)}
+.sets .set-pick-fold{margin-top:var(--sp-2)}
 .sets .set-ph{margin:var(--sp-3) 0 var(--sp-2);font-size:var(--fs-3);font-weight:var(--fw-semibold);color:var(--ink2)}   /* an h4 under a setting's h3, at its weight (#331) */
 .sets .set-preview{--tile:150px;margin-bottom:calc(var(--sp-2) - var(--sp-3));max-width:720px}   /* 8 px under the tiles' own (#351) */
 .sets .set-preview .set-wide,.sets .set-preview>p{grid-column:1 / -1;margin:0 0 var(--sp-3)}
@@ -1489,6 +1535,29 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .jshot-frame .jshot-top{position:absolute;inset:0;clip-path:inset(0 calc(100% - var(--at, 50%)) 0 0)}
 .jshot-line{position:absolute;top:0;bottom:0;left:calc(var(--at, 50%) - 1px);width:0;border-left:2px solid var(--surface);outline:1px solid var(--ink)}
 .ec-img{display:block;width:min(100%, 220px);height:auto;border:1px solid}   /* the lock-screen image's preview (emergency.js) */
+/* the card's editor beside its previews (#1162), in the sidebar's 1280 px shell (#266): the previews under it below 75rem */
+.ec-wrap{display:grid;gap:var(--sp-4);align-items:start}
+@media (min-width:75rem){.ec-wrap{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}}
+.ec-sec{border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-1) var(--sp-3) var(--sp-2);margin:0 0 var(--sp-3);min-width:0}
+.ec-sec>legend{font-weight:var(--fw-semibold);padding:0 var(--sp-1)}
+.ec-place,.ec-pick,.ec-lines>li,.ec-addrow,.ec-sugs li{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-3)}
+.ec-moves{display:inline-flex;gap:var(--sp-1);margin-left:auto}
+.ec-lines,.ec-sugs ul{list-style:none;margin:0 0 var(--sp-2);padding:0;display:grid;gap:var(--sp-1)}
+.ec-lines input,.ec-addrow input,.ec-name input{flex:1 1 12rem;min-width:0;max-width:100%}
+.ec-sugs li>span:first-child{flex:1 1 12rem;min-width:0;overflow-wrap:anywhere}
+.ec-dets{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,13rem),1fr));gap:var(--sp-2);margin:0 0 var(--sp-2)}
+.ec-det,.ec-name{display:grid;gap:2px;margin:0 0 var(--sp-3)}
+.ec-alerts .ec-lines input,.ec-paper .ec-alerts p:not(.ec-p-head){font-weight:var(--fw-bold)}
+.ec-paper{border:1px solid var(--ring);border-radius:var(--r-sm);background:var(--raised);padding:var(--sp-3);margin:0 0 var(--sp-2);overflow-wrap:anywhere}
+.ec-paper.wallet{max-width:17rem;font-size:var(--fs-1)}
+.ec-paper p{margin:0}
+.ec-paper .ec-p-title{font-weight:var(--fw-bold);font-size:1.25em}
+.ec-paper .ec-p-name{font-weight:var(--fw-bold)}
+.ec-paper .ec-p-date{color:var(--muted);font-size:var(--fs-1)}
+.ec-paper .ec-p-head{margin-top:var(--sp-2);font-size:var(--fs-1);font-weight:var(--fw-bold)}
+.ec-p-qr{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:end;margin-top:var(--sp-3);color:var(--muted);font-size:var(--fs-1)}
+.ec-p-qr>svg.qr{width:min(100%,160px)}
+.ec-new{display:flex;flex-wrap:wrap;gap:var(--sp-1);align-items:baseline}
 .jphotos>.btn.pick{align-self:flex-start;margin:0}
 .jphoto-msg:empty{display:none}
 .jscale>label{display:flex;align-items:center;gap:var(--sp-2)}
@@ -1843,6 +1912,7 @@ svg text.cum-end{fill:var(--ink);font-weight:var(--fw-semibold)}   /* the runnin
    keeps its theme's background: in the system's colours (#657) */
 @media (forced-colors:active){ #hm text:is(.row,.grp),#hm text.row.renamable:is(:hover,:focus),svg text:is(.medname,.cum-end,.db-name){fill:CanvasText} #hmAxis{background:Canvas} }
 .cost-figs>.set-hd{flex-wrap:nowrap}   /* What you paid's ⓘ beside its heading at 320 px, the heading wrapping */
+.sum-lines .s{flex-basis:100%}   /* the Summary's premiums, HSA and FSA: a line each, what it is under it (#1163) */
 @container (width < 560px){
   table.stack,.stack tbody{display:block}
   .stack thead{display:none}
@@ -2244,6 +2314,8 @@ main.acct.guide{max-width:640px}
 .empty-state:not(.card) p{margin:0 0 var(--sp-2)}
 .empty-state p:only-child{margin-bottom:0}   /* with no next step (the Overview's groups, #440) */
 .empty-state .btn.empty-next{margin:0}
+.costs-ways{display:inline-block;text-align:start;max-width:60ch;margin:0 0 var(--sp-3);padding-inline-start:1.2em}   /* Costs' ways in (#1163) */
+.costs-ways li+li{margin-top:var(--sp-2)}
 .empty-acts{display:flex;flex-wrap:wrap;justify-content:center;gap:var(--sp-2)}
 @media (forced-colors:active){ .guide-back,.guide-way{border-color:ButtonText} }
 

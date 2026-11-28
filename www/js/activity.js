@@ -22,7 +22,8 @@ const WHAT = {
   reload: () => "loaded the latest records",
   export: d => (d.format === "tax" ? `downloaded Costs' tax-year report for ${d.year}` : d.format === "fhir" ? "exported as FHIR" : "exported everything") + (d.cycle ? ", with the cycle records" : ""),   // #183, #205, #1136
   summary: d => `made a visit summary${d.for ? ` for the appointment on ${recordDate(d.for)}` : ""}${(d.sections || []).includes("cycle") ? ", with the cycle records" : ""}`,
-  emergency: d => d.file === "png" ? "made an emergency card lock-screen image" : `made an emergency card PDF${d.paper === "a4" ? " (A4)" : ""}`,   // #1126
+  emergency: d => d.saved ? "saved the emergency card" : d.file === "png" ? "made an emergency card lock-screen image"
+    : `made an emergency card PDF${d.form === "wallet" ? ", wallet card" : ""}${d.paper === "a4" ? " (A4)" : ""}`,   // #1126, #1162
   cycle: d => ({on: "turned cycle tracking on", off: "turned cycle tracking off, deleting what was kept", delete: "deleted the cycle records kept"}[d.change] || "changed cycle tracking"),   // #183
   upload: d => d.source === "smart-health-link" ? `imported a SMART Health Link from ${d.host}` : `uploaded ${d.files} file${d.files === 1 ? "" : "s"} to import`,
   outside: d => `had Sanguity contact ${d.host} (${d.purpose})`,
@@ -59,14 +60,16 @@ const WHAT = {
   journal: d => ({"spot.rename": "renamed a spot in the journal", "spot.merge": "merged two spots in the journal", "spot.untag": "took a journal photo off its spot"})[d.action] || `${{add: "added", change: "changed", delete: "deleted"}[d.action] || "changed"} a journal ${({symptom: "symptom", side_effect: "side effect", mood: "mood entry"})[d.kind] || "note"}`,   // mood: #161
   insurance: d => ({add: "added an insurance plan", change: "changed an insurance plan", delete: "removed an insurance plan",   // #1137
     photo: `put on a photo of an insurance card's ${d.side === "back" ? "back" : "front"}`,
-    "photo.delete": `took off the photo of an insurance card's ${d.side === "back" ? "back" : "front"}`}[d.change] || "changed an insurance plan"),
+    "photo.delete": `took off the photo of an insurance card's ${d.side === "back" ? "back" : "front"}`,
+    read: "read an insurance card's photo by text recognition"}[d.change] || "changed an insurance plan"),
   source: d => d.named ? `renamed the import “${d.label}”` : `went back to calling an import “${d.label}”`,   // #38
   settings: d => d.section ? `reset the ${d.label || d.section} settings to their defaults`
     : d.reset ? `reset “${d.label || d.setting}” to its default` : `changed the setting “${d.label || d.setting}”`,
   "watch.secret": d => d.ended ? `took away the watch receiver secret ${d.maker || "someone"} made, as they can no longer change this profile (their phone can't upload)`   // (#929)
     : d.rotated ? "made a new watch receiver secret (the old one stopped working)" : "made the watch receiver secret",
   "settings.user": d => d.section ? `reset their own ${d.label || d.section} settings` : `changed their own setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}`,
-  "settings.install": d => d.section ? `reset the server's ${d.label || d.section} settings` + (d.changes?.length ? ` (${d.changes.map(c => `“${c.label}” from ${setVal(c.from)} to ${setVal(c.to)}`).join("; ")})` : "")
+  "settings.install": d => d.taken ? `took these settings from the environment, once, into the settings: ${d.changes.map(c => `“${c.label}”`).join(", ")} (from now on they're changed here)`   // (#1158)
+    : d.section ? `reset the server's ${d.label || d.section} settings` + (d.changes?.length ? ` (${d.changes.map(c => `“${c.label}” from ${setVal(c.from)} to ${setVal(c.to)}`).join("; ")})` : "")
     : `${d.reset ? "put" : "changed"} the server setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}` + ("to" in d ? ` (from ${setVal(d.from)} to ${setVal(d.to)})` : ""),   // (#1006: its values)
   "server.restart": d => (d.fell_back ? "started with the settings before: the new ones didn't run healthy" : "restarted the server")   // (#1121)
     + (d.changes?.length ? ` (${d.changes.map(c => `“${c.label}” from ${setVal(c.from)} to ${setVal(c.to)}`).join("; ")})` : ""),

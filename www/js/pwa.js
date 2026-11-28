@@ -3,7 +3,7 @@
 
    Offline records are off unless the person turns them on, per device, under Settings → This device. When on, the
    records page (js/offline.js) keeps one copy of the last profile it loaded: its records (each record's details once it was opened
-   on this device, #217), settings and watch data, never documents (PDFs, pictures) and never another profile's. That copy is outside the server's encryption at rest, so it's
+   on this device, #217), settings, watch data and insurance cards (#1168), never documents (PDFs, pictures) and never another profile's. That copy is outside the server's encryption at rest, so it's
    deleted on sign-out, when the sign-in page is reached (a sign-in that ended), when the sign-in's own end time passes
    (even with no connection), when the option is turned off, and once the person no longer has the profile (#591:
    removed from it, left it or deleted it; still(), whichever page hears it from the server). The lab names picked on Labs go on sign-out and on
@@ -223,7 +223,7 @@ const SgLogout = (() => {
     aboutWords("Sanguity opens from your home screen without a connection either way. With this on, this device also keeps a copy of " +
       "the last profile you opened, read-only, with the time it was loaded. A record's details, such as a result's values or a claim's " +
       "lines, are kept once you've opened it on this device.",
-      "It holds that one profile's records, settings and watch data, never documents or other profiles. It's deleted when you sign " +
+      "It holds that one profile's records, settings, watch data and insurance cards, never documents or other profiles. It's deleted when you sign " +
       "out, when your sign-in ends, and when you turn this off."),
     setRow(el("p", {class: "set-row-name", text: "A copy on this device"}),
     // the warning before turning it on stays in full (#280), beside the switch

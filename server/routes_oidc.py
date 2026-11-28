@@ -223,7 +223,8 @@ def _install(db, request):
     cfg = oidc.load(db)
     origin = _page_origin(request)
     return {**{k: cfg[k] for k in oidc.FIELDS}, "only": bool(cfg["only"]) and oidc.configured(cfg),
-            "configured": oidc.configured(cfg), "secret": oidc.secret_source(db), "secret_env": oidc.SECRET_ENV,
+            "configured": oidc.configured(cfg), "secret": oidc.secret_source(db), "secret_env": config.managed_by(oidc.SECRET_ENV) or oidc.SECRET_ENV,
+            "managed": oidc.managed_vars(),
             "redirect_uri": oidc.redirect_uri(origin), "from_public_address": bool(config.public_address()),
             "hosts": oidc.hosts(db), "linked": db.execute("SELECT COUNT(*) FROM oidc_identities WHERE issuer=?",
                                                           (oidc.issuer_key(cfg["issuer"]),)).fetchone()[0]}
@@ -261,9 +262,14 @@ def install_put(body: Provider, request: Request, s=Depends(admin), db=Depends(g
     if body.secret is not None and len(body.secret) > 2000:
         raise HTTPException(400, "The client secret is at most 2000 characters.")
     secret = body.secret.strip() if body.secret is not None else None
-    if secret is not None and oidc.secret_source(db) == "environment":
-        raise HTTPException(409, f"The client secret is set by the server's environment ({oidc.SECRET_ENV}), so it can't be "
+    held = oidc.managed_vars()   # (#1158, opt-in) what the environment manages isn't changed here
+    if secret is not None and "secret" in held:
+        raise HTTPException(409, f"The client secret is managed by the server's environment ({held['secret']}), so it can't be "
                                  "changed here. Change it there, or take it out to set it here.")
+    for k, name in held.items():
+        if k in oidc.FIELDS and getattr(body, k) is not None and after[k] != before[k] or k == "only" and body.only is not None and body.only != bool(before["only"]):
+            raise HTTPException(409, f"The {NAMES.get(k, 'sign in with OIDC only')} is managed by the server's environment ({name}), so "
+                                     f"it can't be changed here. Change it there, or take {name} out to change it here.")
     changed = [k for k in oidc.FIELDS if after[k] != before[k]]
     if secret is not None and (secret or oidc.secret_source(db)):
         changed.append("secret")

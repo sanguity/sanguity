@@ -63,6 +63,8 @@ class OIDC(unittest.TestCase):
         dbm.init()
         db = dbm.connect()
         atrest.check_key(db); atrest.load_pepper(db); prof.bootstrap(db)
+        from server import settings_import   # (#1158) what the environment sets (PUBLIC_ORIGINS, above), taken in once
+        settings_import.take(db, say=lambda *a: None)
         cls.uid = {n: accounts.create(db, n, is_admin=n == "ada", password=pw)[0] for n, pw in PW.items()}
         cls.lee_secret = twofactor.new_secret()
         db.execute("UPDATE users SET totp_secret=? WHERE id=?", (crypto.enc(cls.lee_secret), cls.uid["lee"]))
@@ -725,6 +727,42 @@ class OIDC(unittest.TestCase):
         from server import backup
         self.assertIn("oidc_identities", backup.ACCESS_TABLES)
         self.assertTrue({"oidc", "oidc.secret"} <= set(backup.ACCESS_META))
+
+
+    def test_the_environment_may_manage_the_provider_opt_in(self):
+        """#1158 (the owner's decision: env-managed, opt-in): each field has a variable; while one is set it keeps winning
+        (never taken in), the page is told which locks it and a change to it is refused (409); the client secret may come
+        from a file (OIDC_CLIENT_SECRET_FILE, a Docker secret), read at each use, so a rotated one applies; a value the
+        page wouldn't take, or a file that can't be read, is as if unset. Unset again, the page's own is back."""
+        ada = self.set_up()
+        path = os.path.join(TMP, "oidc-secret")
+        with open(path, "w") as f:
+            f.write("rotated secret one\n")
+        env = {"OIDC_BUTTON": "Keycloak (fictional, managed)", "OIDC_SCOPES": "openid email", "OIDC_CLIENT_SECRET_FILE": path,
+               "OIDC_ISSUER": "not an address at all"}
+        with mock.patch.dict(os.environ, env):
+            d = ada.get("/api/settings/install/oidc").json()
+            self.assertEqual(d["managed"], {"label": "OIDC_BUTTON", "scopes": "OIDC_SCOPES", "secret": "OIDC_CLIENT_SECRET_FILE"})
+            self.assertEqual((d["label"], d["scopes"], d["issuer"], d["secret"], d["secret_env"]),
+                             ("Keycloak (fictional, managed)", "openid email", self.idp.issuer, "environment", "OIDC_CLIENT_SECRET_FILE"))
+            db = dbm.connect()
+            self.assertEqual(oidc.client_secret(db), "rotated secret one")
+            with open(path, "w") as f:
+                f.write("rotated secret two")
+            self.assertEqual(oidc.client_secret(db), "rotated secret two", "read at each use")
+            for body in ({"label": "Another"}, {"secret": "x"}, {"scopes": "openid"}):
+                r = ada.put("/api/settings/install/oidc", json=body, headers=H)
+                self.assertEqual(r.status_code, 409, body)
+                self.assertIn("managed by the server's environment", r.json()["detail"])
+            r = ada.put("/api/settings/install/oidc", json={"acr": "mfa"}, headers=H)   # one it doesn't manage: the page's
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertNotIn("Keycloak", dbm.meta_get(db, oidc.OIDC_META), "what it manages isn't saved over the page's")
+            os.unlink(path)
+            self.assertNotIn("secret", ada.get("/api/settings/install/oidc").json()["managed"], "a file that can't be read: unset")
+            db.close()
+        d = ada.get("/api/settings/install/oidc").json()
+        self.assertEqual((d["label"], d["secret"], d["managed"]), ("Authentik (fictional)", "install", {}))
+        self.assertEqual(ada.put("/api/settings/install/oidc", json={"acr": ""}, headers=H).status_code, 200)
 
 
 if __name__ == "__main__":

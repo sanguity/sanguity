@@ -55,7 +55,7 @@ python tests/test_recategorize.py      # chart activity and recategorizing: cont
 python tests/test_milestones.py        # milestones and workout rules on the Settings page
 python tests/test_lab_mapping.py       # matching unknown lab names
 python tests/test_summary.py           # the visit summary PDF
-python tests/test_emergency.py         # the emergency card (#1126)
+python tests/test_emergency.py         # the emergency card (#1126, #1162)
 python tests/test_keydocs.py           # key documents (#1135)
 python tests/test_person.py            # About this person: birth date, sex for ranges, height history (#194)
 python tests/test_export.py            # Export everything loaded elsewhere: corrections, journal, doses back, undoable (#589)
@@ -72,6 +72,7 @@ python tests/test_anonymise.py         # tools/anonymise.py: every fixture's cop
 python tests/test_css_tokens.py        # no new raw colours, px font sizes, radii, shadows or script styles (#252)
 python tests/test_palette.py           # the kinds' colours: eight at most, through the palette checks in light and dark (#301)
 python tests/test_qr.py                # the QR encoder (www/js/qr.js, in node) against known vectors, read back (#284)
+python tests/test_cardcrop.py          # an insurance card found and straightened in fixture photos (www/js/cardcrop.js, in node, #1168)
 python tests/browser_check.py          # headless browser: every tab, the drawer, pan/zoom, every page at 375 px,
                                        # axe-core's WCAG 2.2 AA rules and a keyboard walk (docs/accessibility.md);
                                        # --part views for one of its parts, as CI runs each (--parts lists them), and
