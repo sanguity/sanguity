@@ -1085,6 +1085,39 @@ define("updates.check", "instance", "Check for new versions", False, yes_no("Che
 NEW_PEOPLE = ("dates.timeZone", "dates.format", "units")
 
 
+# ---------------------------------------------------------------- (#1167) Install → Outside connections
+# Each kind of outside connection's switch, "No outside connections at all" over them all, and the hosts blocked:
+# outside.refusal() reads them, and net.py asks it before anything is sent (the one way out). Connected sources',
+# text-recognition downloads' and the update check's switches are their own settings, shown here and in their place.
+section("outside", "Outside connections", "Who this server may contact, and what it did.")
+define("outside.none", "outside", "No outside connections at all", False, yes_no("No outside connections at all"),
+       scope="install", private=False, kind="toggle", screen=False)
+for _key, _what in (("outside.healthLinks", "Health Link fetching"), ("outside.signIn", "The sign-in provider"),
+                    ("outside.notifications", "Notifications"), ("outside.directory", "Provider directory updates")):
+    define(_key, "outside", _what, True, yes_no(_what), scope="install", private=False, kind="toggle", screen=False)
+HOST_ENTRY = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*(?::\d{1,5})?|\[[0-9a-f:.]+\](?::\d{1,5})?")
+BLOCKED_MOST = 100
+
+
+def host_list(v):
+    """Hosts as Outside connections lists them (host[:port], lowercased, without :443 or :80), at most BLOCKED_MOST."""
+    if not isinstance(v, list) or len(v) > BLOCKED_MOST:
+        raise SettingError(f"Blocked hosts are a list of at most {BLOCKED_MOST}.")
+    out = []
+    for h in v:
+        h = str(h).strip().lower().rstrip(".")
+        for p in (":443", ":80"):
+            h = h[:-len(p)] if h.endswith(p) else h
+        if not h or len(h) > 255 or not HOST_ENTRY.fullmatch(h):
+            raise SettingError(f"“{str(h)[:60]}” isn't a host (like fhir.example.org or 10.0.0.5:8443).")
+        if h not in out:
+            out.append(h)
+    return out
+
+
+define("outside.blocked", "outside", "Blocked hosts", [], host_list, scope="install", private=False, kind="hosts", screen=False)
+
+
 # ---------------------------------------------------------------- storage
 INSTALL_ROWS = "profile_id IS NULL AND user_id IS NULL"   # the install's own values: a restore keeps today's (#1005)
 

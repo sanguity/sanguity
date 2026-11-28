@@ -100,6 +100,7 @@ class Permit:
     def contact(self, host, purpose=None):
         """Check host and record the contact (once per purpose). Raises Refused."""
         host = norm(host)
+        policy(self, host)
         if host not in self.hosts():
             raise Refused(f"Sanguity won't contact {host}: it isn't one of the hosts allowed for "
                           f"{(purpose or self.purpose).lower()}.")
@@ -111,6 +112,17 @@ class Permit:
 
 
 NOTHING = Permit("nothing", set())   # allows no host
+POLICY = None   # (#1167) outside.py sets it: (purpose, host) -> why it's refused, or None
+
+
+def policy(permit, host):
+    """(#1167) Outside connections' switches and blocks, before anything else, whatever the permit says: the master
+    switch, a blocked host, the permit's kind switched off. Read at each request (outside.refusal)."""
+    if POLICY is None:   # (outside.py not imported yet: it sets it as it is)
+        from . import outside   # noqa: F401
+    why = POLICY(permit.purpose, host)
+    if why:
+        raise Refused(why)
 
 
 def _split(url):
@@ -128,6 +140,7 @@ def _split(url):
 def resolve(permit, url):
     """The addresses of url's host, once the permit allows the host (no contact is recorded: nothing is sent to it)."""
     _, name, port = _split(url)
+    policy(permit, host_of(url))
     if not permit.allows(host_of(url)):
         raise Refused(f"Sanguity won't contact {host_of(url)}: it isn't one of the hosts allowed for "
                       f"{permit.purpose.lower()}.")
@@ -246,7 +259,7 @@ def _socks5(sock, p, host, port):
 
 def open_socket(name, port, ip=None, timeout=20):
     """A connected socket to name (at ip, checked beforehand, when given), through the outbound proxy unless it's
-    bypassed. Only connection() uses it, once its permit allowed the host."""
+    bypassed. Only connection() and probe() use it, once their permit allowed the host."""
     p = proxy_for(name, ip)
     if p is None:
         return socket.create_connection((ip or name, port), timeout)
@@ -300,3 +313,41 @@ def connection(permit, url, purpose=None, ip=None, timeout=20, context=None):
         return _Conn(name, port, ip, timeout, context or ssl.create_default_context())
     return _ConnHTTP(name, port, ip, timeout)
 
+
+def probe(permit, url, timeout=10):
+    """(#1167) Whether url's host is reachable, step by step: [{"step": "name" | "connect" | "tls", "ok", "said"}],
+    stopping at the first that fails. The name is looked up here, or by the outbound proxy; nothing is sent beyond the
+    TLS handshake (for https). Under the permit, its contact recorded first. Raises Refused."""
+    scheme, name, port = _split(url)
+    permit.contact(host_of(url))
+    steps, p = [], proxy_for(name)
+
+    def step(what, ok, said):
+        steps.append({"step": what, "ok": ok, "said": said})
+        return ok
+    if p:
+        step("name", True, f"looked up by the outbound proxy ({p.host}:{p.port})")
+    else:
+        try:
+            ips = list(dict.fromkeys(i[4][0] for i in socket.getaddrinfo(name, port, type=socket.SOCK_STREAM)))
+        except Errors as e:
+            step("name", False, why(e))
+            return steps
+        step("name", True, ", ".join(ips[:4]))
+    try:
+        sock = open_socket(name, port, None, timeout)
+    except Errors as e:
+        step("connect", False, why(e))
+        return steps
+    try:
+        step("connect", True, f"port {port}" + (" through the outbound proxy" if p else ""))
+        if scheme == "https":
+            try:
+                tls = ssl.create_default_context().wrap_socket(sock, server_hostname=name)
+                step("tls", True, f"{tls.version()}, its certificate valid for {name}")
+                sock = tls
+            except Errors as e:
+                step("tls", False, why(e))
+    finally:
+        sock.close()
+    return steps

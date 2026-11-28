@@ -211,6 +211,8 @@ ROUTES = {
     ("GET", "/api/settings/install/restart"): (ADMIN, None), ("PUT", "/api/settings/install/restart/values"): (ADMIN, None),   # General → Needs a restart (#1121)
     ("POST", "/api/settings/install/restart"): (ADMIN, None),
     ("PUT", "/api/outside/proxy-password"): (ADMIN, None),   # (#1159) the outbound proxy's password, write-only
+    ("POST", "/api/outside/test"): (ADMIN, None), ("POST", "/api/outside/clear"): (ADMIN, None),   # (#1167) Test a host; clear the history
+    ("GET", "/api/outside/log"): (USER, None),   # (#1167) recent contacts: each person's own profiles' entries, as /api/outside
     ("GET", "/api/settings/install/instance"): (ADMIN, None), ("PUT", "/api/settings/install/defaults/{key}"): (ADMIN, None),   # General → This server (#1159)
     ("POST", "/api/settings/install/updates/check"): (ADMIN, None),
     ("POST", "/api/settings/install/taken/seen"): (ADMIN, None),   # General's word on what was taken from the environment (#1158)
@@ -490,7 +492,9 @@ PLAIN_SETTINGS = {"sync.attachAuto", "sync.attachMaxMB", "sync.attachTypes", "sy
                   "experimental.connectedSources",   # (#1096) on or off
                   "costs.taxStart",   # (#1136) a month, 1 to 12, for Costs' tax-year report: nothing about anyone's health
                   "ocr.languages", "ocr.downloads",   # (#1129) language codes, and on or off
-                  "instance.name", "updates.check"}   # (#1159) the server's name (no one's), and on or off
+                  "instance.name", "updates.check",   # (#1159) the server's name (no one's), and on or off
+                  "outside.none", "outside.healthLinks", "outside.signIn", "outside.notifications", "outside.directory",
+                  "outside.blocked"}   # (#1167) switches, and hosts: none is anyone's health   # (#1159) the server's name (no one's), and on or off
 
 
 class AtRest(unittest.TestCase):

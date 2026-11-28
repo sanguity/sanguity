@@ -82,6 +82,7 @@ Account events (no profile), readable by admins:
                 (connections.py; change is "add", "edit" or "remove")
   outside       {"host", "purpose"}: Sanguity contacted a vendor with no profile involved (an admin's "Test this
                 connection", connections.py)
+  outside.cleared {"contacts": n}: an admin cleared the history of outside contacts (Outside connections, #1167)
   settings.user / settings.install   like a profile's settings entry: someone's own setting, or the install's (admin,
                 or actor COMMAND_LINE: server.manage config reset); an install setting's has its "from" and "to" values,
                 and a section reset's "changes", [{"setting", "label", "from", "to"}] (#1006; none is a secret)
@@ -122,7 +123,7 @@ ACCOUNT_ACTIONS = ("setup", "password", "account.create", "account.disable", "ac
                    "labmap.remove", "labmap.undo", "settings.user", "settings.install", "connect.source", "outside",
                    "backup.create", "backup.check", "backup.fail", "backup.schedule", "backup.replaced", "directory.update",
                    "records.rekey", "records.copies", "server.restart", "notify.test", "notify.fail", "notify.token", "notify.topic",
-                   "ocr.language")
+                   "ocr.language", "outside.cleared")
 COMMAND_LINE, SETUP_BUILD = "command line", "setup build"
 SCHEDULED_SYNC = "scheduled sync"   # a connected source's pull on its schedule (sync.py)
 SHARE_LINK = "share link"           # whoever holds a share link, opening it (share_links.py)

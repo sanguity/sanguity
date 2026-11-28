@@ -215,7 +215,7 @@ def view(db, s):
     newer = sorted(updates.hosts()) if admin else []   # (#1159) GitHub's releases, while an admin has the check on
     allowed = sorted({h for x in sources for h in x["may_contact"]} | set(signin) | set(told) | set(languages) | set(newer))
     pick = lambda *ps: [c for c in contacts if c["purpose"] in ps]
-    return {"nothing_else": NOTHING_ELSE, "admin": admin, "connected_sources": on, "may_contact": allowed, "sources": sources,
+    return {"nothing_else": NOTHING_ELSE, "admin": admin, **({"switches": switches()} if admin else {}), "connected_sources": on, "may_contact": allowed, "sources": sources,
             "health_links": pick(LINK, LINK_FILE), "card_keys": pick(CARD_KEYS),
             **({"directory": {"hosts": sorted(directory_hosts()), "contacts": pick(DIRECTORY)}} if admin and on else {}),
             **({"sign_in": {"hosts": signin, "contacts": pick(oidc.PURPOSE)}} if signin else {}),
@@ -283,3 +283,131 @@ def proxy():
 
 net.PROXY = proxy
 
+
+# ---------------------------------------------------------------- (#1167) the kinds' switches, the master switch, blocks
+
+UPDATES, PROBE = "Update check", "Reachability test"   # updates.PURPOSE; an admin's Test under Outside connections
+# kind -> (its name, the install setting that switches it, what it's for, what stops while it's off)
+KINDS = {
+    "sources": ("Connected sources", "experimental.connectedSources", "Patient portals and health plans connected from "
+                "Sources: their sign-ins, syncs and disconnects, and an admin's tests.", "Nothing is synced and nobody is "
+                "contacted for them; connections and what they brought are kept."),
+    "health_links": ("Health Link fetching", "outside.healthLinks", "A SMART Health Link or Health Card someone pastes and "
+                     "confirms: its files, and its issuer's keys.", "A pasted link isn't fetched; the page says why."),
+    "sign_in": ("Sign-in provider", "outside.signIn", "Signing in, linking an identity and an admin's test with the "
+                "install's sign-in provider.", "Nobody can sign in with the provider: people sign in with a password or "
+                "a passkey."),
+    "notifications": ("Notifications", "outside.notifications", "What people turned on, sent to the install's own "
+                      "notification server.", "Nothing is sent: one due meanwhile is tried a few times, then dropped, as Install activity says."),
+    "directory": ("Provider directory updates", "outside.directory", "Epic's and Oracle Health's lists for Find your "
+                  "provider, read when an admin asks or weekly.", "The lists aren't read; the ones kept stay."),
+    "languages": ("Text-recognition language downloads", "ocr.downloads", "A language file an admin downloads from the "
+                  "tesseract-ocr project.", "Nothing is downloaded; a language file can still be imported."),
+    "updates": ("Update check", "updates.check", "Sanguity's latest release, from GitHub, once a day.",
+                "Nobody is asked about new versions."),
+}
+
+
+def kind_of(purpose):
+    """The kind a permit's purpose is (None: an admin's reachability test, which only the master switch and the blocks
+    govern)."""
+    purpose = str(purpose)
+    if purpose.startswith(SOURCE):
+        return "sources"
+    return {LINK: "health_links", LINK_FILE: "health_links", CARD_KEYS: "health_links", "Sign-in provider": "sign_in",
+            "Notification server": "notifications", DIRECTORY: "directory", "Text recognition language": "languages",
+            UPDATES: "updates"}.get(purpose)
+
+
+def kind_on(kind):
+    return bool(settings.install_value(KINDS[kind][1]))
+
+
+def blocked():
+    return set(settings.install_value("outside.blocked") or ())
+
+
+def refusal(purpose, host):
+    """Why Sanguity won't contact host for purpose, whatever the permit says (net.py asks before anything is sent), or
+    None: "No outside connections at all" is on, host is blocked, or its kind is switched off."""
+    host = net.norm(host)
+    if settings.install_value("outside.none"):
+        return f"Sanguity won't contact {host}: “No outside connections at all” is on, under Outside connections."
+    if host in blocked():
+        return f"Sanguity won't contact {host}: it's blocked under Outside connections."
+    kind = kind_of(purpose)
+    if kind and not kind_on(kind):
+        return f"Sanguity won't contact {host}: {KINDS[kind][0]} is off under Outside connections."
+    return None
+
+
+net.POLICY = refusal
+
+
+def _locks_out(db, before, after, request=None, s=None, *, key):
+    """Turning the sign-in provider off (or every outside connection) while Sign in with OIDC only is on: everyone who
+    signs in with it is locked out until it's on again; asked first."""
+    from . import oidc
+    off = (after is False) if key == "outside.signIn" else (after is True)
+    if not off or not oidc.only(db):
+        return None
+    return {"count": 1, "type": "lock them out", "title": "Turn off signing in with the provider?", "action": "Turn it off",
+            "message": "Sign in with OIDC only is on: while the sign-in provider can't be contacted, nobody can sign in "
+                       "with it, admins included, unless they have a passkey. python -m server.manage config reset puts it back."}
+
+
+for _k in ("outside.signIn", "outside.none"):
+    settings.SETTINGS[_k].confirm = (lambda k: lambda *a, **kw: _locks_out(*a, **kw, key=k))(_k)
+
+
+def switches():
+    """The kinds as Outside connections shows them: each one's name, setting, what it's for and what stops, and whether
+    it's on; and the master switch."""
+    return {"none": bool(settings.install_value("outside.none")), "blocked": sorted(blocked()),
+            "kinds": [{"kind": k, "name": n, "key": key, "for": what, "off": stops, "on": kind_on(k)}
+                      for k, (n, key, what, stops) in KINDS.items()]}
+
+
+def history(db, s, kind=None, host=None, since=None, until=None, limit=200):
+    """(#1167) Recent contacts from the activity log, as s may see them (admins: the install's, members: their
+    profiles'), filtered by kind, host (a part of it) and time (epoch seconds, inclusive), newest first."""
+    profiles = _profiles(db, s)
+    where, args = ["action=?"], [ACTION]
+    if since:
+        where.append("at >= ?"), args.append(int(since))
+    if until:
+        where.append("at <= ?"), args.append(int(until))
+    host = (host or "").strip().lower()
+    out = []
+    for r in db.execute(f"SELECT at, profile_id, actor, detail FROM activity WHERE {' AND '.join(where)} ORDER BY id DESC LIMIT 5000", args):
+        pid = r["profile_id"]
+        if not (pid in profiles or (s["is_admin"] and pid is None)):
+            continue
+        d = json.loads(crypto.dec(r["detail"])) if r["detail"] else {}
+        k = kind_of(d.get("purpose", ""))
+        if (kind and (k or "test") != kind) or (host and host not in str(d.get("host", ""))):
+            continue
+        out.append({"at": r["at"], "host": d.get("host"), "purpose": d.get("purpose"), "kind": k or "test",
+                    "profile": pid, "profile_name": profiles.get(pid), "actor": r["actor"]})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def clear(db):
+    """Clear the history of outside contacts (the counts and every contact's activity entry): how many went."""
+    n = db.execute("SELECT COUNT(*) FROM activity WHERE action=?", (ACTION,)).fetchone()[0]
+    db.execute("DELETE FROM activity WHERE action=?", (ACTION,))
+    db.execute("DELETE FROM outside_contacts")
+    return n
+
+
+def probe(db, s, host, ip=None):
+    """(#1167) Test whether a listed host is reachable: its name, a connection and (for https) TLS, through the
+    outbound proxy where one is set; nothing is sent beyond the TLS handshake. Under a permit for that host alone,
+    governed by the master switch and the blocks; recorded as any contact is."""
+    from . import notify
+    host = net.norm(host)
+    scheme = "http" if host in notify.hosts() and notify.url().startswith("http://") else "https"
+    permit = net.Permit(PROBE, {host}, _recorder(db, None, s, ip))
+    return net.probe(permit, f"{scheme}://{host}/")

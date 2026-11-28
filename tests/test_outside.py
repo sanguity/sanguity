@@ -96,7 +96,7 @@ class Gateway(unittest.TestCase):
 
     def test_unlisted_host_refused_before_anything_is_recorded_or_sent(self):
         seen = []
-        p = net.Permit("Connected source: sync", {"fhir.example.org"}, lambda h, why: seen.append((h, why)))
+        p = net.Permit("A test's own purpose", {"fhir.example.org"}, lambda h, why: seen.append((h, why)))
         for url in ("https://other.example.org/x", "https://fhir.example.org.evil.example/x", "http://127.0.0.2:9/x",
                     "ftp://fhir.example.org/", "https:///nohost"):
             with self.assertRaises(net.Refused, msg=url):
@@ -108,7 +108,7 @@ class Gateway(unittest.TestCase):
         c = net.connection(p, "https://FHIR.example.org:443/api/Patient?x=secret-token")   # not connected yet
         c.close()
         net.connection(p, "https://fhir.example.org/again").close()
-        self.assertEqual(seen, [("fhir.example.org", "Connected source: sync")])   # once, host only
+        self.assertEqual(seen, [("fhir.example.org", "A test's own purpose")])   # once, host only
         self.assertFalse(net.NOTHING.allows("anything.example.org"))
 
     def test_hosts_are_read_again_before_each_request(self):
@@ -651,6 +651,112 @@ class View(unittest.TestCase):
         self.assertEqual(self.lee.get("/api/settings/user").json()["dates.format"], "ymd", "their own choice stays")
         r = nell.put("/api/settings/user/dates.format", json={"value": "mdy"}, headers=H)
         self.assertEqual(r.json()["dates.format"], "mdy", "each person can still change it")
+
+    def setting(self, key, value):
+        r = self.robin.put(f"/api/settings/install/{key}", json={"value": value}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+
+    def test_each_kind_off_the_master_switch_and_a_blocked_host_refused_in_the_gateway(self):   # #1167
+        """Every kind of outside connection, through net.py: with its switch off, with "No outside connections at all"
+        on, and with its host blocked, refused before anything is recorded, looked up or sent, whatever its permit
+        says; and contacted again once it's back on. Changes are an admin's, and logged."""
+        from server import notify, ocr, oidc, updates
+        kinds = {"sources": outside.SOURCE + "sync", "health_links": outside.LINK, "sign_in": oidc.PURPOSE,
+                 "notifications": notify.PURPOSE, "directory": outside.DIRECTORY, "languages": ocr.PURPOSE, "updates": updates.PURPOSE}
+        self.assertEqual(set(kinds), set(outside.KINDS))
+        self.assertEqual({outside.kind_of(p) for p in kinds.values()}, set(outside.KINDS))
+        host = "records.example.org"
+        seen = []
+        permit = lambda purpose: net.Permit(purpose, {host}, lambda h, why: seen.append((h, why)))   # noqa: E731
+        on = {k: outside.kind_on(k) for k in outside.KINDS}
+        self.addCleanup(lambda: [self.setting(outside.KINDS[k][1], v) for k, v in on.items()])
+        netguard.take()
+        for kind, purpose in kinds.items():
+            key = outside.KINDS[kind][1]
+            self.setting(key, True)
+            net.connection(permit(purpose), f"https://{host}/x").close()   # on: allowed (not connected yet)
+            self.setting(key, False)
+            with self.assertRaisesRegex(net.Refused, f"{outside.KINDS[kind][0]} is off under Outside connections"):
+                net.connection(permit(purpose), f"https://{host}/x")
+            with self.assertRaises(net.Refused):
+                net.resolve(permit(purpose), f"https://{host}/x")
+            self.setting(key, True)
+        self.assertEqual(len(seen), len(kinds), "only the allowed ones recorded")
+        self.setting("outside.none", True)
+        self.addCleanup(self.setting, "outside.none", False)
+        for purpose in [*kinds.values(), outside.PROBE]:
+            with self.assertRaisesRegex(net.Refused, "No outside connections at all"):
+                net.connection(permit(purpose), f"https://{host}/x")
+        self.setting("outside.none", False)
+        self.setting("outside.blocked", ["Records.Example.org:443", "10.0.0.5:8443"])
+        self.addCleanup(self.setting, "outside.blocked", [])
+        for purpose in [*kinds.values(), outside.PROBE]:
+            with self.assertRaisesRegex(net.Refused, "records.example.org: it's blocked under Outside connections"):
+                net.connection(permit(purpose), f"https://{host}/x")
+        self.assertEqual(len(seen), len(kinds))
+        self.assertEqual(netguard.take(), [], "nothing looked up or sent")
+        self.assertEqual(self.lee.put("/api/settings/install/outside.none", json={"value": True}, headers=H).status_code, 403)
+        self.assertEqual(self.robin.put("/api/settings/install/outside.blocked", json={"value": ["not a host!"]}, headers=H).status_code, 400)
+        v = self.view(self.robin)
+        self.assertEqual(v["switches"]["blocked"], ["10.0.0.5:8443", "records.example.org"])
+        self.assertEqual([k["kind"] for k in v["switches"]["kinds"]], list(outside.KINDS))
+        self.assertNotIn("switches", self.view(self.lee))
+        db = dbm.connect()
+        logged = [r["detail"].get("setting") for r in __import__("server.activity", fromlist=["x"]).for_accounts(db, limit=50)]
+        db.close()
+        self.assertIn("outside.blocked", logged)
+        self.assertIn("outside.none", logged)
+
+    def test_a_feature_says_its_blocked(self):   # #1167
+        """A Health Link whose host is blocked: the paste says why, and nothing is contacted."""
+        self.setting("outside.healthLinks", False)
+        self.addCleanup(self.setting, "outside.healthLinks", True)
+        link = self.srv.share(shl_server.bundle("2026-02-04"))
+        netguard.take()
+        r = self.robin.post(f"/api/profiles/{self.other}/shl/import", json={"link": link, "confirm": True}, headers=H)
+        self.assertIn("Health Link fetching is off under Outside connections", r.text, r.status_code)
+        self.setting("outside.healthLinks", True)
+        self.setting("outside.blocked", [f"localhost:{self.srv.port}"])
+        self.addCleanup(self.setting, "outside.blocked", [])
+        r = self.robin.post(f"/api/profiles/{self.other}/shl/import", json={"link": link, "confirm": True}, headers=H)
+        self.assertIn("blocked under Outside connections", r.text, r.status_code)
+        self.assertEqual(netguard.take(), [])
+
+    def test_test_a_host_filter_and_clear_the_log(self):   # #1167
+        from server import notify
+        url = self.srv.base + "/topics"
+        self.setting("notify.url", url)
+        self.addCleanup(self.setting, "notify.url", "")
+        host = net.host_of(url)
+        r = self.robin.post("/api/outside/test", json={"host": host}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        steps = r.json()["steps"]
+        self.assertEqual([(x["step"], x["ok"]) for x in steps], [("name", True), ("connect", True), ("tls", False)], steps)
+        self.assertIn("certificate", steps[2]["said"], "its own test certificate, not one this server trusts")
+        self.assertEqual(self.robin.post("/api/outside/test", json={"host": "elsewhere.example.org"}, headers=H).status_code, 404)
+        self.assertEqual(self.lee.post("/api/outside/test", json={"host": host}, headers=H).status_code, 403)
+        self.setting("outside.blocked", [host])
+        r = self.robin.post("/api/outside/test", json={"host": host}, headers=H)
+        self.assertEqual((r.status_code, "blocked under Outside connections" in r.text), (409, True))
+        self.setting("outside.blocked", [])
+        log = self.robin.get("/api/outside/log", params={"kind": "test", "host": host.split(":")[0]}).json()["contacts"]
+        self.assertEqual([(c["host"], c["purpose"]) for c in log], [(host, outside.PROBE)])
+        self.assertEqual(self.robin.get("/api/outside/log", params={"kind": "notifications"}).json()["contacts"], [])
+        self.assertEqual(self.robin.get("/api/outside/log", params={"since": dbm.now() + 3600}).json()["contacts"], [])
+        self.assertEqual(self.robin.get("/api/outside/log", params={"kind": "nonsense"}).status_code, 400)
+        self.assertTrue(all(c["profile"] not in (None, self.other) for c in self.lee.get("/api/outside/log").json()["contacts"]), "their profiles' only")
+        r = self.robin.post("/api/outside/clear", json={}, headers=H)
+        self.assertEqual(r.status_code, 409, "asked first, with how many")
+        n = r.json()["detail"]["confirm"]["count"]
+        self.assertEqual(self.lee.post("/api/outside/clear", json={"confirm": n}, headers=H).status_code, 403)
+        r = self.robin.post("/api/outside/clear", json={"confirm": n}, headers=H)
+        self.assertEqual(r.json(), {"cleared": n})
+        self.assertEqual(self.robin.get("/api/outside/log").json()["contacts"], [])
+        self.assertEqual(self.view(self.robin)["health_links"], [])
+        db = dbm.connect()
+        entry = __import__("server.activity", fromlist=["x"]).for_accounts(db, limit=1)[0]
+        db.close()
+        self.assertEqual((entry["action"], entry["detail"]), ("outside.cleared", {"contacts": n}))
 
     def test_signed_out_gets_nothing(self):
         self.assertEqual(client().get("/api/outside").status_code, 401)

@@ -12,7 +12,8 @@
 let RS = null;   // the server's answer: {settings: [...], restart_needed, trying, fell_back, unreadable, settings_at}
 const rsId = name => "rs-" + name.toLowerCase().replace(/_/g, "-");
 const rsShown = (st, v) => st.kind === "number" ? (st.unit ? `${Number(v).toLocaleString("en-US")} ${st.unit}` : String(v)) : st.choices ? st.choices[v] : v === "" ? "none" : String(v);
-const rsTyped = () => RS ? RS.settings.filter(st => { const i = document.getElementById(rsId(st.name)); return i && i.value.trim() !== String(st.next ?? st.value); }) : [];
+const rsHere = st => st.group !== "Outbound proxy";   // (#1167) the proxy's are on Outside connections (outside.js)
+const rsTyped = () => RS ? RS.settings.filter(rsHere).filter(st => { const i = document.getElementById(rsId(st.name)); return i && i.value.trim() !== String(st.next ?? st.value); }) : [];
 
 async function loadGenRestart(note) {
   try { RS = await call("settings/install/restart"); }
@@ -22,7 +23,7 @@ async function loadGenRestart(note) {
 function rsDraw(note, typed = {}) {
   const body = $("#genRsBody"), back = body.contains(document.activeElement) ? document.activeElement.id : null, rows = [];
   let group = null;
-  for (const st of RS.settings) {
+  for (const st of RS.settings.filter(rsHere)) {
     if (st.group !== group) rows.push(el("h3", {class: "sub", text: group = st.group}), ...rsGroupNote(group));
     const id = rsId(st.name), waits = "next" in st, hint = [st.help,
       st.kind === "number" ? `From ${st.min.toLocaleString("en-US")} to ${st.max.toLocaleString("en-US")}; ${rsShown(st, st.default)} unless changed.` : st.default === "" ? "" : `${rsShown(st, st.default)} unless changed.`,
@@ -39,8 +40,6 @@ function rsDraw(note, typed = {}) {
     row.classList.toggle("set-changed", input.value.trim() !== String(st.next ?? st.value));
     rows.push(row);
   }
-  const lastProxy = rows.findLastIndex(r => RS.settings.some(st => st.group === "Outbound proxy" && r.dataset?.name === st.name));
-  if (lastProxy >= 0) rows.splice(lastProxy + 1, 0, ...rsProxyPwRow());   // (#1159) its password after the proxy's rows
   body.replaceChildren(...rows);
   body.onkeydown = ev => { if (ev.key === "Enter" && ev.target.matches("input")) { ev.preventDefault(); $("#setBar .btn.primary")?.click(); } };   // Enter: the bar's Save
   rsState();
@@ -48,8 +47,8 @@ function rsDraw(note, typed = {}) {
   if (note) sayIn($("#genRsMsg"), note, false, {say: false});
   if (back && !body.contains(document.activeElement)) document.getElementById(back)?.focus({preventScroll: true});
 }
-/* (#1159) under a group's heading: built-in HTTPS's certificate as the next start loads it (its names and expiry, warned
-   30 days before), and the outbound proxy's password, write-only (or the environment's, opt-in) */
+/* (#1159) under Built-in HTTPS's heading: its certificate as the next start loads it (its names and expiry, warned 30
+   days before) */
 function rsGroupNote(group) {
   if (group === "Built-in HTTPS" && RS.https) {
     const h = RS.https;
@@ -58,22 +57,6 @@ function rsGroupNote(group) {
       h.warn ? `, in ${plural(h.days_left, "day")}: renew it soon.` : ".")];
   }
   return [];
-}
-function rsProxyPwRow() {
-  const pw = RS.proxy_password, env = pw.source === "environment";
-  const box = el("input", {type: "password", id: "rsProxyPw", autocomplete: "new-password", "aria-describedby": "rsProxyPwH", disabled: env});
-  return [setRow([el("label", {for: "rsProxyPw", text: "Proxy password"}), el("p", {class: "hint", id: "rsProxyPwH", text: env
-      ? `Managed by the environment (${pw.env}): change it there.` : pw.source ? "Set, and never shown. Type a new one to replace it, or Remove it." : "None set. Only if the proxy asks for one; kept for this proxy alone, and never shown."})],
-    env ? null : el("div", {class: "form inline"}, box,
-      el("button", {type: "button", class: "btn", text: "Set password", onclick: () => rsProxyPw(box.value)}),
-      pw.source ? el("button", {type: "button", class: "btn", text: "Remove", onclick: () => rsProxyPw("")}) : null))];
-}
-async function rsProxyPw(value) {
-  try {
-    await fresh(() => call("outside/proxy-password", "PUT", {value}), $("#genRsReauth"));
-    await loadGenRestart(value ? "The proxy's password is set." : "The proxy's password is removed.");
-    document.getElementById("rsProxyPw")?.focus();
-  } catch (e) { sayIn($("#genRsMsg"), `Not changed: ${e.message}`, true); }
 }
 /* what waits for, or came of, a restart: Restart needed with Restart now; the new values being checked; a fall back */
 function rsState() {

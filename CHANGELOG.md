@@ -166,6 +166,11 @@ Everything on `main` so far; it becomes the first tagged release.
   days ahead), each tried at the next start and kept once healthy; and, on General → This server, the server's name
   (the title and the top bar), an opt-in check for new versions (GitHub's releases only, listed under Outside
   connections) and the time zone, date format and units new people start with.
+- Outside connections you control (#1167): a switch per kind (connected sources, Health Link fetching, the sign-in
+  provider, notifications, provider directory updates, text-recognition downloads, the update check) and "No outside
+  connections at all" over them, any host blocked, each listed host tested (its name, a connection and TLS, through
+  the outbound proxy, which is set here), and the recent contacts filtered by kind, host and date, or cleared (asked
+  first, logged). All enforced in `server/net.py`, the one way out; a feature that can't work says why.
 
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for

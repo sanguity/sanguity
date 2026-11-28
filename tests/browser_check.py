@@ -3925,6 +3925,32 @@ def notify_check(check, browser, base, cookies):
         page.wait_for_function("document.getElementById('outsideBody')?.textContent.includes('Notification server')", timeout=20000)
         txt = js("document.getElementById('outsideBody').innerText")
         check("…and Outside connections lists the notification server's host, with its contact", txt.count(ntfy.host) >= 2, txt[-400:])
+        # (#1167) …where it's tested (its name and a connection, nothing sent), blocked and unblocked by its own buttons,
+        # each change saying so with focus kept; Notifications switched off and on again; the recent contacts filtered
+        # by kind and host
+        page.click(f"#outsideBody button[aria-label='Test {ntfy.host}']")
+        page.locator("#outTestSaid", has_text="a connection worked").wait_for(timeout=10000)
+        tested = js("[document.getElementById('outTestSaid').innerText, document.activeElement.getAttribute('aria-label')]")
+        page.click(f"#outsideBody button[aria-label='Block {ntfy.host}']")
+        page.locator("#outsideMsg", has_text="is blocked").wait_for(timeout=10000)
+        blocked = js(f"!!document.querySelector(\"#outsideBody button[aria-label='Unblock {ntfy.host}']\")")
+        page.click(f"#outsideBody button[aria-label='Unblock {ntfy.host}']")
+        page.locator("#outsideMsg", has_text="isn't blocked now").wait_for(timeout=10000)
+        page.click("#outK-notifications")
+        page.locator("#outsideMsg", has_text="Notifications: off").wait_for(timeout=10000)
+        off = js("[document.getElementById('outK-notifications').checked, document.activeElement.id]")
+        page.click("#outK-notifications")
+        page.locator("#outsideMsg", has_text="Notifications: on").wait_for(timeout=10000)
+        page.select_option("#outLogKind", "notifications")
+        page.fill("#outLogHost", ntfy.host.split(":")[0])
+        page.click("#outsideBody button:has-text('Show')")
+        page.wait_for_function("document.querySelectorAll('#outLog li').length > 0", timeout=10000)
+        shown = js("[...document.querySelectorAll('#outLog li')].map(li => li.textContent)")
+        check("Outside connections (#1167): a host tested (its name and a connection), blocked and unblocked, Notifications off and on, "
+              "focus kept; the recent contacts filtered by kind and host", "its name worked" in tested[0] and tested[1] == f"Test {ntfy.host}"
+              and blocked and off == [False, "outK-notifications"] and shown and all(ntfy.host in x and "Notification server" in x for x in shown),
+              [tested, blocked, off, shown])
+        fits += looks("Outside connections", "#outside")
         check("…each part fits 320–1400 px and 200% text, and draws in forced colours", not fits, fits)
         check("…no serious axe finding there, light or dark", not serious, serious)
     except Exception as e:
@@ -4357,8 +4383,8 @@ def main():
               and got1121["dirty"] == "1" and got1121["saved"][1:] == [4096, "Restart needed", False] and "apply once the server restarts" in got1121["saved"][0]
               and got1121["after"][:3] == [[1], 2048, False] and "checking them" in got1121["after"][3], [got1121, errs1121])
         # General → This server (#1159): the server's name goes into the browser's title and the top bar at once; a
-        # default for new people saved as it's picked; Needs a restart offers the log level as a choice and the outbound
-        # proxy's password, write-only, after the proxy's rows
+        # default for new people saved as it's picked; Needs a restart offers the log level as a choice, and the outbound
+        # proxy with its write-only password is on Outside connections (#1167)
         ctx1159 = browser.new_context(viewport={"width": 1400, "height": 900})
         ctx1159.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
         p1159, errs1159, got1159 = ctx1159.new_page(), [], {}
@@ -4375,9 +4401,10 @@ def main():
             got1159["format"] = p1159.evaluate("[document.getElementById('giFormat').value, document.activeElement.id]")
             got1159["fits"] = p1159.evaluate("document.documentElement.scrollWidth <= innerWidth")
             p1159.goto(base + "/settings.html?profile=1#gen-restart")
-            p1159.wait_for_selector("#rsProxyPw", timeout=20000)
+            p1159.wait_for_selector("#rs-log-level", timeout=20000)
+            p1159.wait_for_selector("#outPxPw", timeout=20000)
             got1159["restart"] = p1159.evaluate("""[[...document.querySelectorAll('#rs-log-level option')].map(o => o.textContent),
-                [...document.querySelectorAll('#genRsBody .set-row')].slice(-2).map(r => r.dataset.name || r.querySelector('label')?.textContent)]""")
+                !!document.querySelector('#genRsBody [data-name=OUTBOUND_PROXY]'), !!document.querySelector('#outPx-OUTBOUND_PROXY'), !!document.querySelector('#outPxPw')]""")
         except Exception as e:
             got1159["stopped"] = stopped(e)
         finally:
@@ -4386,10 +4413,10 @@ def main():
             strict.request.put(base + "/api/settings/install/defaults/dates.format", data=json.dumps({"value": None}), headers={"X-Sanguity": "1", "Content-Type": "application/json"})
             ctx1159.close()
         check("General → This server (#1159): its name in the title and the top bar at once, a default for new people saved as "
-              "it's picked; Needs a restart's log level a choice, the proxy's password after the proxy's rows", "stopped" not in got1159
+              "it's picked; Needs a restart's log level a choice; the outbound proxy and its password on Outside connections (#1167)", "stopped" not in got1159
               and not errs1159 and got1159["name"] == ["Settings: General · Sanguity · Home lab", "Sanguity · Home lab"]
               and got1159["format"] == ["dmy", "giFormat"] and got1159["fits"]
-              and got1159["restart"] == [["Info", "Debug", "Trace"], ["OUTBOUND_PROXY_BYPASS", "Proxy password"]], [got1159, errs1159])
+              and got1159["restart"] == [["Info", "Debug", "Trace"], False, True, True], [got1159, errs1159])
         # (#991) This person's and You's sections show the profile's and the person's own settings only: a server's own
         # (scope "install", as General's will be, #1000-#1004) is Install's, read from /api/settings/install, even where
         # the profile's sections list it beside theirs. One answered here into Dates and times, and a section of its own

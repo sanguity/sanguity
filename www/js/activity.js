@@ -69,6 +69,7 @@ const WHAT = {
   "settings.install": d => d.taken ? `took these settings from the environment, once, into the settings: ${d.changes.map(c => `“${c.label}”`).join(", ")} (from now on they're changed here)`   // (#1158)
     : d.section ? `reset the server's ${d.label || d.section} settings` + (d.changes?.length ? ` (${d.changes.map(c => `“${c.label}” from ${setVal(c.from)} to ${setVal(c.to)}`).join("; ")})` : "")
     : `${d.reset ? "put" : "changed"} the server setting “${d.label || d.setting}”${d.reset ? " back to its default" : ""}` + ("to" in d ? ` (from ${setVal(d.from)} to ${setVal(d.to)})` : ""),   // (#1006: its values)
+  "outside.cleared": d => `cleared the history of outside contacts (${d.contacts} ${d.contacts === 1 ? "contact" : "contacts"})`,   // (#1167)
   "server.restart": d => (d.fell_back ? "started with the settings before: the new ones didn't run healthy" : "restarted the server")   // (#1121)
     + (d.changes?.length ? ` (${d.changes.map(c => `“${c.label}” from ${setVal(c.from)} to ${setVal(c.to)}`).join("; ")})` : ""),
   calendar: d => ({create: `made a calendar feed (${d.details === "full" ? "full" : "minimal"} details)`, rotate: "gave their calendar feed a new address",

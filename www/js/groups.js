@@ -156,7 +156,7 @@ const SG_PAGES = {
         "new return address redirect uri sandbox use add another notes name people see fhir base how signs scopes ask"],   // (#506: a source's buttons; #510: its form's; #515: delete; #519: its return address)
        ["Sync defaults", "sec-sync", "attachments"],
        ["Provider directory", "directory", "providers epic oracle cerner hospitals lists add the update now download keep them up to date weekly"]]},
-    {id: "outside", title: "Outside connections", icon: "globe", part: "Install", admin: true, has: ["outside"], place: "admin", words: "network internet"},
+    {id: "outside", title: "Outside connections", icon: "globe", part: "Install", admin: true, has: ["outside"], place: "admin", words: "network internet block host proxy socks test reachability switch no outside connections log history clear"},
     {id: "install-about", title: "About", icon: "info", part: "Install", admin: true, has: ["install-about"], place: "admin",
      words: "version release releases what's new schema database deployed deployment truenas unraid casaos docker folders runs as user uid gid configuration limits upload size zip journal photo sync attachment timeout health links " +
         "server internal port bind secure session cookie"},   // (#1004; Host's and Security's before, #1119)
