@@ -293,8 +293,10 @@ function ovRecord() {
       periodVisit("all"); kindsVisit(["immunization"]); pickTab("timeline"); }}, `All ${imms.length} on the Timeline `, icon("arrow-right")));
     left.push(ic);
   }
-  const fam = ovFamily();   // (#1134) family history, grouped by relative (family.js)
-  if (fam) left.push(fam);
+  // (#1134) family history, grouped by relative (family.js); with no relative yet, only beside the record's other cards:
+  // a Health record with nothing else says what would be there (#440), Add a relative in the palette
+  const fam = ovFamily();
+  if (fam && (left.length || famGroups().length || (DATA.hiddenFamily || []).length)) left.push(fam);
   // Recent: the clinical records (cycle records only in their lane, #183), and the watch's workouts in one line: those
   // of the 30 days to the latest one
   const recent = EV.filter(e => !e.hidden && !NOT_CLINICAL.has(e.k)).sort((a, b) => b.ts - a.ts).slice(0, 8);
@@ -321,7 +323,7 @@ function ovRecord() {
     right.push(ovHead(pm ? `Insurance costs since ${lcLabel(pm.label)}` : "Insurance costs"), cc);
   }
   return el("div", {class: "ov-cols"}, el("div", {}, ovHead("Health record"),
-    ...(left.length ? left : [ovNone("Active problems, allergies and immunizations appear here, as the records list them.")])), el("div", {}, ...right));
+    ...(left.length ? left : [ovNone("Active problems, allergies, immunizations and family history appear here, as the records list them.")])), el("div", {}, ...right));
 }
 
 /* nothing imported yet, whatever there is of a journal or a watch (#477: the empty profile's card, #199, is gone once
