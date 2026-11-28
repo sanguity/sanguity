@@ -133,6 +133,8 @@ ROUTES = {
     ("POST", "/api/profiles/{pid}/journal"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/journal/{jid}"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/journal/{jid}"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/journal/group"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/journal/photos"): (USER, "editor"),   # #161
+    ("PUT", "/api/profiles/{pid}/journal/spots/{sid}"): (USER, "editor"), ("POST", "/api/profiles/{pid}/journal/spots/{sid}/merge"): (USER, "editor"),
+    ("DELETE", "/api/profiles/{pid}/journal/spots/photos/{photo_id}"): (USER, "editor"),   # spots (#1139)
 
     ("POST", "/api/profiles/{pid}/medications/reminders"): (USER, "editor"),   # medication reminders (#162)
     ("PUT", "/api/profiles/{pid}/medications/reminders/{rid}"): (USER, "editor"),

@@ -14,6 +14,13 @@ entry's own encrypted body. Served only to people who can view the profile (rout
 (journal/photos/), in backups with the profile's folder, and through a share link only when its owner ticked
 "Photos in the journal" (share_links.py). Undoing or replacing an import never touches them.
 
+Spots (#1139): a photo can be of a named spot ("Left forearm mole"; journal_spots, schema version 50, its name
+encrypted), so the page can show one place over time, side by side. Tagged as its entry is saved ("photos": [{"id",
+"alt", "spot": its name}]: an earlier spot's, in any letter case, or a new one), and renamed, merged into another or
+taken off a photo on its own (rename_spot, merge_spots, untag). A spot no photo is of any more goes (tidy_spots). The
+records list each photo's spot ({"id", "name"}), so "Export everything" carries it by name and loading the export
+tags its photos again; backups have the table with the rest of the database. Nothing is worked out from the pictures.
+
 Checked and cleaned before anything is stored:
   - only JPEG, PNG and WebP pictures, by what the file is, never by its name; anything else, or a file that isn't a
     whole picture of its type, is refused. HEIC (iPhone) is refused with a word on how to send a JPEG instead.
@@ -36,7 +43,7 @@ import os, secrets, struct
 from . import config, crypto, db as dbm
 
 TYPES = {"jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
-MAX_PER_ENTRY, MAX_PENDING, ALT_MAX = 6, 30, 300
+MAX_PER_ENTRY, MAX_PENDING, ALT_MAX, SPOT_MAX = 6, 30, 300, 80
 PENDING_SECONDS = 86400
 
 
@@ -351,24 +358,122 @@ def check(db, pid, photos, jid=None):
         if not r or (r["entry_id"] is not None and r["entry_id"] != jid):
             raise PhotoError("A photo isn't here any more: attach it again.")
         seen.add(pid_)
-        out.append({"id": pid_, "alt": alt})
+        spot = spot_name(p.get("spot"))
+        out.append({"id": pid_, "alt": alt, **({"spot": spot} if spot else {})})
     return out
 
 
-def attach(db, pid, jid, photos):
-    """Make the entry's photos exactly these (call inside a transaction, after check()); the ones it no longer lists
-    are deleted, their files once it commits (#591: a save that fails keeps them); and abandoned ones are swept."""
+def kept(photos):
+    """The photos as the entry's body keeps them, [{"id", "alt"}]: which spot each is of is its own row's (spot_id)."""
+    return [{"id": p["id"], "alt": p["alt"]} for p in photos]
+
+
+def attach(db, pid, jid, photos, user_id=None):
+    """Make the entry's photos exactly these (call inside a transaction, after check()), each of the spot it names or
+    of none (#1139); the ones it no longer lists are deleted, their files once it commits (#591: a save that fails
+    keeps them); and abandoned ones are swept, as are spots no photo is of any more."""
     keep = [p["id"] for p in photos]
     for r in db.execute("SELECT id, file FROM journal_photos WHERE profile_id=? AND entry_id=?", (pid, jid)).fetchall():
         if r["id"] not in keep:
             _delete(db, pid, r["id"], r["file"])
     _sweep(db, pid)
-    db.executemany("UPDATE journal_photos SET entry_id=? WHERE id=? AND profile_id=?", [(jid, i, pid) for i in keep])
+    have = spots(db, pid) if any(p.get("spot") for p in photos) else {}
+    for p in photos:
+        sid = spot_named(db, pid, p["spot"], user_id, have) if p.get("spot") else None
+        db.execute("UPDATE journal_photos SET entry_id=?, spot_id=? WHERE id=? AND profile_id=?", (jid, sid, p["id"], pid))
+    tidy_spots(db, pid)
 
 
 def drop_entry(db, pid, jid):
     """Delete an entry's photos (call inside the transaction that deletes the entry)."""
     attach(db, pid, jid, [])
+
+
+# ---------------------------------------------------------------- spots (#1139)
+
+def spot_name(v):
+    """A spot's name as kept: its spaces evened out; "" for none. PhotoError when it isn't text or is too long."""
+    if v is None:
+        return ""
+    if not isinstance(v, str):
+        raise PhotoError("A spot's name must be text.")
+    v = " ".join(v.split())
+    if len(v) > SPOT_MAX:
+        raise PhotoError(f"A spot's name is too long (at most {SPOT_MAX} characters).")
+    return v
+
+
+def spots(db, pid):
+    """{spot id: its name} of the profile's spots."""
+    return {r["id"]: crypto.dec(r["name"]) for r in db.execute("SELECT id, name FROM journal_spots WHERE profile_id=?", (pid,))}
+
+
+def spot_named(db, pid, name, user_id=None, have=None):
+    """The id of the profile's spot called name, in any letter case, made when there's none. have: spots(), kept up
+    to date with one made here."""
+    have = spots(db, pid) if have is None else have
+    for i, n in have.items():
+        if n.casefold() == name.casefold():
+            return i
+    i = db.execute("INSERT INTO journal_spots(profile_id, name, created, created_by) VALUES(?, ?, ?, ?)",
+                   (pid, crypto.enc(name), dbm.now(), user_id)).lastrowid
+    have[i] = name
+    return i
+
+
+def tidy_spots(db, pid):
+    """Remove the profile's spots no photo is of any more (their last photo untagged, or deleted with its entry)."""
+    db.execute("""DELETE FROM journal_spots WHERE profile_id=? AND id NOT IN
+                  (SELECT spot_id FROM journal_photos WHERE profile_id=? AND spot_id IS NOT NULL)""", (pid, pid))
+
+
+def _entries_of(db, pid, sid):
+    return [r[0] for r in db.execute("""SELECT DISTINCT entry_id FROM journal_photos WHERE profile_id=? AND spot_id=?
+                                        AND entry_id IS NOT NULL ORDER BY entry_id""", (pid, sid))]
+
+
+def _spots_with(db, pid, *ids):
+    """spots(), or PhotoError (404) when one of ids isn't the profile's spot (a page from before it was merged)."""
+    have = spots(db, pid)
+    if any(isinstance(i, bool) or not isinstance(i, int) or i not in have for i in ids):
+        raise PhotoError("That spot isn't here any more: reload the page to see the spots as they are now.", 404)
+    return have
+
+
+def rename_spot(db, pid, sid, name):
+    """Call a spot something else; never what another is called (merge the two instead). Returns the ids of the
+    entries whose photos are of it."""
+    have, name = _spots_with(db, pid, sid), spot_name(name)
+    if not name:
+        raise PhotoError("Give the spot a name.")
+    other = next((n for i, n in have.items() if i != sid and n.casefold() == name.casefold()), None)
+    if other is not None:
+        raise PhotoError(f"There's a spot called “{other}” already: merge the two instead.", 409)
+    db.execute("UPDATE journal_spots SET name=? WHERE id=? AND profile_id=?", (crypto.enc(name), sid, pid))
+    return _entries_of(db, pid, sid)
+
+
+def merge_spots(db, pid, sid, into):
+    """Make every photo of spot sid one of spot into, which keeps its name; sid goes. Returns the ids of the entries
+    whose photos changed."""
+    _spots_with(db, pid, sid, into)
+    if sid == into:
+        raise PhotoError("Pick another spot to merge it with.")
+    changed = _entries_of(db, pid, sid)
+    db.execute("UPDATE journal_photos SET spot_id=? WHERE profile_id=? AND spot_id=?", (into, pid, sid))
+    tidy_spots(db, pid)
+    return changed
+
+
+def untag(db, pid, photo_id):
+    """Take a photo off its spot; it stays with its entry. Returns the entry's id, or PhotoError (404)."""
+    r = db.execute("SELECT entry_id FROM journal_photos WHERE id=? AND profile_id=? AND entry_id IS NOT NULL AND spot_id IS NOT NULL",
+                   (photo_id, pid)).fetchone()
+    if not r:
+        raise PhotoError("That photo isn't of a spot any more.", 404)
+    db.execute("UPDATE journal_photos SET spot_id=NULL WHERE id=?", (photo_id,))
+    tidy_spots(db, pid)
+    return r["entry_id"]
 
 
 def get(db, pid, photo_id, attached=True):
@@ -380,9 +485,11 @@ def get(db, pid, photo_id, attached=True):
 
 
 def info(db, pid):
-    """{photo id: {"type", "bytes"}} of every photo an entry lists."""
-    return {r["id"]: {"type": r["type"], "bytes": r["bytes"]} for r in
-            db.execute("SELECT id, type, bytes FROM journal_photos WHERE profile_id=? AND entry_id IS NOT NULL", (pid,))}
+    """{photo id: {"type", "bytes", "spot"?: {"id", "name"}}} of every photo an entry lists."""
+    rows = db.execute("SELECT id, type, bytes, spot_id FROM journal_photos WHERE profile_id=? AND entry_id IS NOT NULL", (pid,)).fetchall()
+    names = spots(db, pid) if any(r["spot_id"] for r in rows) else {}
+    return {r["id"]: {"type": r["type"], "bytes": r["bytes"],
+                      **({"spot": {"id": r["spot_id"], "name": names[r["spot_id"]]}} if r["spot_id"] in names else {})} for r in rows}
 
 
 def stored(db, pid):
