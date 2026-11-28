@@ -148,7 +148,9 @@ def lookup(name):
         try:
             return "environment", v.read(text.strip())
         except ValueError:   # unreadable: as if it weren't set (unreadable() says so at start)
-            pass
+            if name in RESTART and not v.setting:   # (#1121) never the page's file instead: it's set, so the default
+                return "environment", v.default
+
     if v.setting and saved is not None and not saved_ignored():
         have = saved()
         if v.setting in have:

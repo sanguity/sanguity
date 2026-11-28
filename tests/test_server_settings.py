@@ -156,7 +156,7 @@ class RestartSettings(unittest.TestCase):
         for name, v in BAD.items():
             r = self.put({name: v})
             self.assertEqual(r.status_code, 400, (name, v, r.text))
-        for v in ("", "*, 10.0.0.1", "10.0.0.1/40", ["10.0.0.1"] * 21):
+        for v in ("", "*, 10.0.0.1", "::/0, 10.0.0.1", "10.0.0.1/40", ["10.0.0.1"] * 21):
             self.assertEqual(self.put({"FORWARDED_ALLOW_IPS": v}).status_code, 400 if v else 200, v)
         self.assertEqual(self.put({"NOT_A_SETTING": 1}).status_code, 404)
         self.assertEqual(self.put({"SESSION_DAYS": 3}).status_code, 404, "one that applies at once isn't changed here")
@@ -320,6 +320,76 @@ class RestartSettings(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             manage.run(["config", "reset", "SHL_TIMEOUT"])
         self.assertIn("nothing to reset", out.getvalue())
+
+    def test_k_the_environment_always_wins(self):
+        """#1131's review: a variable the environment sets is in force even where these checks wouldn't take it (more
+        than 20 proxies, as Cloudflare's 22 ranges, a "unix:" one, * among others, a zone this machine doesn't know, a
+        number it can't read): never dropped for the file's or the default's in silence. Locked on the page, given to
+        uvicorn as it's set, and a warning logged."""
+        self.put({"FORWARDED_ALLOW_IPS": "10.0.0.5", "SLOT_GRACE_DAYS": 30, "UPLOAD_MAX_FILE_MB": 2048})
+        restart()
+        cloudflare = ", ".join(f"198.51.{i}.0/24" for i in range(22))
+        for env, want in ((cloudflare, cloudflare), ("unix:/run/proxy.sock", "unix:/run/proxy.sock"), ("*, 10.0.0.1", "*, 10.0.0.1")):
+            with mock.patch.dict(os.environ, {"FORWARDED_ALLOW_IPS": env}), self.assertLogs("sanguity", "WARNING") as said:
+                ss._warned.clear()
+                self.assertEqual(ss.lookup("FORWARDED_ALLOW_IPS"), ("environment", want))
+                self.assertEqual(ss.uvicorn_options()["forwarded_allow_ips"], want)
+                row = self.row("FORWARDED_ALLOW_IPS")
+                self.assertEqual((row["from"], row["can_change"]), ("environment", False))
+                self.assertEqual(self.put({"FORWARDED_ALLOW_IPS": "10.0.0.6"}).status_code, 409)
+            self.assertIn("FORWARDED_ALLOW_IPS", said.output[0])
+        with mock.patch.dict(os.environ, {"TZ": "Mars/Olympus_Mons", "SLOT_GRACE_DAYS": "soon", "UPLOAD_MAX_FILE_MB": "lots"}):
+            with self.assertLogs("sanguity", "WARNING"):
+                ss._warned.clear()
+                self.assertEqual(ss.lookup("TZ"), ("environment", "Mars/Olympus_Mons"))
+                self.assertEqual(ss.lookup("SLOT_GRACE_DAYS"), ("environment", 7), "the receiver's reading of one it can't")
+            self.assertEqual(ss.lookup("UPLOAD_MAX_FILE_MB"), ("environment", 4096), "not the file's 2048")
+            self.assertEqual({r["name"]: r["can_change"] for r in self.state()["settings"] if r["name"] in ("TZ", "SLOT_GRACE_DAYS", "UPLOAD_MAX_FILE_MB")},
+                             {"TZ": False, "SLOT_GRACE_DAYS": False, "UPLOAD_MAX_FILE_MB": False})
+
+    def test_l_trusting_everyone_and_the_proxy_in_between(self):
+        """#1131's review: 0.0.0.0/0 and ::/0 are *; trusting everyone is typed to confirm first (the one rule's 409); a
+        list that leaves out the proxy the saving request came through is refused."""
+        self.assertEqual(ss.proxies("0.0.0.0/0"), "*")
+        self.assertEqual(ss.proxies("::/0"), "*")
+        with self.assertRaises(ss.Refused):
+            ss.proxies("0.0.0.0/0, 10.0.0.1")
+        for v in ("*", "0.0.0.0/0"):
+            r = self.put({"FORWARDED_ALLOW_IPS": v})
+            self.assertEqual(r.status_code, 409, r.text)
+            self.assertEqual(r.json()["detail"]["code"], "confirm")
+            self.assertIn("any address", r.json()["detail"]["confirm"]["message"])
+        self.assertEqual(ss.next_values(), {})
+        r = self.c.put("/api/settings/install/restart/values", json={"values": {"FORWARDED_ALLOW_IPS": "*"}, "confirm": "trust everyone"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(ss.next_values(), {"FORWARDED_ALLOW_IPS": "*"})
+        self.put({"FORWARDED_ALLOW_IPS": None})
+        # through a proxy at 10.0.0.5 that the server trusts now (python -m server's app: PeerKept keeps the peer)
+        via = TestClient(ss.asgi_app(main.app, "10.0.0.5"), client=("10.0.0.5", 50000))
+        self.assertEqual(via.post("/api/login", json={"username": "ada", "password": PW}, headers=H).status_code, 200)
+        fwd = {**H, "X-Forwarded-For": "203.0.113.9"}
+        r = via.put("/api/settings/install/restart/values", json={"values": {"FORWARDED_ALLOW_IPS": "172.16.0.0/12"}}, headers=fwd)
+        self.assertEqual(r.status_code, 409, r.text)
+        self.assertIn("10.0.0.5", r.json()["detail"])
+        r = via.put("/api/settings/install/restart/values", json={"values": {"FORWARDED_ALLOW_IPS": None}}, headers=fwd)
+        self.assertEqual(r.status_code, 409, "the default, 127.0.0.1, leaves it out too")
+        r = via.put("/api/settings/install/restart/values", json={"values": {"FORWARDED_ALLOW_IPS": "10.0.0.0/8"}}, headers=fwd)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(ss.next_values(), {"FORWARDED_ALLOW_IPS": "10.0.0.0/8"})
+        direct = TestClient(ss.asgi_app(main.app, "127.0.0.1"), client=("192.0.2.7", 50000))   # no proxy in between: no guard
+        self.assertEqual(direct.post("/api/login", json={"username": "ada", "password": PW}, headers=H).status_code, 200)
+        r = direct.put("/api/settings/install/restart/values", json={"values": {"FORWARDED_ALLOW_IPS": "172.16.0.0/12"}}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+
+    def test_m_restart_now_says_who_starts_it_again(self):
+        """#1131's review: Restart now's question says Sanguity starts again only where its container restarts it; on an
+        install no template names, that nothing is known to."""
+        with mock.patch.dict(os.environ, {"SANGUITY_DEPLOYMENT": "compose"}):
+            self.assertIn("starts again only because its container restarts it automatically", self.state()["restart_says"])
+        with mock.patch.dict(os.environ, {"SANGUITY_DEPLOYMENT": ""}):
+            says = self.state()["restart_says"]
+        self.assertIn("nothing is known to start it again", says)
+        self.assertIn("stays stopped until you start it yourself", says)
 
 
 if __name__ == "__main__":
