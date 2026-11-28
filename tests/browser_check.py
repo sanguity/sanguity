@@ -30240,6 +30240,7 @@ def main():
                   why540 == [f"Passkeys don't work at an IP address. Open Sanguity at {here540} to use one.", [[here540, here540 + "/settings.html"]]], why540)
             page.goto(base + "/settings.html?profile=1#accounts")
             page.wait_for_selector("#userList tbody tr", timeout=10000)
+            page.wait_for_selector("#signin-secret", state="visible", timeout=10000)   # (Sign-in provider's, drawn by its own request: CI collected before it)
             js("() => { confirmIdentity().catch(() => {}); }")   # (as the server asks for it; with an authenticator app, #532)
             page.wait_for_selector("#reauth .pw input", timeout=5000)
             pw492["admin"] = js(pw_fields)
@@ -30248,7 +30249,7 @@ def main():
             page.goto(base + "/settings.html?profile=1#gen-notify")   # (#1130: Notifications' access token, General's)
             page.wait_for_selector("#notifyToken", timeout=10000)
             pw492["admin"] += js(pw_fields)
-            page.goto(base + "/settings.html?profile=1#apps")
+            page.goto(base + "/settings.html?profile=1#admin")   # (#apps before #1153)
             page.wait_for_function("!document.getElementById('admin').hidden && document.getElementById('returnAddr').textContent.length > 5",
                                    timeout=10000)   # (its form filled first, which sets the sign-in kind)
             page.select_option("#fAuth", "confidential")
