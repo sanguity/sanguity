@@ -887,6 +887,10 @@ def _groups_check(v):
         raise SettingError(str(e)) from None
 
 
+section("costs", "Costs", "The month a tax year starts in, for Costs' tax-year report.")
+define("costs.taxStart", "costs", "Tax year starts in", 1, whole(1, 12, "The tax year's first month"), kind="month", screen=False,
+       private=False, help="The first month of the tax year (1, January, for the calendar year). Costs' tax-year report "
+                           "(taxreport.py, #1136) sums the payments from it.")
 section("journal", "Journal", "Symptom groups: your own named sets of symptoms, logged in one go.")
 define("journal.groups", "journal", "Symptom groups", [], _groups_check, kind="groups", screen=False,
        help="Named sets of symptoms, such as “Migraine day”: headache, nausea, light sensitivity. Each is logged with "

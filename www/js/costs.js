@@ -428,7 +428,7 @@ function renderPaid(box, claimRows, periodLabel) {
     onclick: () => { paidState.limit = shown + 200; renderCosts(); document.querySelectorAll("#paidTable tbody tr[data-oop] .cell-btn")[shown]?.focus(); }}));   // the first one added
   if (edit && !edit.parentElement) tw.append(edit);   // its row not listed (a row above picked since): under the list
   card.append(tw);
-  box.append(...present(card, billCard()));   // the bills typed in, under every amount (#1128)
+  box.append(...present(card, billCard(), taxCard()));   // the bills typed in, under every amount (#1128); the tax-year report (#1136)
 }
 /* ---- plan years (#1127): how much of the deductible and the out-of-pocket max the claims' shares have met, per plan
    year typed in here (owners and editors), else per calendar year with no limits. The sums are the server's
@@ -606,6 +606,53 @@ function billCard() {
     if (billState.edit === b.id) part.append(billForm(b));
     card.append(part);
   }
+  return card;
+}
+/* ---- the tax-year report (#1136): a tax year's payments as one zip, a PDF summary, a CSV and the receipts
+   (server/taxreport.py). The year is the calendar year, or from the month the profile's setting costs.taxStart says
+   (owners and editors change it here); its preview (total, how many, how many without a receipt) is the server's,
+   so it's exactly what the zip holds. Facts only, with a word to check what counts with a tax adviser */
+const taxState = {year: null, seen: {}};   // the year picked; previews by "year/month"
+const taxStart = () => Math.min(12, Math.max(1, Math.round(+(CFG.costs || {}).taxStart || 1)));
+const taxYearOf = (d, m) => +d.slice(0, 4) - (+d.slice(5, 7) < m ? 1 : 0);
+const taxLabel = (y, m) => m === 1 ? String(y) : `${y}–${String(y + 1).slice(2)}`;
+const MONTH_NAMES = Array.from({length: 12}, (_, i) => new Date(2026, i, 15).toLocaleDateString("en-US", {month: "long"}));
+async function taxPreview(y, m) {
+  const k = `${y}/${m}`, out = $("#taxSays");
+  if (!taxState.seen[k]) {
+    try {
+      const r = await api(`profiles/${PROFILE.id}/costs/tax-report?year=${y}&preview=1`), j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(typeof j.detail === "string" ? j.detail : `${r.status}`);
+      taxState.seen[k] = j;
+    } catch (e) { if (out) sayIn(out, "Couldn't get the year's figures: " + e.message, true); return; }
+  }
+  const j = taxState.seen[k];
+  if (!out || taxState.year !== y || taxStart() !== m) return;   // another picked since
+  out.textContent = `${fmtD(dayTs(j.from))} to ${fmtD(dayTs(j.to))}: ${usd2(j.total)} in ${j.count} payment${j.count === 1 ? "" : "s"}`
+    + ` · ${j.receipts} with a receipt · ${j.missing} without one.`;
+}
+function taxCard() {
+  const m = taxStart(), ys = [...new Set(oopRows().filter(r => r.type === "pay" && r.dup == null && r.d).map(r => taxYearOf(r.d, m)))].sort((a, b) => b - a);
+  if (!ys.length) return null;
+  if (!ys.includes(taxState.year)) taxState.year = ys[0];
+  const y = taxState.year;
+  const year = el("select", {id: "taxYear", onchange: e => { taxState.year = +e.target.value; keepFocus(renderCosts); }},
+    ...ys.map(v => el("option", {value: String(v), selected: v === y || null, text: taxLabel(v, m)})));
+  const month = canEdit() ? el("select", {id: "taxMonth", class: "needs-server", onchange: async e => {
+    const v = +e.target.value, msg = $("#taxSays");
+    try {
+      const r = await api(`profiles/${PROFILE.id}/settings/costs.taxStart`, {method: "PUT", body: JSON.stringify({value: v})}), j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(typeof j.detail === "string" ? j.detail : `${r.status}`);
+      CFG.costs = {...CFG.costs, taxStart: v}; taxState.year = null; keepFocus(renderCosts); $("#taxMonth")?.focus(); announce("Tax year start saved.");
+    } catch (x) { sayIn(msg, "Couldn't save it: " + x.message, true); }
+  }}, ...MONTH_NAMES.map((n, i) => el("option", {value: String(i + 1), selected: i + 1 === m || null, text: n}))) : null;
+  const card = el("div", {class: "card", id: "taxCard"}, el("h2", {text: "Tax-year report"}),
+    el("p", {class: "hint", text: "One zip of a tax year's payments: a printable summary, a spreadsheet (CSV) of every payment and the receipts on file, each named by its row. It says what was paid, when and to whom; what counts for taxes, check with a tax adviser."}),
+    el("div", {class: "oop-form"}, el("label", {for: "taxYear"}, el("span", {text: "Tax year"}), year),
+      month ? el("label", {for: "taxMonth"}, el("span", {text: "Tax year starts in"}), month) : el("p", {class: "hint", text: `The tax year starts in ${MONTH_NAMES[m - 1]}.`}),
+      el("a", {class: "btn primary needs-server", id: "taxGet", href: `api/profiles/${PROFILE.id}/costs/tax-report?year=${y}`, download: "", text: "Download the zip"})),
+    el("p", {id: "taxSays", class: "my-2", role: "status", text: "Adding up the year…"}));
+  requestAnimationFrame(() => taxPreview(y, m));
   return card;
 }
 /* ---- the charts (#300), on the chart kit (chartkit.js): its scales, value grid, time axis, crosshair and pinned

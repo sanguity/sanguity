@@ -49,7 +49,7 @@ on any script error, console error, failed request, request to another host or N
   python3 tests/browser_check.py --part records        # what every part shares, then one part's checks (--parts lists them)
   BROWSER_CHECK_FULL=1 python3 tests/browser_check.py  # the size sweeps at every width, not their sample (#1029)
 """
-import json, os, re, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request
+import json, os, re, shutil, socket, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request, zipfile
 from decimal import Decimal
 
 from playwright.sync_api import sync_playwright
@@ -18207,6 +18207,35 @@ def main():
             page.wait_for_function("!(DATA.oop.bills || []).length", timeout=10000)
             check("…and removed, focus on the bills' heading", js("document.activeElement.textContent") == "Bills", js("document.activeElement.outerHTML.slice(0, 80)"))
             js("billState.edit = null; costState.view = 'claims'; renderCosts()")
+            # ---- the tax-year report (#1136): a year picked, its preview (the server's: total, how many, without a
+            # receipt), the tax year's start month changed and kept, the zip downloaded (summary.pdf, payments.csv);
+            # 320 px
+            js("applyPreset('all'); costState.view = 'paid'; taxState.year = null; renderCosts()")
+            page.wait_for_function("/payments? ·/.test(document.getElementById('taxSays')?.textContent || '')", timeout=10000)
+            y1136 = js("taxState.year")
+            p1136 = js("y => api(`profiles/${PROFILE.id}/costs/tax-report?year=${y}&preview=1`).then(r => r.json())", y1136)
+            says1136 = page.inner_text("#taxSays")
+            check("Costs' tax-year report: the newest year picked, its total, payments and receipts said as the server counts them (#1136)",
+                  js("j => usd2(j.total)", p1136) in says1136 and f"{p1136['count']} payment" in says1136 and f"{p1136['missing']} without" in says1136
+                  and p1136["from"].endswith("-01-01"), [says1136, p1136])
+            with page.expect_download(timeout=30000) as dl1136:
+                page.click("#taxGet")
+            names1136 = zipfile.ZipFile(dl1136.value.path()).namelist()
+            check("…Download the zip gets its summary, its CSV and its receipts, named as it says", names1136[:2] == ["summary.pdf", "payments.csv"]
+                  and all(re.fullmatch(r"receipts/\d{3}-\d{4}-\d\d-\d\d\.[a-z0-9]+", n) for n in names1136[2:])
+                  and dl1136.value.suggested_filename == f"sanguity-tax-year-{y1136}.zip", [names1136[:5], dl1136.value.suggested_filename])
+            page.select_option("#taxMonth", "4")
+            page.wait_for_function("CFG.costs && CFG.costs.taxStart === 4 && /Apr 1/.test(document.getElementById('taxSays')?.textContent || '')", timeout=10000)
+            check("…its tax year started in April instead: kept as the profile's setting, the years named “2026–27”, focus kept on the month",
+                  js("[document.querySelector('#taxYear option:checked').textContent, document.activeElement.id]")[1] == "taxMonth"
+                  and "–" in js("document.querySelector('#taxYear option:checked').textContent"), js("[document.querySelector('#taxYear option:checked').textContent, document.activeElement.id, document.getElementById('taxSays').textContent]"))
+            page.set_viewport_size({"width": 320, "height": 800})
+            settle(300)
+            check("…the tax-year report fits 320 px", js("document.documentElement.scrollWidth") <= 320, js("document.documentElement.scrollWidth"))
+            page.set_viewport_size({"width": 1400, "height": 900})
+            page.select_option("#taxMonth", "1")
+            page.wait_for_function("CFG.costs.taxStart === 1 && /Jan 1/.test(document.getElementById('taxSays')?.textContent || '')", timeout=10000)
+            js("costState.view = 'claims'; renderCosts()")
 
             # ---- readings typed in at home (#224): blood pressure, glucose, temperature and blood oxygen typed on Sources
             # for the demo person, whose phone sends the same measures; checked as typed (plausible values, the unit),
