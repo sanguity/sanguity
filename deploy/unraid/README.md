@@ -4,7 +4,7 @@
 describes one container, so it runs the published image's default command, `docker/allinone.py`. That starts
 setup, then the app, nginx and the watch receiver in the one container. The container starts as root so setup
 can hand its files to `PUID:PGID` (99:100, Unraid's `nobody:users`, by default), then runs everything else as
-that user. The root filesystem is read-only (`--read-only --tmpfs /tmp`).
+that user. The root filesystem is read-only (`--read-only --tmpfs /tmp`), and it restarts unless stopped (`--restart unless-stopped`: Settings → General's Restart now stops it to apply a setting).
 
 | Setting | Container | Default on the server |
 |---|---|---|

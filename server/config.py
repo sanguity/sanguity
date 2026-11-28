@@ -49,6 +49,11 @@ class Var:
 
 
 VARS = {}   # name -> Var
+# (#1121) the variables changed on the page's Needs a restart (server_settings.py defines them; a test keeps the two the
+# same): kept in data/server-settings.json and read as the server starts, after the environment's and before the default
+RESTART = {"UPLOAD_MAX_FILE_MB", "UPLOAD_MAX_TOTAL_MB", "UPLOAD_MAX_FILES", "JOURNAL_PHOTO_MAX_MB", "SYNC_HOURS",
+           "SYNC_MAX_RESOURCES", "SYNC_MAX_ATTACHMENT_MB", "CONNECT_TIMEOUT", "SHL_MAX_MB", "SHL_MAX_FILES", "SHL_TIMEOUT",
+           "HASH_PARALLEL", "RESTORE_KEEP_DAYS"}
 
 
 def var(name, default, read=int, keep=None, about=""):
@@ -95,7 +100,7 @@ var("PASSWORD_MIN_LENGTH", 15, about="NIST SP 800-63B-4: at least 15 characters 
                                      "no composition rules")
 var("PASSWORD_MIN_LENGTH_2FA", 8, about="with two-factor sign-in on (NIST SP 800-63B)")
 var("HASH_PARALLEL", 2, about="password hashes run at once (64 MiB each); more wait their turn. Read once, at start "
-                              "(security.py's semaphore), so never a setting")
+                              "(security.py's semaphore): changed on the page's Needs a restart (#1121)")
 var("ACTIVITY_DAYS", 365, about="how long the activity log keeps entries")
 # uploads from the import page (uploads.py). A file is one the browser sent or one unpacked from a zip; an upload's
 # total counts what it holds after unpacking. nginx.conf caps one file sent at 4 GB too: raise both to go higher.
@@ -135,7 +140,8 @@ def saved_ignored():
 
 
 def lookup(name):
-    """(where it comes from, the value in force) of the variable name: ("environment" | "install" | "default", value)."""
+    """(where it comes from, the value in force) of the variable name: ("environment" | "install" | "file" | "default",
+    value): "file" for one of RESTART changed on the page, as this process started (#1121)."""
     v = VARS[name]
     text = os.environ.get(v.name, "")
     if text.strip():
@@ -147,6 +153,11 @@ def lookup(name):
         have = saved()
         if v.setting in have:
             return "install", v.keep(have[v.setting])
+    if name in RESTART:   # (#1121) one changed on the page that needs a restart: the file's, as this process started
+        from . import server_settings
+        have = server_settings.in_force()
+        if name in have:
+            return "file", have[name]
     return "default", v.default
 
 
@@ -157,7 +168,7 @@ def setting(name):
 
 
 def source(name):
-    """Where setting(name) comes from: "environment", "install" (saved in the app) or "default"."""
+    """Where setting(name) comes from: "environment", "install" (saved in the app), "file" (#1121) or "default"."""
     return lookup(name)[0]
 
 

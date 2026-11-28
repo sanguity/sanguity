@@ -326,7 +326,7 @@ define("sync.attachMaxMB", "sync", "Largest attachment fetched (MB)", min(20, ce
        # (#1008) where the ceiling is set: .env, which both compose files pass it from (#999), or the app's own
        # environment variables where there's no .env (TrueNAS's Additional Environment Variables, an Unraid variable)
        help=lambda: f"Bigger ones are left out and listed. At most {ceiling_mb()} MB, the server's limit: "
-                    "SYNC_MAX_ATTACHMENT_MB in .env or the app's environment variables.")
+                    "SYNC_MAX_ATTACHMENT_MB, on General → Needs a restart (or in .env or the app's environment variables).")
 define("sync.attachTypes", "sync", "Kinds of attachment fetched", list(ATTACHMENT_TYPES),
        some_of(ATTACHMENT_TYPES, "Kinds of attachment"), scope="install", private=False, kind="choices",
        help="Other kinds (and these, when unticked) are left out and listed, to fetch if you want them.")
