@@ -45,7 +45,7 @@ function drawNotifyServer(sec, d, note, at = NOTIFY?.at) {
   const tokRow = notifyEnv() ? envRow({key: "notify.token", label: "Access token", env: d.token_env, help: tokenHint}, at,
       {value: d.token_elsewhere ? "Set there (not sent to this server)" : "Set there (never shown here)", head: ["h3", {class: "sub", id: "notifyTokenName"}]})
     : setRow([el("h3", {class: "sub", id: "notifyTokenName"}, "Access token", el("span", {class: "tag set-unsaved", text: "not saved"})),
-      el("p", {class: "hint", id: "notifyTokenHint", text: tokenHint})], tok, {class: "set", "data-key": "notify.token"});
+      el("p", {class: "hint", id: "notifyTokenHint", text: tokenHint})], pwField(tok, {name: "access token"}).box, {class: "set", "data-key": "notify.token"});   // (Show: #492)
   const mark = () => {
     urlRow.classList.toggle("set-changed", notifyUrlDirty()); tokRow.classList.toggle("set-changed", notifyTokenDirty());
     const n = notifyUrlDirty() + notifyTokenDirty();
