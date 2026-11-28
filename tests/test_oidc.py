@@ -647,6 +647,39 @@ class OIDC(unittest.TestCase):
         self.assertEqual(kim.post("/api/me/reauth/oidc/start", headers=H).status_code, 429)
         self.assertEqual(client().post("/api/login/oidc/start", headers=H).status_code, 200, "the address isn't held up")
 
+    def test_an_address_carrying_an_ipv4_one_is_grouped_by_it(self):   # #1111
+        """6to4 (2002::/16) and Teredo (2001::/32) addresses carry their host's IPv4 address: grouped by it, as a mapped
+        one is, not by /64 (a host has a /48 of 6to4 /64s)."""
+        self.assertEqual(oidc.address_group("2002:cb00:7105::1"), "203.0.113.5")
+        self.assertEqual(oidc.address_group("2002:cb00:7105:ffff::9"), "203.0.113.5")
+        self.assertEqual(oidc.address_group("2001:0:4136:e378:8000:63bf:3fff:fdd2"), "192.0.2.45")   # RFC 4380's example
+        self.assertEqual(oidc.address_group("2001:db8:1:2::1"), "2001:db8:1:2::/64")
+
+    def test_the_accounts_start_times_are_swept_not_rebuilt_on_every_start(self):   # #1111
+        """The start times kept per account are swept of old ones at most every SWEEP seconds, and never more than MAX
+        accounts' are kept, the longest idle going first."""
+        p = oidc._Pending()
+        p.MAX = 50
+        now = [1_000_000.0]
+        e = lambda uid: {"expires": now[0] + 600, "ip": "198.51.100.7", "uid": uid}
+        with mock.patch.object(oidc.time, "time", lambda: now[0]):
+            for uid in range(1, 41):
+                p.add(f"s{uid}", e(uid))
+            rebuilt = []
+            real = p._sweep
+            p._sweep = lambda t: (rebuilt.append(t), real(t))
+            now[0] += oidc.STATE_TTL + 1   # every one of those old now
+            for uid in range(41, 61):
+                p.add(f"t{uid}", e(uid))
+            self.assertEqual(len(rebuilt), 20)   # (asked each time; it does the work once)
+            self.assertEqual(set(p._starts), {f"account {u}" for u in range(41, 61)}, "the old ones went, at the first sweep")
+            for uid in range(61, 101):   # within SWEEP of the last: kept to MAX all the same, the longest idle going
+                now[0] += 0.01
+                p.add(f"u{uid}", e(uid))
+            self.assertLessEqual(len(p._starts), p.MAX + 1)
+            self.assertIn("account 100", p._starts)
+            self.assertNotIn("account 41", p._starts)
+
     def test_only_two_factors_count_as_two(self):
         """(#1109's recheck) Methods of two factors (knowledge, possession, inherence) count; two of one factor, or one
         with methods that say nothing of factors (user, pop, rba, geo, mca, wia, unknown), don't."""
