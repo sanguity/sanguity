@@ -357,7 +357,7 @@ def _session(request, db):
     token = request.cookies.get(config.COOKIE_HOST) or request.cookies.get(config.COOKIE)
     if not token or len(token) > 200:
         return None
-    s = db.execute("""SELECT s.id AS sid, s.created AS s_created, s.last_seen, s.expires, s.verified_at, s.idp_mfa, u.* FROM sessions s
+    s = db.execute("""SELECT s.id AS sid, s.created AS s_created, s.last_seen, s.expires, s.verified_at, s.idp_mfa, s.stepped_at, u.* FROM sessions s
                       JOIN users u ON u.id = s.user_id WHERE s.token_hash=? AND u.disabled=0""",
                    (sec.token_hash(token),)).fetchone()
     now = dbm.now()
@@ -924,9 +924,12 @@ class FreshCheck(BaseModel):
     secret: str   # the password, or a current code from the authenticator app
 
 
-def _verified(db, s):
+def _verified(db, s, stepped=False):
+    """The fresh check passed now. stepped (#1109): with a code, a passkey or the sign-in provider, not the password
+    (stepped_at: what stands in for the password while Sign in with OIDC only is on, _password)."""
     now = dbm.now()
-    db.execute("UPDATE sessions SET verified_at=? WHERE id=?", (now, s["sid"]))
+    db.execute("UPDATE sessions SET verified_at=?, stepped_at=CASE WHEN ? THEN ? ELSE stepped_at END WHERE id=?",
+               (now, int(stepped), now, s["sid"]))
     return {"ok": True, "until": now + config.setting("REAUTH_MINUTES") * 60}
 
 
@@ -941,6 +944,9 @@ def reauth(body: FreshCheck, request: Request, s=Depends(user), db=Depends(get_d
             sec.throttle.fail(*keys)
             _audit("reauth.fail", request, s, action="fresh check", step="code")
             raise HTTPException(403, "That code isn't right, or it was used already. Wait for the next one.")
+    elif oidc.only(db):   # (#1109) no password signs in, so none confirms it's you: a code, a passkey or the provider
+        raise HTTPException(403, f"Passwords are off while Sign in with {oidc.load(db)['label']} only is on: confirm it's you "
+                                 "with a code from your authenticator app, a passkey or the provider instead.")
     else:
         keys = sec.password_keys(s["username"], _client_ip(request))   # per account too (#931)
         if (w := sec.throttle.wait(*keys)):
@@ -950,7 +956,8 @@ def reauth(body: FreshCheck, request: Request, s=Depends(user), db=Depends(get_d
             _audit("reauth.fail", request, s, action="fresh check", step="password")
             raise HTTPException(403, "Your password is wrong." + (" Or enter a code from your authenticator app."
                                                                  if s["totp_secret"] else ""))
-    return _verified(db, s)
+        return _verified(db, s)
+    return _verified(db, s, stepped=True)   # (a code)
 
 
 @app.post("/api/me/reauth/passkey/options")
@@ -974,7 +981,7 @@ def reauth_passkey(body: PasskeyFinish, request: Request, s=Depends(user), db=De
         raise
     if uid != s["id"]:   # the state was issued for this account's passkeys, so this can't happen
         raise HTTPException(401, passkeys.STALE)
-    return _verified(db, s)
+    return _verified(db, s, stepped=True)
 
 
 # ---------------------------------------------------------------- two-factor sign-in, for the signed-in account
@@ -996,9 +1003,16 @@ class TwoFactorConfirm(BaseModel):
     password: str   # again (the page keeps what was typed at the start): a secret left pending is no way in
 
 
-def _password(request, s, password, action):
+def _password(request, db, s, password, action):
     """The person's password, checked before a change to how they sign in (#590): throttled as sign-in is, and a wrong
-    one is in the security log as reauth.fail."""
+    one is in the security log as reauth.fail. While Sign in with OIDC only is on (#1109), when no password signs in,
+    a fresh check with a code, a passkey or the provider in the last REAUTH_MINUTES instead (stepped_at; never a
+    sign-in's): else 403 reauth_required, which the page asks for."""
+    if oidc.only(db):
+        if (s["stepped_at"] or 0) <= dbm.now() - config.setting("REAUTH_MINUTES") * 60:
+            _audit("reauth.needed", request, s, warn=False, action=action)
+            raise HTTPException(403, "reauth_required")
+        return
     keys = sec.password_keys(s["username"], _client_ip(request))   # per account too (#931)
     if (w := sec.throttle.wait(*keys)):
         raise HTTPException(429, f"Too many wrong passwords. Try again in {w} seconds.")
@@ -1023,7 +1037,7 @@ def two_factor_start(body: TwoFactorStart, request: Request, s=Depends(settled),
     could otherwise turn on an app of its own, and with it the recovery codes, and lock its person out."""
     if s["totp_secret"]:
         raise HTTPException(409, "Two-factor sign-in is already on.")
-    _password(request, s, body.password, "turn on two-factor sign-in")
+    _password(request, db, s, body.password, "turn on two-factor sign-in")
     secret = twofactor.new_secret()
     db.execute("UPDATE users SET totp_pending=? WHERE id=?", (crypto.enc(secret), s["id"]))
     link = twofactor.uri(secret, s["username"])
@@ -1034,7 +1048,7 @@ def two_factor_start(body: TwoFactorStart, request: Request, s=Depends(settled),
 def two_factor_confirm(body: TwoFactorConfirm, request: Request, s=Depends(settled), db=Depends(get_db)):
     if s["totp_secret"]:
         raise HTTPException(409, "Two-factor sign-in is already on.")
-    _password(request, s, body.password, "turn on two-factor sign-in")
+    _password(request, db, s, body.password, "turn on two-factor sign-in")
     keys = ("pair:2fa|" + str(s["id"]) + "|" + _client_ip(request),)
     if (w := sec.throttle.wait(*keys)):
         raise HTTPException(429, f"Too many wrong codes. Try again in {w} seconds.")
@@ -1074,7 +1088,7 @@ def two_factor_off(body: TwoFactorOff, request: Request, s=Depends(settled), db=
     if accounts.two_factor_required(db) and not passkeys.count(db, s["id"]):
         raise HTTPException(409, "This server requires two-factor sign-in, so it can't be turned off. "
                                  "Add a passkey first if you want to stop using the authenticator app.")
-    _password(request, s, body.password, "turn off two-factor sign-in")
+    _password(request, db, s, body.password, "turn off two-factor sign-in")
     with dbm.transaction(db):
         accounts.turn_off_2fa(db, s["id"])
         activity.log(db, "2fa.off", s, ip=_client_ip(request))
@@ -1117,7 +1131,7 @@ def my_passkeys(origin: str = "", s=Depends(settled), db=Depends(get_db)):
 @app.post("/api/me/passkeys/options")
 def passkey_add_options(body: PasskeyAdd, request: Request, s=Depends(settled), db=Depends(get_db)):
     """Adding a passkey adds a way in, so it needs the password."""
-    _password(request, s, body.password, "add a passkey")
+    _password(request, db, s, body.password, "add a passkey")
     state, options = passkeys.registration_options(db, s, request.headers.get("origin"))
     return {"state": state, "options": options}
 
@@ -1152,7 +1166,7 @@ def passkey_remove(pk: int, body: PasskeyRemove, request: Request, s=Depends(set
     can't take away its person's way in, nor keep a device it signed in on. The account's calendar feeds end too (#597,
     the owner's decision): a passkey is removed when its device is lost, and that device's calendar app holds their
     addresses (turning off one's own authenticator app keeps them: accounts.turn_off_2fa)."""
-    _password(request, s, body.password, "remove a passkey")
+    _password(request, db, s, body.password, "remove a passkey")
     with dbm.transaction(db):
         r = db.execute("SELECT name FROM passkeys WHERE id=? AND user_id=?", (pk, s["id"])).fetchone()
         if not r:

@@ -686,7 +686,9 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 ### Sign in with OIDC (#1109)
 - One provider per install (`server/oidc.py`, `routes_oidc.py`): the authorization code flow with PKCE (S256), `state`
   and `nonce` (each 256 random bits), kept in memory for 10 minutes against a random browser token set as an HttpOnly,
-  SameSite=Strict cookie scoped to `/api/login/oidc`; a state is used up as it comes back, whatever follows, and refused
+  SameSite=Strict cookie (over HTTPS `__Host-sanguity_oidc` at `/`, which a sibling name or plain HTTP can't plant; else
+  `sanguity_oidc` at `/api/login/oidc`); starts throttled per address (an IPv6 one's /64), at most 30 in 10 minutes and
+  20 waiting, a full store dropping the adding address's own first; a state is used up as it comes back, whatever follows, and refused
   from another browser. The redirect URI is the install's sign-in page at its public address, exactly.
 - The ID token's signature is checked against the provider's JWKS with `cryptography`: RS256 (2048-bit keys at least)
   or ES256 only; `none`, HS* and any other alg refused, as is a header naming keys of its own (`jku`, `jwk`, `x5u`) or
@@ -696,11 +698,13 @@ What each added, and how it keeps to the rules above. Each file named has its ow
 - An identity is found by (issuer, sub) in `oidc_identities` (schema 49; unique); none is made automatically. A sign-in
   ends in `main._start_session` as a password's: the lengths, the device cookie, `login.ok` in the security log; a
   failure is `login.fail` (step `oidc`), counted by the address's throttle and the admins' failed sign-ins notice.
-- The provider's second factor counts only where its ID token says so (`amr` with `mfa`, `otp`, `hwk` or `sc`, or the
-  admin's `acr`), for that session alone (`sessions.idp_mfa`); otherwise the account's own code or passkey follows,
+- The provider's second factor counts only where its ID token says so (`amr` saying `mfa` or naming two different RFC 8176
+  methods, or the admin's `acr`; one method alone, an emailed code's `otp`, is one factor), for that session alone (`sessions.idp_mfa`); otherwise the account's own code or passkey follows,
   with the same ticket as after a password.
-- Linking adds a way in: one's own after the fresh check, by signing in at the provider (`prompt=login`), finished only
-  for the session that started it; an admin's for an account by its subject, after the fresh check. Unlinking ends the
+- Linking adds a way in: one's own with the password, as adding a passkey asks it, by signing in at the provider
+  (`prompt=login`), finished only for the session that started it; an admin's for an account by its subject, after the
+  fresh check, which the account is told on its Sign-in and security (and the security log, as its event) and whose
+  name the provider gives shows once it's first used. Unlinking ends the
   account's other sessions (an admin's, all of them).
 - The client secret is encrypted with the data key (meta `oidc.secret`, resealed by a key rotation) and never sent to a
   page; `OIDC_CLIENT_SECRET` in the environment wins. Each change to the provider asks for the fresh check and is in
@@ -709,7 +713,11 @@ What each added, and how it keeps to the rules above. Each file named has its ow
   connections for admins.
 - Sign in with OIDC only refuses a password sign-in and a passkey on its own; it's refused until the admin's own
   identity has signed in with the provider as set up now, the provider can't be changed while it's on, and nobody can
-  unlink their own last identity then. `server.manage oidc-only off` is the way back.
+  unlink their own last identity then. The password confirms nothing then (`/api/me/reauth` refuses it): where the
+  password is asked (two-factor sign-in, passkeys, linking), a fresh check with a code, a passkey or the provider stands
+  in (`sessions.stepped_at`, never a sign-in's), the provider's a round trip with `prompt=login` and `max_age=0` whose ID
+  token's `auth_time` must be now, as an identity linked to that account; nobody is held at a password change.
+  `server.manage oidc-only off` is the way back.
 
 ### Big records stay fast (#201) and the anonymiser (#34)
 - Performance budgets change no access or storage. The anonymiser is out of scope (see the top of this document).

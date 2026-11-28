@@ -5,8 +5,8 @@ The owner's decisions (2026-11-28):
   - linked by each person (Settings → You → Sign-in and security, after the fresh check) or by an admin for an account
     (Install → Accounts, by the identity's subject); no account is made automatically, and an identity linked to no
     account is refused with a plain message;
-  - an OIDC sign-in counts as the second factor when the ID token says so (amr names a multi-factor method, MFA_AMR,
-    or acr is the one the admin set); otherwise the account's own second factor (a code or a passkey) is asked for
+  - an OIDC sign-in counts as the second factor when the ID token says so (amr says "mfa" or names two different
+    methods, or acr is the one the admin set: multi_factor); otherwise the account's own second factor (a code or a passkey) is asked for
     after it, as after a password, and where two-factor sign-in is required an account with none sets one up;
   - "Sign in with OIDC only": password sign-in and a passkey on its own refused, the switch itself refused until the
     admin's own identity has signed in with the provider as it's set up now; python -m server.manage oidc-only off
@@ -34,7 +34,7 @@ The provider's settings are the install's (meta OIDC_META, plain: none is a secr
 which wins (#999's rule). Linked identities: the oidc_identities table (schema 49): issuer, subject (the ID token's
 sub), the account, when linked and last used, and the name the provider gave for it (encrypted), to show.
 """
-import base64, hashlib, hmac, json, os, re, secrets, threading, time, urllib.parse
+import base64, hashlib, hmac, ipaddress, json, os, re, secrets, threading, time, urllib.parse
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
@@ -57,9 +57,13 @@ IAT_MOST = 600         # an ID token issued longer ago than this (beyond SKEW) i
 CACHE_SECONDS = 600    # the discovery document and JWKS are read again after this
 REFETCH_SECONDS = 30   # an unknown key id reads the JWKS again, at most this often
 MAX_BODY = 2**20
-MFA_AMR = {"mfa", "otp", "hwk", "sc"}   # RFC 8176: more than one factor, a one-time code, a hardware key, a smart card
+# RFC 8176's authentication methods: an amr naming two different ones (or "mfa") says more than one was used; one alone
+# (a one-time code sent by email is "otp") is one factor
+AMR = {"face", "fpt", "geo", "hwk", "iris", "kba", "mca", "mfa", "otp", "pin", "pop", "pwd", "rba", "retina", "sc", "sms",
+       "swk", "tel", "user", "vbm", "wia"}
 ALGS = {"RS256": "RSA", "ES256": "EC"}
-PURPOSES = ("login", "link")
+PURPOSES = ("login", "link", "reauth")   # reauth: the fresh check at the provider (prompt=login, max_age=0), #1109's review
+STARTS_MOST = 30   # sign-ins started from one address (an IPv6 one's /64) in STATE_TTL seconds, at most
 FIELDS = ("issuer", "client_id", "label", "scopes", "acr")
 
 
@@ -396,10 +400,11 @@ def verify(token, keys_for, issuer, client_id, nonce, now=None):
 
 
 def multi_factor(claims, acr):
-    """Whether the provider says the person used more than one factor: amr names one of MFA_AMR, or acr is the one
-    the admin set."""
+    """Whether the provider says the person used more than one factor: amr says "mfa", or names two different methods
+    (AMR), or acr is the one the admin set. One method alone, a one-time code or a hardware key, is one factor."""
     amr = claims.get("amr")
-    if isinstance(amr, list) and MFA_AMR & {a for a in amr if isinstance(a, str)}:
+    said = {a for a in amr if isinstance(a, str) and a in AMR} if isinstance(amr, list) else set()
+    if "mfa" in said or len(said) >= 2:
         return True
     return bool(acr) and claims.get("acr") == acr
 
@@ -410,24 +415,44 @@ def _hash(v):
     return hashlib.sha256(v.encode()).hexdigest()
 
 
+def address_group(ip):
+    """Where sign-ins are counted from: an IPv4 address, or an IPv6 address's /64 (one household's, or one attacker's)."""
+    try:
+        a = ipaddress.ip_address(str(ip or "").split("%")[0])
+    except ValueError:
+        return str(ip or "?")[:64]
+    if a.version == 6:
+        return str(a.ipv4_mapped) if a.ipv4_mapped else str(ipaddress.ip_network(f"{a}/64", strict=False))
+    return str(a)
+
+
 class _Pending:
-    """Sign-ins started and not yet back: state hash -> what it was started with. Used up as it comes back. At most
-    PER_ADDRESS waiting from one address and MAX in all: past either, the oldest goes (its sign-in starts again), so
-    starting many from one place can't keep anyone else from signing in."""
+    """Sign-ins started and not yet back: state hash -> what it was started with. Used up as it comes back. Starts are
+    throttled per address (address_group): at most STARTS_MOST in STATE_TTL seconds, else refused (429); at most
+    PER_ADDRESS waiting from one, its oldest going past that; at most MAX in all, the adding address's own oldest going
+    first, then the oldest of all."""
     MAX, PER_ADDRESS = 2000, 20
 
     def __init__(self):
-        self._p, self._lock = {}, threading.Lock()
+        self._p, self._lock, self._starts = {}, threading.Lock(), {}
 
     def add(self, state, entry):
-        now = time.time()
+        now, group = time.time(), address_group(entry.get("ip"))
         with self._lock:
+            if len(self._starts) > 10 * self.MAX:
+                self._starts = {g: t for g, t in self._starts.items() if t and t[-1] > now - STATE_TTL}
+            times = [t for t in self._starts.get(group, []) if t > now - STATE_TTL]
+            if len(times) >= STARTS_MOST:
+                raise OidcError("Too many sign-ins were started from here. Try again in a few minutes.", 429)
+            self._starts[group] = times + [now]
+            entry = {**entry, "group": group}
             self._p = {k: v for k, v in self._p.items() if v["expires"] > now}
-            mine = [k for k, v in self._p.items() if v.get("ip") == entry.get("ip")]   # (oldest first: the order added)
+            mine = [k for k, v in self._p.items() if v.get("group") == group]   # (oldest first: the order added)
             for k in mine[:max(0, len(mine) - self.PER_ADDRESS + 1)]:
                 del self._p[k]
+            mine = [k for k in mine if k in self._p]
             while len(self._p) >= self.MAX:
-                del self._p[next(iter(self._p))]
+                del self._p[mine.pop(0) if mine else next(iter(self._p))]
             self._p[_hash(state)] = entry
 
     def take(self, state):
@@ -437,6 +462,7 @@ class _Pending:
     def clear(self):
         with self._lock:
             self._p.clear()
+            self._starts.clear()
 
 
 pending = _Pending()
@@ -455,11 +481,13 @@ def start(db, purpose, page_origin, uid=None, sid=None, who=None, ip=None):
     verifier, challenge = smart.pkce()
     pending.add(state, {"browser": _hash(browser), "nonce": nonce, "verifier": verifier, "purpose": purpose, "uid": uid,
                         "sid": sid, "issuer": cfg["issuer"], "client_id": cfg["client_id"], "redirect": redirect,
-                        "expires": time.time() + STATE_TTL, "ip": ip})
+                        "expires": time.time() + STATE_TTL, "ip": ip, "started": time.time()})
     q = {"response_type": "code", "client_id": cfg["client_id"], "redirect_uri": redirect, "scope": cfg["scopes"],
          "state": state, "nonce": nonce, "code_challenge": challenge, "code_challenge_method": "S256"}
-    if purpose == "link":
+    if purpose in ("link", "reauth"):
         q["prompt"] = "login"   # the identity linked is the one signed in now, not one a shared browser remembered
+    if purpose == "reauth":
+        q["max_age"] = "0"   # signed in again now: its ID token's auth_time says when (finish)
     ep = conf["authorization_endpoint"]
     return ep + ("&" if "?" in ep else "?") + urllib.parse.urlencode(q), browser
 
@@ -511,6 +539,9 @@ def finish(db, state, code, browser, error=None, who=None, ip=None):
     conf = discover(db, c)
     token = _exchange(db, c, conf, cfg, code, entry)
     claims = verify(token, lambda force: _jwks(c, conf["jwks_uri"], force), conf["issuer"], cfg["client_id"], entry["nonce"])
+    if entry["purpose"] == "reauth" and not (_number(claims.get("auth_time")) and claims["auth_time"] >= entry["started"] - SKEW):
+        raise OidcError("The sign-in provider didn't ask you to sign in again, so it can't confirm it's you now. Try again, "
+                        "or use a code or a passkey.", 401)
     return entry, claims, multi_factor(claims, cfg["acr"])
 
 
@@ -528,11 +559,13 @@ def account_for(db, issuer, sub):
     return r["user_id"] if r else None
 
 
-def used(db, issuer, sub):
-    db.execute("UPDATE oidc_identities SET last_used=? WHERE issuer=? AND subject=?", (dbm.now(), issuer_key(issuer), sub))
+def used(db, issuer, sub, name=None):
+    """It signed in: when, and the name the provider gives it now (an admin's link by subject shows it from then on)."""
+    db.execute("UPDATE oidc_identities SET last_used=?, name=COALESCE(?, name) WHERE issuer=? AND subject=?",
+               (dbm.now(), crypto.enc(name) if name else None, issuer_key(issuer), sub))
 
 
-def link(db, uid, issuer, sub, name=None):
+def link(db, uid, issuer, sub, name=None, by=None):
     """Link identity (issuer, sub) to account uid. Raises OidcError: linked already, here or to another account; or
     this account has one at this provider already."""
     key = issuer_key(issuer)
@@ -542,15 +575,18 @@ def link(db, uid, issuer, sub, name=None):
                         "another account here. Its person, or an admin, unlinks it there first."), 409)
     if db.execute("SELECT 1 FROM oidc_identities WHERE issuer=? AND user_id=?", (key, uid)).fetchone():
         raise OidcError("This account has an identity at this provider linked already: unlink it first.", 409)
-    return db.execute("INSERT INTO oidc_identities(issuer, subject, user_id, name, created) VALUES(?, ?, ?, ?, ?)",
-                      (key, sub, uid, crypto.enc(name) if name else None, dbm.now())).lastrowid
+    return db.execute("INSERT INTO oidc_identities(issuer, subject, user_id, name, created, linked_by) VALUES(?, ?, ?, ?, ?, ?)",
+                      (key, sub, uid, crypto.enc(name) if name else None, dbm.now(), by)).lastrowid
 
 
 def listing(db, uid, cfg=None):
     cfg = cfg or load(db)
     return [{"id": r["id"], "subject": r["subject"], "name": crypto.dec(r["name"]) if r["name"] else None,
-             "created": r["created"], "last_used": r["last_used"], "current": r["issuer"] == issuer_key(cfg["issuer"])}
-            for r in db.execute("SELECT * FROM oidc_identities WHERE user_id=? ORDER BY id", (uid,))]
+             "created": r["created"], "last_used": r["last_used"], "current": r["issuer"] == issuer_key(cfg["issuer"]),
+             # (an admin's link by subject: who, said to its person until it's used, #1109's review)
+             "linked_by_admin": r["by"] is not None and r["by_id"] != uid, "linked_by": r["by"]}
+            for r in db.execute("""SELECT i.*, b.username AS by, b.id AS by_id FROM oidc_identities i
+                                   LEFT JOIN users b ON b.id = i.linked_by WHERE i.user_id=? ORDER BY i.id""", (uid,))]
 
 
 def works_for(db, uid):

@@ -1227,8 +1227,10 @@ SCHEMA = [
     # version 49: sign in with OIDC (#1109; oidc.py). An identity at the install's sign-in provider, linked to an
     # account by its person or an admin: the provider's issuer (without a trailing slash), the ID token's sub, the
     # account, when it was linked and last signed in, and the name the provider gave for it (encrypted), to show. One
-    # identity is one account's. A session made by an OIDC sign-in the provider said used more than one factor
-    # (idp_mfa) counts as signed in with a second factor (accounts.signed_in_with_two).
+    # identity is one account's; linked_by: the admin who linked it by its subject (its person is told). A session made
+    # by an OIDC sign-in the provider said used more than one factor (idp_mfa) counts as signed in with a second factor
+    # (accounts.signed_in_with_two); stepped_at: when its person last confirmed it was them with a code, a passkey or the
+    # provider (never a sign-in, never the password), which stands in for the password while Sign in with OIDC only is on.
     """
     CREATE TABLE oidc_identities(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1238,9 +1240,11 @@ SCHEMA = [
         name TEXT,
         created INTEGER NOT NULL,
         last_used INTEGER,
+        linked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
         UNIQUE(issuer, subject));
     CREATE INDEX oidc_identities_user ON oidc_identities(user_id);
     ALTER TABLE sessions ADD COLUMN idp_mfa INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE sessions ADD COLUMN stepped_at INTEGER;
     """,
 ]
 

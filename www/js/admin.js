@@ -108,11 +108,21 @@ async function confirmed(send, typed) {
 async function confirmIdentity(box = $("#reauth")) {
   const [pk, app] = await Promise.all([passkeysWork() && call("me/passkeys?origin=" + encodeURIComponent(location.origin))
     .then(st => !st.problem && st.passkeys.some(k => k.here), () => false), call("me/2fa").then(st => st.on, () => true)]);
-  const ways = ["your password", app && "a code from your authenticator app", pk && "a passkey"].filter(Boolean);
+  // (#1109's review) with Sign in with OIDC only on, no password: a code, a passkey, or signing in again at the provider
+  const only = ME.sign_in_provider?.only ? ME.sign_in_provider.label : null;
+  const ways = [!only && "your password", app && "a code from your authenticator app", pk && "a passkey", only && `signing in again with ${only}`].filter(Boolean);
   return new Promise((resolve, reject) => {
     const msg = el("span", {class: "msg", role: "status"});
-    const secret = el("input", {type: "password", autocomplete: "current-password", placeholder: app ? "Password or code" : "Password",
-      "aria-label": app ? "Your password, or a code from your authenticator app" : "Your password", required: true});
+    const secret = only ? el("input", {inputmode: "numeric", autocomplete: "one-time-code", placeholder: "Code", "aria-label": "Code from your authenticator app", required: true})
+      : el("input", {type: "password", autocomplete: "current-password", placeholder: app ? "Password or code" : "Password",
+        "aria-label": app ? "Your password, or a code from your authenticator app" : "Your password", required: true});
+    const viaProvider = async () => {   // to the provider and back (login.js), here again with it said; then do it again
+      try {
+        const r = await call("me/reauth/oidc/start", "POST");
+        sessionStorage.setItem("sgOidcBack", location.pathname.split("/").pop() + location.search + location.hash);
+        location.assign(r.url);
+      } catch (e) { failed(e); }
+    };
     const done = ok => { box.hidden = true; box.replaceChildren();   // (its why, for a line saying "Not saved" itself: #536)
       ok ? resolve() : reject(Object.assign(new Error("Not done: you didn't confirm it's you."), {why: "you didn't confirm it's you."})); };
     const failed = e => sayIn(msg, e.message, true);
@@ -131,13 +141,15 @@ async function confirmIdentity(box = $("#reauth")) {
       el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
         pwSent(ev.target);
         try { await call("me/reauth", "POST", {secret: secret.value}); done(true); } catch (e) { failed(e); } }},
-        pwField(secret, {name: app ? "password or code" : "password"}).box, el("button", {class: "btn primary small", type: "submit", text: "Confirm"}),
+        ...(!only ? [pwField(secret, {name: app ? "password or code" : "password"}).box, el("button", {class: "btn primary small", type: "submit", text: "Confirm"})]
+          : app ? [secret, el("button", {class: "btn primary small", type: "submit", text: "Confirm"})] : []),
         pk ? el("button", {class: "btn small", type: "button", text: "Use a passkey", onclick: viaPasskey}) : null,
+        only ? el("button", {class: "btn small", type: "button", text: `Sign in again with ${only}`, onclick: viaProvider}) : null,
         el("button", {class: "btn small", type: "button", text: "Cancel", onclick: () => done(false)})),
       msg);
     box.hidden = false;
     box.scrollIntoView({block: "nearest"});
-    secret.focus();
+    (secret.isConnected ? secret : box.querySelector("button")).focus();
   });
 }
 /* a one-time password (#499): shown once, so where it's seen, with focus on its Copy, in view: under Create an account,
@@ -238,6 +250,7 @@ function oidcItems(u) {
       const field = el("input", {autocomplete: "off", autocapitalize: "none", spellcheck: "false", required: true});
       if (!await ask({title: `Link a ${p.label} identity to ${n}?`, action: "Link", field, message: [
           `${n} can then sign in with ${p.label}. Its subject is the provider's ID for the person (the sub of its ID tokens), shown on their page there.`,
+          "It can't be checked until it's first used: the name the provider gives it shows here then, and " + n + " is told it was linked for them.",
           el("label", {}, "Subject", field)]})) return;
       changeUser(u, () => call(`users/${u.id}/oidc`, "POST", {subject: field.value}), null, `Linked ${field.value.trim()} to ${n}.`);
     }}]),
