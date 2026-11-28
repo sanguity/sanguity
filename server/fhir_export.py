@@ -19,6 +19,9 @@ units, CVX vaccine codes, the HL7 category and status code systems):
                         clinic weights as body weight
   visits, stays         Encounters (class AMB, IMP); upcoming visits Appointments (booked)
   conditions, allergies Conditions and AllergyIntolerances
+  family history        a FamilyMemberHistory per relative's entry (#1134): the relationship (its v3 RoleCode where
+                        the words are one of its), the name, each condition with its onset age and whether it
+                        contributed to their death, deceased and the age at death, the note
   medications           MedicationStatements, each based on a contained MedicationRequest naming the prescriber
                         when the record does; pharmacy fills MedicationDispenses
   immunizations         Immunizations (CVX); procedures Procedures; imaging and other studies DiagnosticReports
@@ -61,6 +64,7 @@ PARTS = [
     ("labs", "Lab results, and vitals taken at visits"),
     ("visits", "Visits, hospital stays and upcoming appointments"),
     ("problems", "Conditions and allergies"),
+    ("family", "Family history"),
     ("meds", "Medications and pharmacy fills"),
     ("immunizations", "Immunizations"),
     ("procedures", "Procedures, imaging and other studies"),
@@ -710,6 +714,43 @@ def _problems(b, data):
                       "abatementString": "Resolved" if code == "resolved" else None})
 
 
+def _age(text):
+    """(#1134) An age as the records give it ("52", "18 months") as an Age, else None (a range or words: a string)."""
+    parts = str(text or "").split()
+    unit = (parts[1].lower().rstrip("s") if len(parts) == 2 else "year" if len(parts) == 1 else "")
+    code = {"year": "a", "month": "mo", "week": "wk", "day": "d"}.get(unit)
+    v = common.number_text(parts[0]) if code else None
+    if not isinstance(v, (int, float)) or v < 0:
+        return None
+    return {"value": int(v) if v == int(v) else v, "unit": unit + "s", "system": UCUM, "code": code}
+
+
+def _family(b, data):
+    """(#1134) Each relative's entry (family.py: the records' not hidden, and your own) as a FamilyMemberHistory."""
+    for x in data.get("familyHistory") or []:
+        if not isinstance(x, dict):
+            continue
+        rel = str(x.get("relation") or "Relative")
+        code = x.get("code") if x.get("code") in common.RELATIONS else common.RELATION_CODE.get(rel.lower())
+        conds = []
+        for c in x.get("conditions") or []:
+            if not isinstance(c, dict) or not _text(c.get("name")):
+                continue
+            system = {"SNOMED CT": "http://snomed.info/sct", "ICD-10-CM": "http://hl7.org/fhir/sid/icd-10-cm"}.get(c.get("system"))
+            age = _age(c.get("onset"))
+            conds.append({"code": cc(c["name"], coding(system, c.get("code")) if system else None),
+                          "contributedToDeath": True if c.get("death") else None,
+                          "onsetAge": age, "onsetString": None if age or not _text(c.get("onset")) else _text(c["onset"]),
+                          "note": [{"text": c["note"]}] if _text(c.get("note")) else []})
+        dead, death = x.get("deceased"), _age(x.get("deathAge"))
+        yield _clean({"resourceType": "FamilyMemberHistory", "id": b.rid("FamilyMemberHistory", x.get("key") or json.dumps(x, sort_keys=True)),
+                      "status": "completed", "patient": b.subject(), "date": str(x.get("date") or "")[:10] or None,
+                      "name": x.get("name"), "relationship": cc(rel, coding(common.ROLE_CODE, code, common.RELATIONS.get(code)) if code else None),
+                      "deceasedAge": death, "deceasedString": None if death or not _text(x.get("deathAge")) else _text(x["deathAge"]),
+                      "deceasedBoolean": dead if isinstance(dead, bool) and not _text(x.get("deathAge")) else None,
+                      "condition": conds, "note": [{"text": x["note"]}] if _text(x.get("note")) else []})
+
+
 def _med_said(s):
     """(#1091) a listing's details as the medications the page shows say its span (medications.py: your changes made)."""
     return {"instructions": s.get("dose"), "status": s.get("status"), "prescriber": s.get("prescriber"),
@@ -1146,6 +1187,8 @@ def resources(p, b):
         yield from _encounters(b, data)
     if "problems" in parts:
         yield from _problems(b, data)
+    if "family" in parts:
+        yield from _family(b, data)
     if "meds" in parts:
         yield from _meds(b, data)
     if "immunizations" in parts:

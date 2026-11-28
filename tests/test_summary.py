@@ -191,7 +191,7 @@ class Summary(unittest.TestCase):
         self.assertEqual(o["visits"][0]["date"], SINCE, "the last visit is the default since point")
         self.assertIn("Hemoglobin", o["keyLabs"])
         self.assertIn({"name": "Ferritin", "label": "Ferritin"}, o["labs"])
-        self.assertEqual([s["id"] for s in o["sections"]][:5], ALL)
+        self.assertEqual([s["id"] for s in o["sections"]][:len(ALL)], ALL)
         self.assertIn("isn't medical advice", o["notice"])
 
     def test_pdf_holds_every_section(self):

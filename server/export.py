@@ -33,7 +33,7 @@ visit summary drafts, and which import each record came from (they load as one i
 """
 import contextlib, datetime, gzip, json, os, posixpath, re, secrets, shutil, urllib.parse, zipfile
 
-from . import (costplan, crossmatch, crypto, cycle_tracking, db as dbm, ecg, edits, journal, journal_photos, labmap, med_log, med_reminders, medications, oop,
+from . import (costplan, crossmatch, crypto, cycle_tracking, db as dbm, ecg, edits, family, journal, journal_photos, labmap, med_log, med_reminders, medications, oop,
                profiles as prof, records, settings, uploads, watch_store)
 
 DOC_URL = re.compile(r"^api/profiles/\d+/documents/([^/#?]+)")
@@ -62,7 +62,8 @@ def plan(db, pid, cycle=False, activity=False, shown=False):
     if data is None and not shown:   # nothing imported, but what people wrote or decided still goes (#589)
         own = {k: v for k, v in (("journal", journal.listing(db, pid)), ("reminders", med_reminders.listing(db, pid)),
                                  ("doses", med_log.listing(db, pid)), ("medEntries", medications.listing(db, pid)),
-                                 ("costPlans", costplan.plans(db, pid)), ("costBills", costplan.bills(db, pid))) if v}
+                                 ("costPlans", costplan.plans(db, pid)), ("costBills", costplan.bills(db, pid)),
+                                 ("familyEntries", family.listing(db, pid))) if v}
         data = {"events": [], "details": {}, "labs": [], "costs": [], **own} if own or _has_corrections(db, pid) else None
     if data is not None and not shown and (fixes := corrections(db, pid, data["events"])):
         data["corrections"] = fixes
@@ -263,7 +264,8 @@ no longer need.
                      the medication reminders ("reminders": {len(got.get('reminders') or [])}) and the medications of
                      your own and your changes to those of the records ("medEntries": {len(got.get('medEntries') or [])}),
                      and the plan years and bills typed in on Costs ("costPlans": {len(got.get('costPlans') or [])},
-                     "costBills": {len(got.get('costBills') or [])}; a bill's file is among the documents)
+                     "costBills": {len(got.get('costBills') or [])}; a bill's file is among the documents), and
+                     the family history of your own and the records' you hid ("familyEntries": {len(got.get('familyEntries') or [])})
   settings.json     the profile's settings{'' if len(p['settings']) > 1 else ' (none set: all at their defaults)'}
   documents/         the documents, one folder each
   watch/daily.json   watch and scale summary{'' if p['watch'] else ' (none)'}
@@ -333,7 +335,7 @@ def strip_all(db):
     return sum(strip_uploads(db, pid) for (pid,) in db.execute("SELECT DISTINCT profile_id FROM uploads WHERE state='ready'").fetchall())
 
 
-PARTS = ("journal", "doses", "reminders", "medEntries", "costPlans", "costBills")   # what people wrote, beside the records and their corrections
+PARTS = ("journal", "doses", "reminders", "medEntries", "costPlans", "costBills", "familyEntries")   # what people wrote, beside the records and their corrections
 KEY_MAX, BY_MAX = 4000, 200
 
 
@@ -505,7 +507,7 @@ def check_parts(data):
     "doses", "reminders"}, each a list of what its table keeps, or ValueError saying which one can't be loaded and
     why (an export Sanguity wrote always loads; a damaged or hand-made one is refused whole, before anything is
     kept). Needs no database: the importer checks an upload with it before its review (importers/sanguity.py)."""
-    out = {k: [] for k in ("edits", "same", "marks", "journal", "doses", "reminders", "medEntries", "costPlans", "costBills")}
+    out = {k: [] for k in ("edits", "same", "marks", "journal", "doses", "reminders", "medEntries", "costPlans", "costBills", "familyEntries")}
     checks = (("edits", ("corrections", "edits"), "correction", _edit),
               ("same", ("corrections", "same"), "same-result decision", None),
               ("marks", ("corrections", "marks"), "Costs mark", None),
@@ -514,7 +516,8 @@ def check_parts(data):
               ("reminders", ("reminders",), "medication reminder", _reminder),
               ("medEntries", ("medEntries",), "medication of your own or change", _med_entry),
               ("costPlans", ("costPlans",), "plan year", _cost_plan),
-              ("costBills", ("costBills",), "bill", _cost_bill))
+              ("costBills", ("costBills",), "bill", _cost_bill),
+              ("familyEntries", ("familyEntries",), "family history entry", family.restore_body))   # (#1134)
     for name, path, what, check in checks:
         for n, x in enumerate(_list(data, *path)):
             try:
@@ -550,7 +553,7 @@ def brings(data):
            "journal": len(got["journal"]),
            "photos": sum(len(x.get("photos") or []) for x, _ in got["journal"]), "doses": len(got["doses"]),
            "reminders": len(got["reminders"]), "medEntries": len(got["medEntries"]), "costPlans": len(got["costPlans"]),
-           "costBills": len(got["costBills"])}
+           "costBills": len(got["costBills"]), "familyEntries": len(got["familyEntries"])}
     return {k: n for k, n in out.items() if n}
 
 
@@ -567,7 +570,7 @@ def restore(db, pid, data, photo, written):
     left as the profile has it, and counted as "here". Returns {"corrections", "journal", "photos", "doses",
     "reminders", "here", "photos_missing"}: what was put back."""
     got = check_parts(data)
-    n = dict.fromkeys(("corrections", "journal", "photos", "doses", "reminders", "medEntries", "costPlans", "costBills", "here",
+    n = dict.fromkeys(("corrections", "journal", "photos", "doses", "reminders", "medEntries", "costPlans", "costBills", "familyEntries", "here",
                        "photos_missing"), 0)
 
     # corrections, by the keys of the records they change
@@ -715,7 +718,18 @@ def restore(db, pid, data, photo, written):
         added, here = costplan._restore(db, table, pid, got[part], _who)
         n[part] += added
         n["here"] += here
-    if any(n[k] for k in ("corrections", "journal", "doses", "reminders", "medEntries", "costPlans", "costBills")):
+    # (#1134) the family history of the profile's own and its hidings of the records' (one with the same key is here)
+    keys = {b.get("key") for _, b in family._rows(db, pid)}
+    for x, body in got["familyEntries"]:
+        if body["key"] in keys:
+            n["here"] += 1
+            continue
+        keys.add(body["key"])
+        by, at, changed, changed_by = _who(x)
+        db.execute("""INSERT INTO family_entries(profile_id, body, created_by, created_name, created, changed_by, changed_name,
+                      changed) VALUES(?, ?, NULL, ?, ?, NULL, ?, ?)""", (pid, _enc(body), by, at or dbm.now(), changed_by, changed))
+        n["familyEntries"] += 1
+    if any(n[k] for k in ("corrections", "journal", "doses", "reminders", "medEntries", "costPlans", "costBills", "familyEntries")):
         records._bump(db, pid)
     return n
 

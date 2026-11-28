@@ -351,13 +351,14 @@
   }
   // the profile-wide lists' entries a duplicate can be (#497)
   const LISTED = {allergy: ["allergy", "allergies"], problem: ["problem or diagnosis", "problems or diagnoses"],
-                  upcoming: ["upcoming appointment", "upcoming appointments"]};
+                  upcoming: ["upcoming appointment", "upcoming appointments"], family: ["family history entry", "family history entries"]};
   // what a Sanguity export brings besides its records (#589: its corrections, journal, medication log and reminders),
   // to be put back (the review) or put back (done): a line, or null when it brings none
   const RESTORED = [["corrections", ["correction", "corrections"]], ["journal", ["journal entry", "journal entries"]],
     ["photos", ["photo", "photos"]], ["doses", ["logged dose", "logged doses"]], ["reminders", ["medication reminder", "medication reminders"]],
     ["medEntries", ["medication you added or changed", "medications you added or changed"]],   // (#1091)
-    ["costPlans", ["plan year", "plan years"]], ["costBills", ["bill", "bills"]]];   // (#1127, #1128)
+    ["costPlans", ["plan year", "plan years"]], ["costBills", ["bill", "bills"]],
+    ["familyEntries", ["family history entry you added or hid", "family history entries you added or hid"]]];   // (#1127, #1128)
   function restoredLine(r, done) {
     const said = RESTORED.filter(([k]) => (r || {})[k] > 0).map(([k, words]) => plural(r[k], words));
     if (!said.length) return null;

@@ -35,6 +35,10 @@ to data.json, and each part of it has its place:
   hiddenMeds [{key, name, id, start, stop}]                  the records' medications hidden by hand (#1093), their
                                                              records kept; left out while there are none
   medEntries [{id, key, own, name, ..., hidden?, by...}]     (an export's only, assemble(raw=True)) the med_entries rows
+  familyHistory [{relation, name, conditions, deceased...}]  family history (family.py, #1134): the imports' entries,
+                                                             those hidden by hand left out, and the profile's own ("own"),
+                                                             the family_entries table; hiddenFamily [{key, relation, id}]
+                                                             those hidden; familyEntries (an export's only) the rows
   reminders  [{id, med, name, times, days, from, until, tz, on, by...}]  the med_reminders table: medication reminders
                                                              for the calendar feed (med_reminders.py, #162), never part
                                                              of an import; left out while there are none
@@ -55,13 +59,13 @@ every row. '' means the record has no key; NULL, not worked out yet (backfill_ke
 import collections, hashlib, hmac, json, re, threading
 from contextlib import contextmanager
 
-from . import crossmatch, crypto, edits, encounters, journal, labmap, medications, oop, units
+from . import crossmatch, crypto, edits, encounters, family, journal, labmap, medications, oop, units
 from .importers import common
 
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
 SERVED = ("imports", "edits", "same", "possible", "journal", "medications", "oop", "reminders", "doses",
-          "hiddenMeds", "medEntries", "corrections", "costPlans", "costBills")   # parts assemble() adds: never stored from an import (an
+          "hiddenMeds", "medEntries", "corrections", "costPlans", "costBills", "hiddenFamily", "familyEntries")   # parts assemble() adds: never stored from an import (an
                            # export's data.json has them, and its corrections, #589, and its own medications, #1091:
                            # those go back into their own tables, export.restore)
 
@@ -721,8 +725,10 @@ def _panels(labs):
 
 def _assemble(db, pid, raw=False):
     imps = db.execute("SELECT id, at, origin, format, synced, meta, name FROM imports WHERE profile_id=? ORDER BY id", (pid,)).fetchall()
-    if not imps and (raw or not any(r["own"] for r in medications.listing(db, pid))):
-        return None   # (#1091) nothing imported, but medications of its own: records of those alone (as imported: none)
+    if not imps and (raw or not (any(r["own"] for r in medications.listing(db, pid))
+                                 or any(r["own"] for r in family.listing(db, pid)))):
+        return None   # (#1091, #1134) nothing imported, but medications or family history of its own: records of those
+                      # alone (as imported: none)
     out, costs, pay_imps = {}, [], []   # costs: (import, place in its list, row)
     for r in imps:
         meta = _dec(r["meta"]) or {}
@@ -776,12 +782,20 @@ def _assemble(db, pid, raw=False):
             out["costPlans"] = typed
         if (kept := costplan.bills(db, pid)):   # (#1128) and the bills
             out["costBills"] = kept
+        if (fam := family.listing(db, pid)):   # (#1134)
+            out["familyEntries"] = fam
     else:   # #50: each medication's spans and fills, only when there are some; with the profile's own and changes (#1091)
         meds, hidden = medications.assembled(db, pid, out)
         if meds:
             out["medications"] = meds
         if hidden:
             out["hiddenMeds"] = hidden
+        fam, hidden = family.assembled(db, pid, out)   # (#1134) the records' family history and the profile's own
+        out.pop("familyHistory", None)
+        if fam:
+            out["familyHistory"] = fam
+        if hidden:
+            out["hiddenFamily"] = hidden
     from . import med_reminders
     if (rem := med_reminders.listing(db, pid)):   # #162: reminders for the calendar feed, only when there are some
         out["reminders"] = rem

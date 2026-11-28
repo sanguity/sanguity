@@ -1291,6 +1291,24 @@ SCHEMA = [
         changed INTEGER);
     CREATE INDEX cost_bills_profile ON cost_bills(profile_id);
     """,
+    # version 53 (#1134): a profile's own family history (family.py), and its hiding of entries of the records'. One row
+    # each: an entry of the person's own (its key "own:" and a random word: a relative and their conditions), or the
+    # hiding of an entry of the records', found by its source key, so a later pull or the same records imported again
+    # never shows it again. What it says is in body, encrypted; who made or changed it and when are plain, as
+    # med_entries' are.
+    """
+    CREATE TABLE family_entries(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,                        -- JSON, encrypted: {key, own, relation, name, conditions, ...} or {key, hidden}
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,                -- the username then
+        created INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_name TEXT,
+        changed INTEGER);
+    CREATE INDEX family_entries_profile ON family_entries(profile_id);
+    """,
 ]
 
 

@@ -54,6 +54,7 @@ FIELDS = (("documents", "id", "path"), ("activity", "id", "detail"), ("users", "
           ("summary_drafts", "id", "sealed"),   # (#219)
           ("med_reminders", "id", "body"), ("med_doses", "id", "body"),   # (#162, #235)
           ("med_entries", "id", "body"),   # (#1091)
+          ("family_entries", "id", "body"),   # (#1134)
           ("labmap_changes", "id", "value"),   # (#1097)
           ("oidc_identities", "id", "name"),   # (#1109)
           ("journal_spots", "id", "name"),   # (#1139)
