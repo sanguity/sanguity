@@ -18,7 +18,8 @@ Folders (mount each one; see deploy/unraid/README.md):
   /config                  sources.json, settings.json, corrections.json (read-only; optional)
 
 Environment: PUID, PGID (default 1000), TZ (the watch receiver's time zone; default UTC), and the app's own
-settings (SESSION_DAYS, PUBLIC_ORIGINS, COOKIE_SECURE... as in .env.example).
+settings (COOKIE_SECURE, UPLOAD_MAX_FILE_MB... as in .env.example). It sets none of them itself: those Settings →
+Install → General changes (PUBLIC_ORIGINS, SESSION_DAYS...) are the page's unless one is given here, which pins it (#1120).
 """
 import os, signal, subprocess, sys, time
 
