@@ -91,9 +91,10 @@ const SG_PAGES = {
      why: "Only a profile's owners can rename or delete it.", words: "profile name rename change delete remove", finds: [["Delete this profile", "profileCard", "remove erase"]]},
     // You: the Account page's groups (#169: account.js, and pwa.js's two cards), then Display
     {id: "security", title: "Sign-in and security", icon: "lock", part: "You", hint: "how you sign in, and where you're signed in now.", place: "account",
-     has: ["password", "twofa", "passkeys", "sessions"],
+     has: ["password", "twofa", "passkeys", "oidc", "sessions"],
      finds: [["Password", "password", "change new reset forgot passphrase current repeat"], ["Two-factor sign-in", "twofa", "2fa authenticator app code totp turn on off recovery make new disable enable reset lost phone qr scan"],
-       ["Passkeys", "passkeys", "security key fingerprint face add rename remove delete"], ["Where you're signed in", "sessions", "sessions devices sign out log out logout everywhere other"]]},   // (#502: what's done there; #519: logout)
+       ["Passkeys", "passkeys", "security key fingerprint face add rename remove delete"],
+       ["Sign-in provider", "oidc", "oidc single sign-on sso link unlink identity authentik keycloak authelia google"], ["Where you're signed in", "sessions", "sessions devices sign out log out logout everywhere other"]]},   // (#502: what's done there; #519: logout)
     {id: "device", title: "This device", icon: "smartphone", part: "You", hint: "Sanguity on the device you're using now, as an app and offline.", place: "account",
      has: ["installApp", "offlineRecords"],
      finds: [["Install on this device", "installApp", "app home screen"], ["Offline records on this device", "offlineRecords", "offline without a connection"]]},
@@ -103,7 +104,7 @@ const SG_PAGES = {
         ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches lab tests"]]},
     // Install: the Admin page's groups (#167: admin.js, admin-sources.js, admin-backups.js, outside.js, activity.js),
     // admins only. General (#998) first: the server's own settings, each of its sections (#1000-#1005) a part in its has
-    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-security", "gen-backups", "gen-phone", "gen-experimental", "gen-demo", "gen-about"], place: "admin", words: "server install configuration",
+    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-security", "gen-signin", "gen-backups", "gen-phone", "gen-experimental", "gen-demo", "gen-about"], place: "admin", words: "server install configuration",
      finds: [["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names trusted proxies port bind forwarded"],
        // (each of its rows' labels finds it, #524; "onetime", not "one-time": a word typed is found at a word's start, so it's
        // still found by "one-time", but not whole, so "one-time password" finds Accounts first, where one is made, #502)
@@ -112,6 +113,8 @@ const SG_PAGES = {
         "check minutes secure cookie password checks"],
        ["Wrong tries before a wait", "gen-security", "password throttle attempts one account from place address any anywhere"],   // (an entry of its own: "create account" is Accounts')
        ["Require two-factor sign-in", "gen-security", "2fa everyone"],   // (#1001; #528: "require 2fa", Accounts' before)
+       ["Sign-in provider", "gen-signin", "oidc openid connect single sign-on sso issuer client id secret redirect uri scopes acr " +
+        "authentik keycloak authelia google test connection sign in with oidc only passwords off"],   // (#1109)
        ["Backups and logging", "gen-backups", "backups folder encryption key file keys logs log output docker security activity kept days how long delete older"],   // (the schedule's Backups', #532: it only links there)
        ["Phone receiver", "gen-phone", "upload address watch scale health connect receiver port time zone unclaimed restore replaced"],
        ["Experimental", "gen-experimental", "connected sources portals health plans fhir epic mychart sync find your provider turn on off"],   // (#1096)

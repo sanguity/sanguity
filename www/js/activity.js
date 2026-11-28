@@ -80,6 +80,8 @@ const WHAT = {
   "connect.source": d => `${{add: "set up", edit: "changed", remove: "removed"}[d.change] || "changed"} the connected source “${d.name}”`,
   "passkey.add": d => `added the passkey “${d.name}”`,
   "passkey.remove": d => `removed the passkey “${d.name}”`,
+  "oidc.link": d => d.username ? `linked the sign-in identity “${d.name}” to ${d.username}` : `linked the sign-in identity “${d.name}”`,   // (#1109)
+  "oidc.unlink": d => d.username ? `unlinked the sign-in identity “${d.name}” from ${d.username}` : `unlinked the sign-in identity “${d.name}”`,
   "settings.require_2fa": d => d.on ? "required two-factor sign-in for everyone" : "stopped requiring two-factor sign-in",
   "account.remove": d => `removed the account ${d.username}` +
     (d.handed_over && d.handed_over.length ? `, handing ${d.handed_over.join(", ")} to someone else` : ""),

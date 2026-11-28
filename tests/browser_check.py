@@ -2832,6 +2832,176 @@ def connected_sources_switch_check(check, browser, base, cookies):
     return errs
 
 
+def oidc_check(check, browser, base, cookies):
+    """(#1109) Sign in with OIDC, against the fake provider (tests/fakeoidc.py), as the admin whose cookies are given:
+    General → Sign-in provider drawn, its client secret never on the page, the redirect URI to register, Test
+    connection, Sign in with OIDC only offered only once the admin's own identity has signed in; You → Sign-in and
+    security links it (the provider and back through the sign-in page, said, focus on the card's heading) and unlinks
+    it; the sign-in page's button, by keyboard, signs in; with OIDC only, the button alone; an admin links and unlinks
+    an account's identity from its row's menu. Each part at 320 px, at 200% text, dark, in forced colours, with no
+    serious axe finding. Puts everything back as it was. Returns script errors."""
+    from server import accounts as acc1109, db as dbm1109, oidc as oidc1109
+    from fakeoidc import FakeOIDC
+    secret = "a fictional client secret, never on a page"
+    idp = FakeOIDC(client_id="sanguity-check", secret=secret).start()
+    idp.person = {"sub": "demo-1109", "preferred_username": "demo@idp.example (fictional)"}
+    idp.token = {"amr": ["pwd", "mfa"]}   # the provider's two factors: signed in at once (else the demo's own second step)
+    db = dbm1109.connect()
+    oidc1109.save(db, {**oidc1109.load(db), "issuer": idp.issuer, "client_id": "sanguity-check", "label": "Authentik (fictional)",
+                       "only": False}, secret)
+    other = acc1109.create(db, "oidc1109", password="a fictional passphrase for 1109")[0]
+    db.close()
+    errs = []
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+    ctx.add_cookies([c for c in cookies if c["name"] == "sg_session"])
+    page = ctx.new_page()
+    page.on("pageerror", lambda e: errs.append(str(e)))
+    js = page.evaluate
+    serious = []
+
+    def looks(where, sel):   # 320 px, 200% text, dark and forced colours: fits, no serious axe finding, nothing hidden
+        out = []
+        for w in (320, 412, 1400):
+            page.set_viewport_size({"width": w, "height": 900})
+            page.wait_for_timeout(150)
+            out += phone_fits(page, f"{where} at {w} px")
+        js("document.documentElement.style.fontSize = '200%'")
+        page.set_viewport_size({"width": 412, "height": 900})
+        page.wait_for_timeout(150)
+        out += phone_fits(page, f"{where} at 200% text")
+        js("document.documentElement.style.fontSize = ''")
+        page.set_viewport_size({"width": 1400, "height": 900})
+        for scheme in ("light", "dark"):
+            page.emulate_media(color_scheme=scheme)
+            serious.extend(axe_check(page, f"{where}, {scheme}")[0])
+        page.emulate_media(color_scheme="light", forced_colors="active")
+        out += [f"{where}: {t} not drawn in forced colours" for t in js(f"""[...document.querySelectorAll('{sel} :is(button, input)')]
+          .filter(e => e.checkVisibility() && (e.getBoundingClientRect().width < 8 || getComputedStyle(e).visibility === 'hidden'))
+          .map(e => e.id || e.textContent.trim())""")]
+        page.emulate_media(forced_colors="none")
+        return out
+
+    try:
+        # ---- General → Sign-in provider
+        page.goto(base + "/settings.html?profile=1#gen-signin")
+        page.wait_for_selector("#signin-issuer", timeout=20000)
+        fresh_check(page)
+        got = js("""[document.getElementById('signin-issuer').value, document.getElementById('signin-secret').value,
+          document.getElementById('signin-secret').placeholder, document.querySelector('#gen-signin code').textContent,
+          document.getElementById('signinOnly').disabled, document.documentElement.outerHTML.includes(%s)]""" % json.dumps(secret))
+        check("General → Sign-in provider (#1109): the provider as set up, the client secret only as saved (never on the page), "
+              "the redirect URI to register, and OIDC only not offered before the admin's own sign-in works",
+              got == [idp.issuer, "", "Saved", base + "/login.html", True, False], got)
+        page.get_by_role("button", name="Test connection").click()
+        page.wait_for_function("(m => /^Reached it/.test(m.textContent) || m.classList.contains('bad'))(document.querySelector('#gen-signin .row .msg'))", timeout=15000)
+        said = js("document.querySelector('#gen-signin .row .msg').textContent")
+        check("…Test connection reads its discovery document and keys", said.startswith("Reached it") and "2 signing keys" in said, said)
+        fits = looks("General → Sign-in provider", "#gen-signin")
+        # ---- You → Sign-in and security: link, by keyboard
+        page.goto(base + "/settings.html?profile=1#oidc")
+        page.wait_for_selector("#oidcLinkBtn", timeout=20000)
+        fits += looks("Sign-in and security's Sign-in provider", "#oidc")
+        page.focus("#oidcLinkBtn")
+        page.keyboard.press("Enter")
+        page.wait_for_url("**/settings.html#oidc", timeout=20000)
+        page.wait_for_selector("#oidcList tbody tr", timeout=20000)
+        got = js("[document.getElementById('oidcMsg').textContent, document.activeElement.id, document.querySelector('#oidcList tbody td').textContent]")
+        check("…You → Sign-in and security links its identity: to the provider and back, said there, focus on the card's heading",
+              got[0] == "Linked “demo@idp.example (fictional)”: you can sign in with it now." and got[1] == "oidcHd"
+              and got[2].startswith("demo@idp.example (fictional)"), got)
+        fits += looks("Sign-in and security's Sign-in provider, linked", "#oidc")
+        # ---- the sign-in page: its button, by keyboard
+        out = browser.new_context(viewport={"width": 412, "height": 900}, bypass_csp=True)
+        p2 = out.new_page()
+        p2.on("pageerror", lambda e: errs.append(str(e)))
+        p2.goto(base + "/login.html")
+        p2.wait_for_selector("#oidcBox:not([hidden])", timeout=15000)
+        tabs = []
+        for _ in range(8):
+            p2.keyboard.press("Tab")
+            tabs.append(p2.evaluate("document.activeElement.id"))
+            if tabs[-1] == "oidc":
+                break
+        label = p2.evaluate("document.getElementById('oidc').textContent")
+        for scheme in ("light", "dark"):
+            p2.emulate_media(color_scheme=scheme)
+            serious.extend(axe_check(p2, f"the sign-in page with its provider's button, {scheme}")[0])
+        p2.emulate_media(color_scheme="light")
+        fits += phone_fits(p2, "the sign-in page at 412 px")
+        p2.keyboard.press("Enter")
+        p2.wait_for_url(lambda u: "login.html" not in u, timeout=20000)
+        check("…the sign-in page's “Sign in with Authentik (fictional)”, reached by Tab, signs in with Enter (the provider's two factors)",
+              tabs[-1] == "oidc" and label == "Sign in with Authentik (fictional)", [tabs, label, p2.url])
+        out.close()
+        idp.token = {"amr": ["pwd"]}   # one factor at the provider: the account's own second step after it, as after a password
+        out = browser.new_context(viewport={"width": 412, "height": 900}, bypass_csp=True)
+        p2 = out.new_page()
+        p2.goto(base + "/login.html")
+        p2.wait_for_selector("#oidcBox:not([hidden])", timeout=15000)
+        p2.click("#oidc")
+        p2.wait_for_selector("#step2:not([hidden])", timeout=20000)
+        got = p2.evaluate("[document.activeElement.id, document.getElementById('u').value, document.getElementById('u').readOnly, "
+                          "document.getElementById('oidcBox').hidden, location.search]")
+        out.close()
+        check("…one factor at the provider: the account's own code asked next, focus in its box, the address's code gone",
+              got == ["c", USER, True, True, ""], got)
+        idp.token = {"amr": ["pwd", "mfa"]}
+        # ---- OIDC only: offered now; the sign-in page the button alone
+        page.goto(base + "/settings.html?profile=1#gen-signin")
+        page.wait_for_selector("#signinOnly:not([disabled])", timeout=20000)
+        fresh_check(page)
+        page.click("#signinOnly")
+        answer_ask(page)
+        page.wait_for_function("document.getElementById('signinOnlyMsg')?.textContent.startsWith('Only')", timeout=15000)
+        out = browser.new_context(viewport={"width": 320, "height": 800}, bypass_csp=True)
+        p3 = out.new_page()
+        p3.goto(base + "/login.html")
+        p3.wait_for_selector("#oidcBox:not([hidden])", timeout=15000)
+        got = p3.evaluate("""[document.activeElement.id, ['u', 'p', 'b', 'pk'].map(id => document.getElementById(id).checkVisibility()),
+          document.getElementById('oidc').classList.contains('primary')]""")
+        fits += phone_fits(p3, "the sign-in page, OIDC only, at 320 px")
+        out.close()
+        check("…Sign in with OIDC only, turned on once the admin's own identity signed in: the sign-in page the provider's button alone, focused",
+              got == ["oidc", [False, False, False, False], True], got)
+        page.click("#signinOnly")
+        page.wait_for_function("document.getElementById('signinOnlyMsg')?.textContent.startsWith('Passwords')", timeout=15000)
+        # ---- Install → Accounts: an account's identity, linked and unlinked from its row's menu
+        page.goto(base + "/settings.html?profile=1#users")
+        row = f'#userList tr[data-user="{other}"]'
+        page.wait_for_selector(row + " .set-more-btn", timeout=20000)
+        page.click(row + " .set-more-btn")
+        page.get_by_role("menuitem", name="Link a Authentik (fictional) identity…").click()
+        asked = answer_ask(page, fill="oidc1109-subject")
+        page.wait_for_selector(row + ' .tag:text-is("Authentik (fictional)")', timeout=15000)
+        page.click(row + " .set-more-btn")
+        page.get_by_role("menuitem", name="Unlink oidc1109-subject…").click()
+        answer_ask(page)
+        page.wait_for_function(f"!document.querySelector('{row} .who').textContent.includes('Authentik')", timeout=15000)
+        check("…Install → Accounts links an account's identity by its subject from its row's menu, tagged, and unlinks it",
+              asked[0] == "Link a Authentik (fictional) identity to oidc1109?", asked)
+        # ---- You: unlink
+        page.goto(base + "/settings.html?profile=1#oidc")
+        page.wait_for_selector("#oidcList tbody button", timeout=20000)
+        page.click("#oidcList tbody button")
+        answer_ask(page)
+        page.wait_for_function("document.getElementById('oidcMsg').textContent.startsWith('Unlinked')", timeout=15000)
+        check("…and You → Sign-in and security unlinks it, Link offered again with focus", js("document.activeElement.id") == "oidcLinkBtn",
+              js("document.activeElement.id"))
+        check("…each part fits 320–1400 px and 200% text, and draws in forced colours", not fits, fits)
+        check("…no serious axe finding there, light or dark", not serious, serious)
+    except Exception as e:
+        check("Sign in with OIDC (#1109) ran", False, stopped(e))
+    finally:
+        ctx.close()
+        idp.stop()
+        db = dbm1109.connect()
+        db.execute("DELETE FROM oidc_identities")
+        db.execute("DELETE FROM meta WHERE k IN ('oidc', 'oidc.secret')")
+        acc1109.remove(db, other)
+        db.close()
+    return errs
+
+
 def main():
     t0, sections = time.monotonic(), sections_of_main()   # (read before the file can change under a long run)
     srv, base = start_app()
@@ -27736,6 +27906,11 @@ def main():
             errs1096 = connected_sources_switch_check(check, browser, base, page.context.cookies())
             check("…and no script fails there (#1096)", not errs1096, errs1096)
 
+            # ---- #1109: sign in with OIDC, against the fake provider: General's Sign-in provider, linking under Sign-in and
+            # security, the sign-in page's button, OIDC only, an account's identity under Accounts
+            errs1109 = oidc_check(check, browser, base, page.context.cookies())
+            check("…and no script fails there (#1109)", not errs1109, errs1109)
+
             # ---- #246: the Timeline list's row is .tl-row, so the pages' rows of buttons (.row) have no divider under them
             # and no pointer, and what's typed into a field isn't its label's semibold; every group of each page
             rows_typed = r"""(() => {
@@ -28846,7 +29021,7 @@ def main():
             # no longer the only account: admin actions now wait for the admin's own second factor (issue #75)
             check("with a second account, the admin is asked for a second factor",
                   js("!document.getElementById('adminTf').hidden && document.getElementById('adminTools').hidden"))
-            check("…and every other part of Install the server now refuses says so", js("['gen-host', 'gen-security', 'gen-backups', 'gen-phone', 'gen-demo', 'gen-about', 'backups', 'admin', 'sec-sync', 'directory', 'labmaps', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
+            check("…and every other part of Install the server now refuses says so", js("['gen-host', 'gen-security', 'gen-signin', 'gen-backups', 'gen-phone', 'gen-demo', 'gen-about', 'backups', 'admin', 'sec-sync', 'directory', 'labmaps', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
             # two-factor sign-in: turn it on from the key shown, confirm with a code, get recovery codes
             from server import twofactor
             import time as _time

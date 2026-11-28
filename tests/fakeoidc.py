@@ -158,6 +158,11 @@ def _handler(fake):
                 return self._send(200, fake.conf())
             if path == fake.path + "/certs":
                 return self._send(200, fake.jwks())
+            if path == fake.path + "/auth":   # a browser sent here (browser_check.py): signed in at once, as fake.person
+                self.send_response(302)
+                self.send_header("Location", fake.authorize(self.path))
+                self.send_header("Content-Length", "0")
+                return self.end_headers()
             self._send(404, {"error": "not found"})
 
         def do_POST(self):

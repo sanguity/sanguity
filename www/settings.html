@@ -143,6 +143,21 @@
     </div>
   </section>
 
+  <!-- Sign-in provider (#1109, account.js): this account's identity at the install's provider, linked and unlinked
+       after the fresh check; hidden while the install has none -->
+  <section class="card" id="oidc" hidden>
+    <h2 id="oidcHd" tabindex="-1">Sign-in provider</h2>
+    <p class="hint" id="oidcHint"></p>
+    <div id="oidcReauth" class="reauth" hidden></div>
+    <div class="set-row wide">
+      <div class="set-row-lbl"><p class="set-row-name">Your identity there</p></div>
+      <div class="set-row-ctl">
+        <div id="oidcList"></div>
+        <span class="msg" id="oidcMsg" role="status"></span>
+      </div>
+    </div>
+  </section>
+
   <section class="card" id="sessions" hidden>
     <h2>Where you're signed in</h2>
     <p class="hint">Sign out any device you don't recognise. Changing your password also signs out every other device.</p>
@@ -189,6 +204,9 @@
     <form id="genSecBody" novalidate></form>
     <span class="msg" id="genSecMsg" role="status"></span>
   </section>
+  <!-- General → Sign-in provider (#1109, gen-signin.js): one OIDC provider, its button on the sign-in page, and
+       Sign in with OIDC only -->
+  <section class="card conn adm" id="gen-signin" hidden><h2>Sign-in provider</h2></section>
   <!-- General → Backups and logging (#1002, gen-backups.js) -->
   <section class="card conn adm" id="gen-backups" hidden>
     <h2>Backups and logging</h2>
@@ -414,6 +432,7 @@
 <script src="js/outside.js"></script>
 <script src="js/admin-host.js"></script>
 <script src="js/gen-security.js"></script>
+<script src="js/gen-signin.js"></script>
 <script src="js/gen-backups.js"></script>
 <script src="js/admin-phone.js"></script>
 <script src="js/gen-about.js"></script>
