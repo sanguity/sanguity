@@ -22,7 +22,7 @@ sys.path.insert(0, ROOT)
 
 from fastapi.testclient import TestClient   # noqa: E402
 
-from server import accounts, connections as conns, crypto, db as dbm, main, net, profiles as prof, records, smart, sync   # noqa: E402
+from server import accounts, connections as conns, crypto, db as dbm, main, net, notify, profiles as prof, records, smart, sync   # noqa: E402
 from tests.whole_records import whole   # noqa: E402  records with every record's details (#217)
 from tests import netguard   # noqa: E402
 from tests.fakefhir import PAYER_FIXTURES, FakeFHIR   # noqa: E402
@@ -427,9 +427,13 @@ class Connections(unittest.TestCase):
         self.first_pull(cid)
         before = self.counts()
         self.fake.clear_requests()
+        heads_up = mock.patch.object(notify, "new_results")   # (#1130) a heads-up for new records only, if wanted
+        told = heads_up.start()
+        self.addCleanup(heads_up.stop)
         res = self.pull(cid)   # nothing new
         self.assertTrue(res["ok"], res)
         self.assertIsNone(res["import"])
+        told.assert_not_called()
         self.assertEqual(self.counts(), before)
         searches = [r for r in self.fake.requests if r.path == "/fhir/Observation"]
         self.assertTrue(searches and all(r.query.get("_lastUpdated", "").startswith("gt") for r in searches), searches)
@@ -442,6 +446,7 @@ class Connections(unittest.TestCase):
         self.assertTrue(res["ok"], res)
         self.assertIsNotNone(res["import"])
         self.assertEqual(res["counts"]["results"], 1)    # just the new glucose
+        self.assertEqual([c.args[1:] for c in told.call_args_list], [(self.pid, res["import"])])
         self.assertGreaterEqual(res["changed"], 1)       # the encounter, in place
         after = self.counts()
         self.assertEqual(after["results"], before["results"] + 1)

@@ -77,7 +77,7 @@ remain the main way records come in; live connections are an extra for those who
   ImagingStudy too; a source whose scopes were set up before lists the kinds it leaves out on the setup screen, and a
   connection made before asks to sign in again only when one of them is turned on.
 - **Attachment limits** (#101) and **a warning when a connection stops syncing** (#102), on the profile's main page
-  and in the admins' notices, never by email or push.
+  and in the admins' notices; nothing is sent unless you set up notifications to your own server.
 - **A local count of connections per vendor**, shown to admins and never sent anywhere, so demand for option 2 is
   something the project can ask about rather than guess.
 - **The directory** (#93) says per entry what option 1 needs there (the vendor's developer site, whether a client

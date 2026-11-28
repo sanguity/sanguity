@@ -179,6 +179,8 @@
   <!-- This device: installing Sanguity on it, and offline records on it (#56), filled in by js/pwa.js -->
   <section class="card" id="installApp" hidden></section>
   <section class="card" id="offlineRecords" hidden></section>
+  <!-- Notifications (#1130, notify.js): this person's, per profile and kind; shown once the server has a notification server -->
+  <section class="card" id="notify" hidden></section>
 
   <!-- Install (#991): the Admin page's groups, for admins only (admin.js and the scripts after it), hidden until they're
        drawn for an admin; each card in .conn and .adm, as Admin's main was -->
@@ -217,6 +219,8 @@
     <div id="genBk"></div>
   </section>
   <section class="card conn adm" id="gen-phone" hidden><h2>Phone receiver</h2></section>   <!-- the upload address (admin-phone.js, #1003) -->
+  <!-- General → Notifications (#1130, notify.js): the install's own notification server, its access token, Test -->
+  <section class="card conn adm" id="gen-notify" hidden><h2>Notifications</h2></section>
   <!-- General → Needs a restart (#1121, gen-restart.js): the settings read as the server starts, Restart now -->
   <section class="card conn adm" id="gen-restart" hidden>
     <h2 id="genRsHd" tabindex="-1">Needs a restart</h2>
@@ -432,6 +436,7 @@
 <script src="js/admin-host.js"></script>
 <script src="js/gen-security.js"></script>
 <script src="js/gen-signin.js"></script>
+<script src="js/notify.js"></script>
 <script src="js/gen-backups.js"></script>
 <script src="js/admin-phone.js"></script>
 <script src="js/gen-about.js"></script>

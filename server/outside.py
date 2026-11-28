@@ -18,6 +18,9 @@ way out, under a permit made here from what the install was told to contact:
         the install's sign-in provider an admin set up: its issuer's host, and the token endpoint's and the JWKS's
         as its own discovery document names them, for a sign-in, a link or an admin's Test connection; none while
         no provider is set up.
+  notify.permit(db, who, ip, actor=None)   (#1130, notify.py)
+        the install's own notification server an admin set (an ntfy topic): its host alone, for each notification
+        someone turned on and an admin's Test; none while no server is set.
   for_directory(db, who, ip, actor=None)
         the provider directory's two published lists (#992; directory/update.py): the hosts directory/build.py names
         for them, only when an admin presses Add the lists or Update now, or once a week after an admin turned that
@@ -181,12 +184,14 @@ def view(db, s):
     for c in live:   # a connection whose source an admin has since removed: its issuer only
         if c["client_id"] is None:
             sources.append(entry(c["source"], None, c["issuer"], {}, {smart.host_of(c["issuer"])}, None, None, [c], None))
-    from . import oidc
+    from . import notify, oidc
     signin = oidc.hosts(db) if admin else []   # (#1109) the sign-in provider's: an admin's to see, as the directory's
-    allowed = sorted({h for x in sources for h in x["may_contact"]} | set(signin))
+    told = sorted(notify.hosts())   # (#1130) the notification server: everyone's to see, as anyone may turn them on
+    allowed = sorted({h for x in sources for h in x["may_contact"]} | set(signin) | set(told))
     pick = lambda *ps: [c for c in contacts if c["purpose"] in ps]
     return {"nothing_else": NOTHING_ELSE, "admin": admin, "connected_sources": on, "may_contact": allowed, "sources": sources,
             "health_links": pick(LINK, LINK_FILE), "card_keys": pick(CARD_KEYS),
             **({"directory": {"hosts": sorted(directory_hosts()), "contacts": pick(DIRECTORY)}} if admin and on else {}),
             **({"sign_in": {"hosts": signin, "contacts": pick(oidc.PURPOSE)}} if signin else {}),
+            **({"notifications": {"hosts": told, "contacts": pick(notify.PURPOSE)}} if told else {}),
             "earlier": [c for c in contacts if c["purpose"].startswith(SOURCE) and c["host"] not in allowed]}
