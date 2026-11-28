@@ -1,7 +1,8 @@
 """(#1158) The settings file is the one source of truth, as Sonarr's and Radarr's: the environment sets none of the
-server's settings any more, only the container's own (config.CONTAINER). On the first start of this version, each
-setting the environment set (the install settings a variable stands for, and the write-only secrets of
-config.SECRETS) is copied into the database once, as the app starts (main.py's lifespan): the value it set was the one
+server's settings any more, only the container's own (config.CONTAINER) and, where an install opts in, the few it may
+manage there (config.MANAGED: the sign-in provider, the notification token), which keep winning and are never taken in.
+On the first start of this version, each setting the environment set (the install settings a variable stands for) is
+copied into the database once, as the app starts (main.py's lifespan): the value it set was the one
 in force until now. The restart settings are copied into data/server-settings.json the same way, earlier, as the
 server starts (server_settings.take_environment). The copy is logged in Install activity, and General says once which
 were taken (notice()). From then on one the environment sets is ignored; one changed since it was taken in is said in
@@ -10,36 +11,16 @@ the log at each start, naming it. What's kept of each one's text is a fingerprin
 The way back stays python -m server.manage config reset NAME|--all, and config set NAME VALUE (manage.py)."""
 import json, os, time
 
-from . import activity, config, crypto, db as dbm, server_settings, settings
+from . import activity, config, db as dbm, server_settings, settings
 
 MARK = "settings.taken_from_environment"   # meta: {"at", "seen": {NAME: fingerprint}, "names": [...], "shown": bool}
 WHERE = "Settings → Install"
 
 
 def _set():
-    """{NAME: text} of the variables the environment sets that a page setting or a secret stands for."""
-    names = [s.env for s in settings.SETTINGS.values() if s.env] + list(config.SECRETS)
+    """{NAME: text} of the variables the environment sets that a page setting stands for."""
+    names = [s.env for s in settings.SETTINGS.values() if s.env]
     return {n: t for n in names if (t := os.environ.get(n, "").strip())}
-
-
-def _secret(db, name, text):
-    """A secret into its own write-only store, as the page saves it; False where it can't be kept."""
-    if name == "OIDC_CLIENT_SECRET":
-        from . import oidc
-        dbm.meta_set(db, oidc.SECRET_META, crypto.enc(text))
-        oidc._cache.clear()
-        return True
-    from . import notify
-    t = notify.clean_token(text)
-    if not t or not notify.configured():
-        return False
-    # (kept for the server it was first sent to, where the environment's token had gone already)
-    kept = notify._meta(db, notify.ENV_META) or {}
-    import hashlib
-    there = kept.get("origin") if kept.get("hash") == hashlib.sha256(t.encode()).hexdigest() else None
-    dbm.meta_set(db, notify.TOKEN_META, crypto.enc(json.dumps({"origin": there or notify.origin(), "token": t})))
-    dbm.meta_set(db, notify.ENV_META, None)
-    return True
 
 
 def take(db, say=print, now=None):
@@ -61,14 +42,6 @@ def take(db, say=print, now=None):
     saved = settings.stored(db, "install")
     with dbm.transaction(db):
         for n, t in seen.items():
-            if n in config.SECRETS:
-                if _secret(db, n, t):
-                    names.append(n)
-                    changes.append({"setting": n, "label": config.SECRETS[n]})   # (never its value)
-                else:
-                    say(f"{n} in the environment isn't taken in: there's no notification server to keep it for, or it "
-                        "isn't a token Sanguity can send. Give it on Settings → Install → General → Notifications.")
-                continue
             s = by_env[n]
             try:
                 v = config.VARS[n].read(t)
@@ -113,7 +86,7 @@ def notice(db):
     if not m or m.get("shown") or not m.get("names"):
         return None
     labels = {s.env: s.label for s in settings.SETTINGS.values() if s.env}
-    labels.update({n: f"{d.label} ({d.group})" for n, d in server_settings.DEFS.items()}, **config.SECRETS)
+    labels.update({n: f"{d.label} ({d.group})" for n, d in server_settings.DEFS.items()})
     return {"at": m.get("at"), "names": [{"name": n, "label": labels.get(n, n)} for n in m["names"]]}
 
 

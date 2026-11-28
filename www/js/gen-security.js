@@ -5,9 +5,9 @@
    counted in the card's data-dirty until the group's bar (sidebar.js, settings-nav.js) saves them (genSecSave) or
    puts them back (genSecDiscard), as the sync defaults' are (admin-sources.js). Each is bounded by the server, never
    more lenient than Sanguity's own default; each change asks for the fresh check, in the card (admin.js fresh), and
-   one that ends sign-ins says how many and asks for that count typed first (admin.js confirmed). One the server's
-   environment sets is its value as text, with its variable and where it's changed (util.js envRow, #1119); the Secure
-   cookie and the password checks at once are About's (gen-about.js). call(), say(), same() and plural() are settings.js's. */
+   one that ends sign-ins says how many and asks for that count typed first (admin.js confirmed), as the Secure cookie's
+   Always over plain HTTP and Never are (#1158). The environment sets none of them: each is changed here (#1158). call(),
+   say(), same() and plural() are settings.js's. */
 "use strict";   // $, el, setRow, ask, toast and sayIn come from util.js
 let GS = null;   // the Security section as the server last gave it: {settings: [...]}, and the variables
 const gsBox = () => $("#genSecReauth");
@@ -31,9 +31,7 @@ function gsDraw(d, note, typed = {}) {
   const tag = st => st.from === "install" && !same(st.value, st.default) ? el("span", {class: "tag", text: "set for this server"}) : null;
   const rows = GS.settings.map(st => {
     const id = gsId(st.key);
-    if (!st.can_change)   // (#1119) set by the environment: its value as text, and where it's changed
-      return envRow(st, GS.at, {value: st.kind === "choice" ? st.choices[st.value] : String(st.value), head: ["p", {class: "set-row-name", id: id + "-lbl"}]});
-    if (st.kind === "choice") {   // who may create profiles: saved as it's picked
+    if (st.kind === "choice") {   // who may create profiles, the Secure cookie: saved as it's picked
       return setRow([el("p", {class: "set-row-name", id: id + "-lbl"}, st.label, tag(st)), el("p", {class: "hint", id: id + "-h", text: st.help})],
         el("fieldset", {class: "set-radios", "aria-labelledby": id + "-lbl", "aria-describedby": id + "-h"},
           el("div", {class: "seg wrap"}, ...Object.entries(st.choices).map(([v, l]) => el("label", {},
@@ -62,14 +60,15 @@ function gsCount() {
    made once that count is typed (admin.js confirmed) */
 async function gsPut(st, value) {
   const d = await confirmed(typed => fresh(() => call(`settings/install/${encodeURIComponent(st.key)}`, "PUT", {value, confirm: typed}), gsBox()));
-  if (!d) throw Object.assign(new Error("Not saved: no sign-in was ended."), {why: "no sign-in was ended."});
+  const why = st.key === "security.cookieSecure" ? "it wasn't confirmed." : "no sign-in was ended.";
+  if (!d) throw Object.assign(new Error("Not saved: " + why), {why});
   return d;
 }
 async function gsChoose(st, v) {
   try {
     const d = await gsPut(st, v);
     gsDraw(d, "", gsTypedNow());
-    const said = `Saved: ${st.choices[v].toLowerCase()} may create profiles.`;
+    const said = st.key === "security.profiles" ? `Saved: ${st.choices[v].toLowerCase()} may create profiles.` : `Saved “${st.label}”: ${st.choices[v]}.`;
     sayIn($("#genSecMsg"), said, false, {say: false});
     toast(said, {action: "Undo", onAction: () => gsChoose(st, st.value)});
   } catch (e) { gsDraw({sections: [GS], variables: GS.vars}, "", gsTypedNow()); sayIn($("#genSecMsg"), e.message, true); }
@@ -104,7 +103,7 @@ function genSecDiscard() {
 
 /* ---------------------------------------------------------------- Connected sources' switch (#1096; General → Experimental before #1153) */
 /* each of its settings a switch, saved as it's switched (the fresh check, in the card), as the weekly directory update's
-   is (admin-sources.js); one the environment sets as text (util.js envRow). Connected sources' (the only one
+   is (admin-sources.js). Connected sources' (the only one
    now) shows or hides their parts of Install at once (admin.js csShown) */
 async function loadGenExperimental() {
   let d;
@@ -112,7 +111,6 @@ async function loadGenExperimental() {
   catch (e) { sayIn($("#genExpMsg"), e.message, true); return; }
   $("#genExpBody").replaceChildren(...d.sections.find(s => s.id === "experimental").settings.map(st => {
     const id = "gx-" + st.key.split(".")[1];
-    if (!st.can_change) return envRow(st, d.settings_at, {value: st.value ? "On" : "Off", head: ["p", {class: "set-row-name", id: id + "-lbl"}]});   // (#1119)
     const sw = el("input", {type: "checkbox", role: "switch", id, checked: st.value ? "" : null, "aria-labelledby": id + "-lbl", "aria-describedby": id + "-h",
       onchange: () => gxSwitch(st, sw)});
     return setRow([el("p", {class: "set-row-name", id: id + "-lbl", text: st.label}), el("p", {class: "hint", id: id + "-h", text: st.help})],

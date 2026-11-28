@@ -171,18 +171,19 @@ const helpNodes = (help, ...more) => {
    for another element than a div). -> the row */
 const setRow = (lbl, ctl, {tag = "div", ...attrs} = {}) => el(tag, {...attrs, class: "set-row" + (attrs.class ? " " + attrs.class : "")},
   el("div", {class: "set-row-lbl"}, lbl), el("div", {class: "set-row-ctl"}, ctl));
-/* (#1119) Install → General's rows of what can't be changed there, the same on every card: never a control that looks
-   changeable. envRow: a setting the server's environment sets (.env always wins, #1006), from GET settings/install
-   ({key, label, help, env, value}): its value as text (value: nodes, else st.value), "Set in .env: VAR" on its name's
-   line (head: the name's [tag, attrs]), its own help (helpId: an id for it), more under the value, and where this
-   install's settings are (at: settings/install's settings_at); attrs, the row's own. factRow: a read-only fact, its
-   value as text (a code chip only for what's worth copying), "Set by: …" under it where something sets it (text or
-   nodes: a link to where it's changed); env: its variable, when the environment set it. envTag: [a space, the tag],
-   the tag (.env) unindented where it wraps under its name, on a phone. -> the row */
+/* (#1119) Install's rows of what can't be changed there, the same on every card: never a control that looks
+   changeable. factRow: a read-only fact, its value as text (a code chip only for what's worth copying), "Set by: …"
+   under it where something sets it (text or nodes: a link to where it's changed); env: its variable, for one of the
+   container's own (#1158: the published receiver port; every server setting is changed on the page). envTag: [a space,
+   the tag], the tag (.env) unindented where it wraps under its name, on a phone. envRow (#1158, opt-in): one the
+   server's environment manages (the sign-in provider's fields, the notification token: server/config.py's MANAGED),
+   from its card's answer ({key, label, help, env}): its value as text (value: nodes, else st.value), "Managed by the
+   environment: VAR" on its name's line (head: the name's [tag, attrs]), its own help (helpId: an id for it), more
+   under the value, and where it's changed (at: where this install's settings are); attrs, the row's own. -> the row */
 const envTag = name => [" ", el("span", {class: "tag env", text: "Set in .env: " + name})];
 const envRow = (st, at, {value = String(st.value), head = ["p", {class: "set-row-name"}], help = st.help, helpId, more, attrs} = {}) => setRow(
-  present(el(...head, st.label, envTag(st.env)), helpId ? el("div", {id: helpId}, helpNodes(help)) : helpNodes(help)),
-  present(el("p", {}, value), more, el("p", {class: "hint", text: `Change it where this server's settings are, or take it out there to change it here: ${at}.`})),
+  present(el(...head, st.label, " ", el("span", {class: "tag env", text: "Managed by the environment: " + st.env})), helpId ? el("div", {id: helpId}, helpNodes(help)) : helpNodes(help)),
+  present(el("p", {}, value), more, el("p", {class: "hint", text: `Changed where it's set (${at}), or taken out there to change it here.`})),
   {"data-key": st.key, "data-env": st.env, ...attrs});
 const factRow = (name, help, value, by, env) => setRow([el("h3", {class: "sub"}, name, env ? envTag(env) : null), el("p", {class: "hint", text: help})],
   present([value].flat(2).map(v => typeof v === "string" ? el("p", {text: v}) : v), by ? el("p", {class: "hint"}, "Set by: ", by, ".") : null));

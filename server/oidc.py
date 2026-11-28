@@ -129,13 +129,51 @@ CHECKS = {"issuer": _check_issuer, "client_id": lambda v: _check_word(v, "The cl
 DEFAULTS = {"issuer": "", "client_id": "", "label": LABEL, "scopes": SCOPES, "acr": "", "only": False, "changed": 0}
 
 
-def load(db):
-    """The provider as set up: {issuer, client_id, label, scopes, acr, only, changed} (defaults where unset)."""
+# (#1158, opt-in) each field the environment may manage: while its variable is set it wins, locked on the page
+ENV = {"issuer": "OIDC_ISSUER", "client_id": "OIDC_CLIENT_ID", "label": "OIDC_BUTTON", "scopes": "OIDC_SCOPES",
+       "acr": "OIDC_ACR", "only": "OIDC_ONLY"}
+_said = set()
+
+
+def managed():
+    """{field: value} of the fields the environment manages now, each checked as the page checks it: one that doesn't
+    pass is left out (the page's, as if unset), said once without its value."""
+    out = {}
+    for k, name in ENV.items():
+        text = config.managed(name)
+        if text is None:
+            continue
+        try:
+            out[k] = config._yes(text) if k == "only" else CHECKS[k](text)
+        except (OidcError, ValueError) as e:
+            if (name, text) not in _said:
+                _said.add((name, text))
+                print(f"{name} in the environment isn't one Sanguity takes ({type(e).__name__}): it's left out, and "
+                      "the page's is used.", flush=True)
+    return out
+
+
+def managed_vars():
+    """{field: the variable managing it} ("secret" too), for the page: each of these is locked there."""
+    have = managed()
+    out = {k: config.managed_by(ENV[k]) for k in have}
+    if (by := config.managed_by(SECRET_ENV)):
+        out["secret"] = by
+    return out
+
+
+def _stored(db):
     try:
         have = json.loads(dbm.meta_get(db, OIDC_META) or "{}")
     except ValueError:
         have = {}
     return {**DEFAULTS, **{k: v for k, v in have.items() if k in DEFAULTS}}
+
+
+def load(db):
+    """The provider as set up: {issuer, client_id, label, scopes, acr, only, changed} (defaults where unset), what the
+    environment manages winning (#1158)."""
+    return {**_stored(db), **managed()}
 
 
 def configured(cfg):
@@ -149,12 +187,16 @@ def only(db):
 
 
 def secret_source(db):
-    """Where the client secret comes from: "install" or None (a public client: PKCE alone). (#1158) The environment's
-    OIDC_CLIENT_SECRET was taken in once (settings_import.py), and isn't read after."""
+    """Where the client secret comes from: "environment" (OIDC_CLIENT_SECRET or OIDC_CLIENT_SECRET_FILE, which wins:
+    #1158's opt-in), "install" or None (a public client: PKCE alone)."""
+    if config.managed(SECRET_ENV) is not None:
+        return "environment"
     return "install" if dbm.meta_get(db, SECRET_META) else None
 
 
 def client_secret(db):
+    if (v := config.managed(SECRET_ENV)) is not None:   # (read at each use: a rotated secret applies)
+        return v
     stored = dbm.meta_get(db, SECRET_META)
     return crypto.dec(stored) if stored else ""
 
@@ -175,6 +217,8 @@ def save(db, cfg, secret=None):
         cfg = {**cfg, "changed": dbm.now()}   # its identities' sign-ins before this don't show it works (may_go_only)
     if not configured(cfg):
         cfg = {**cfg, "only": False}
+    kept = _stored(db)   # (#1158) what the environment manages isn't saved over what the page had
+    cfg = {**cfg, **{k: kept[k] for k in managed()}}
     dbm.meta_set(db, OIDC_META, json.dumps({k: cfg[k] for k in DEFAULTS}, separators=(",", ":")))
     if secret is not None:
         dbm.meta_set(db, SECRET_META, crypto.enc(secret) if secret else None)

@@ -437,24 +437,14 @@ class OIDC(unittest.TestCase):
         self.assertTrue(stored.startswith(crypto.FIELD) and SECRET not in stored)
         self.assertNotIn(SECRET, dbm.meta_get(db, oidc.OIDC_META))
         db.close()
-        # (#1158) the environment's is taken in once, encrypted as one saved here; after that it changes nothing
-        from server import settings_import
+        # the environment's wins, and then it can't be changed here
         with mock.patch.dict(os.environ, {"OIDC_CLIENT_SECRET": "the environment's (fictional)"}):
-            self.assertEqual(ada.get("/api/settings/install/oidc").json()["secret"], "install")
-            db = dbm.connect()
-            mark = dbm.meta_get(db, settings_import.MARK)
-            dbm.meta_set(db, settings_import.MARK, None)   # as before this version
-            self.assertIn("OIDC_CLIENT_SECRET", settings_import.take(db, say=lambda *a: None))
-            self.assertNotIn("the environment's", dbm.meta_get(db, oidc.SECRET_META) + dbm.meta_get(db, settings_import.MARK))
-            self.assertEqual(oidc.client_secret(db), "the environment's (fictional)")
-            dbm.meta_set(db, settings_import.MARK, mark)
-            db.close()
+            self.assertEqual(ada.get("/api/settings/install/oidc").json()["secret"], "environment")
+            self.assertEqual(ada.put("/api/settings/install/oidc", json={"secret": "another"}, headers=H).status_code, 409)
             self.idp.secret = "the environment's (fictional)"
             self.link("kim", "kim-subject-1")
             c, r = self.oidc_sign_in()
             self.assertEqual(r.status_code, 200, r.text)
-            self.assertEqual(ada.put("/api/settings/install/oidc", json={"secret": SECRET}, headers=H).status_code, 200, "changed here")
-        self.idp.secret = SECRET
 
     def test_each_setting_is_checked_and_each_change_needs_the_fresh_check(self):
         ada = self.set_up()
@@ -737,6 +727,42 @@ class OIDC(unittest.TestCase):
         from server import backup
         self.assertIn("oidc_identities", backup.ACCESS_TABLES)
         self.assertTrue({"oidc", "oidc.secret"} <= set(backup.ACCESS_META))
+
+
+    def test_the_environment_may_manage_the_provider_opt_in(self):
+        """#1158 (the owner's decision: env-managed, opt-in): each field has a variable; while one is set it keeps winning
+        (never taken in), the page is told which locks it and a change to it is refused (409); the client secret may come
+        from a file (OIDC_CLIENT_SECRET_FILE, a Docker secret), read at each use, so a rotated one applies; a value the
+        page wouldn't take, or a file that can't be read, is as if unset. Unset again, the page's own is back."""
+        ada = self.set_up()
+        path = os.path.join(TMP, "oidc-secret")
+        with open(path, "w") as f:
+            f.write("rotated secret one\n")
+        env = {"OIDC_BUTTON": "Keycloak (fictional, managed)", "OIDC_SCOPES": "openid email", "OIDC_CLIENT_SECRET_FILE": path,
+               "OIDC_ISSUER": "not an address at all"}
+        with mock.patch.dict(os.environ, env):
+            d = ada.get("/api/settings/install/oidc").json()
+            self.assertEqual(d["managed"], {"label": "OIDC_BUTTON", "scopes": "OIDC_SCOPES", "secret": "OIDC_CLIENT_SECRET_FILE"})
+            self.assertEqual((d["label"], d["scopes"], d["issuer"], d["secret"], d["secret_env"]),
+                             ("Keycloak (fictional, managed)", "openid email", self.idp.issuer, "environment", "OIDC_CLIENT_SECRET_FILE"))
+            db = dbm.connect()
+            self.assertEqual(oidc.client_secret(db), "rotated secret one")
+            with open(path, "w") as f:
+                f.write("rotated secret two")
+            self.assertEqual(oidc.client_secret(db), "rotated secret two", "read at each use")
+            for body in ({"label": "Another"}, {"secret": "x"}, {"scopes": "openid"}):
+                r = ada.put("/api/settings/install/oidc", json=body, headers=H)
+                self.assertEqual(r.status_code, 409, body)
+                self.assertIn("managed by the server's environment", r.json()["detail"])
+            r = ada.put("/api/settings/install/oidc", json={"acr": "mfa"}, headers=H)   # one it doesn't manage: the page's
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertNotIn("Keycloak", dbm.meta_get(db, oidc.OIDC_META), "what it manages isn't saved over the page's")
+            os.unlink(path)
+            self.assertNotIn("secret", ada.get("/api/settings/install/oidc").json()["managed"], "a file that can't be read: unset")
+            db.close()
+        d = ada.get("/api/settings/install/oidc").json()
+        self.assertEqual((d["label"], d["secret"], d["managed"]), ("Authentik (fictional)", "install", {}))
+        self.assertEqual(ada.put("/api/settings/install/oidc", json={"acr": ""}, headers=H).status_code, 200)
 
 
 if __name__ == "__main__":

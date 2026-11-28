@@ -495,6 +495,9 @@ def _command(db, argv):
         _config(db, args)
     elif cmd == "oidc-only" and args == ["off"]:   # (#1109) the way back in when the sign-in provider keeps everyone out
         cfg = oidc.load(db)
+        if "only" in oidc.managed():   # (#1158, opt-in) the environment's: changed there alone
+            sys.exit(f"Sign in with OIDC only is managed by the server's environment ({config.managed_by('OIDC_ONLY')}): take it "
+                     "out there (or set it to 0) and start the app again.")
         if not cfg["only"]:
             print("Sign in with OIDC only is off already: passwords and passkeys sign in.")
         else:
