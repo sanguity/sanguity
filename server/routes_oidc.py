@@ -49,10 +49,9 @@ def _cookie(request):
     """(name, path) of the browser cookie: over HTTPS __Host-sanguity_oidc at /, which no other name or plain-HTTP
     page can set (#1109's review: one planted for /api/login/oidc would bind a sign-in to someone else's), as the
     session cookie's (config.COOKIE_HOST); over plain HTTP, sanguity_oidc for /api/login/oidc only."""
-    base = config.url_base()   # (#1159) under a URL base: __Secure- at the base (__Host- needs Path=/), as the session's
-    if _secure(request):
-        return ("__Secure-" + oidc.BROWSER_COOKIE, base + "/") if base else ("__Host-" + oidc.BROWSER_COOKIE, "/")
-    return oidc.BROWSER_COOKIE, base + oidc.COOKIE_PATH
+    if _secure(request):   # (#1159's review) __Host- at /, under a URL base too, as the session's
+        return "__Host-" + oidc.BROWSER_COOKIE, "/"
+    return oidc.BROWSER_COOKIE, config.url_base() + oidc.COOKIE_PATH
 
 
 def _begin(db, request, response, purpose, s=None):

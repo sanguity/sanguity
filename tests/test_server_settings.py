@@ -9,7 +9,7 @@ the defaults back. Fictional data only.
 
   python3 tests/test_server_settings.py
 """
-import contextlib, importlib.util, io, json, os, shutil, stat, sys, tempfile, unittest
+import contextlib, importlib.util, io, json, os, re, shutil, stat, sys, tempfile, unittest
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -521,8 +521,9 @@ class UrlBaseHttpsLogProxy(unittest.TestCase):
         self.assertEqual(ss.https_files(ss.next_values()), (os.path.join(TMP, soon[0]), os.path.join(TMP, soon[1])))
 
     def test_b_the_url_base_everywhere(self):
-        """Under /sanguity: requests with it reach the app, its cookies are at it (__Secure- over HTTPS: __Host- needs
-        Path=/), and every address the app gives out has it."""
+        """Under /sanguity: requests with it reach the app, its cookies are at it (over HTTPS __Host- at /, as without a
+        base: #1159's review), the cross-site check and the API's headers apply under it, and every address the app
+        gives out has it."""
         self.assertEqual(self.put({"URL_BASE": "sanguity/"}).status_code, 200)
         restart()
         try:
@@ -532,15 +533,24 @@ class UrlBaseHttpsLogProxy(unittest.TestCase):
             r = web.post("/sanguity/api/login", json={"username": "ada", "password": PW}, headers=H)
             self.assertEqual(r.status_code, 200, r.text)
             cookies = r.headers.get_list("set-cookie")
-            self.assertTrue(any(c.startswith("__Secure-sg_session=") and "Path=/sanguity/" in c and "Secure" in c for c in cookies), cookies)
+            self.assertTrue(any(c.startswith("__Host-sg_session=") and "Path=/;" in c and "Secure" in c for c in cookies), cookies)
             self.assertTrue(any(c.startswith("sg_device=") and "Path=/sanguity/api/login" in c for c in cookies), cookies)
-            self.assertEqual(web.get("/sanguity/api/me").status_code, 200, "signed in under the base")
+            me = web.get("/sanguity/api/me")
+            self.assertEqual(me.status_code, 200, "signed in under the base")
+            self.assertEqual((me.headers.get("cache-control"), me.headers.get("x-frame-options"), me.headers.get("x-content-type-options")),
+                             ("no-store", "DENY", "nosniff"), "the API's headers under the base")
+            for path in ("/sanguity/api/logout", "/api/logout"):   # (#1159's review: under the base, guard was skipped)
+                r = web.post(path, headers={"Origin": "https://health.example.test"})
+                self.assertEqual(r.status_code, 403, (path, "no X-Sanguity: the cross-site check"))
+                r = web.post(path, headers={**H, "Origin": "https://evil.example"})
+                self.assertEqual(r.status_code, 403, (path, "another site"))
+            self.assertEqual(web.get("/sanguity/api/me").status_code, 200, "still signed in")
             self.assertEqual(config.public_address(["https://health.example.test"]), "https://health.example.test/sanguity")
             from server import oidc, routes_oidc
             from starlette.requests import Request
             req = Request({"type": "http", "scheme": "https", "path": "/", "headers": [(b"host", b"health.example.test")],
                            "server": ("health.example.test", 443), "query_string": b""})
-            self.assertEqual(routes_oidc._cookie(req), ("__Secure-sanguity_oidc", "/sanguity/"))
+            self.assertEqual(routes_oidc._cookie(req), ("__Host-sanguity_oidc", "/"))
             self.assertEqual(oidc.redirect_uri(routes_oidc._page_origin(req)), "https://health.example.test/sanguity/login.html")
             from server import routes_calendar
             self.assertEqual(routes_calendar._base_url(req), "https://health.example.test/sanguity")
@@ -553,6 +563,40 @@ class UrlBaseHttpsLogProxy(unittest.TestCase):
             ss.reset(["URL_BASE"])
         for bad in ("/api", "/a b", "/../x", "x" * 101):
             self.assertEqual(self.put({"URL_BASE": bad}).status_code, 400, bad)
+
+    def test_b2_the_https_listener_believes_no_forwarded_header_and_keeps_nginxs_limits(self):
+        """(#1159's review) Built-in HTTPS is reached by clients directly: a forwarded address is never believed (the
+        peer is), and nginx.conf's caps apply: a body past a location's most refused before it's read, a method a
+        location doesn't take refused."""
+        from server import https_guard
+        lines = io.StringIO()
+        h = logging.StreamHandler(lines)
+        audit = logging.getLogger("sanguity.security")
+        audit.addHandler(h)
+        audit.setLevel(logging.INFO)
+        try:
+            c = TestClient(https_guard.https_app(main.app), base_url="https://health.example.test", client=("192.0.2.7", 50000))
+            r = c.post("/api/login", json={"username": "ada", "password": "not the passphrase"},
+                       headers={**H, "X-Forwarded-For": "203.0.113.9", "X-Forwarded-Proto": "http"})
+            self.assertEqual(r.status_code, 401, r.text)
+        finally:
+            audit.removeHandler(h)
+            audit.setLevel(logging.ERROR)
+        self.assertIn('"ip":"192.0.2.7"', lines.getvalue())
+        self.assertNotIn("203.0.113.9", lines.getvalue())
+        big = b"x" * (5 * 1024 * 1024)
+        r = c.post("/api/login", content=big, headers={**H, "Content-Type": "application/json"})
+        self.assertEqual(r.status_code, 413, "said by its length, before it's read")
+        r = c.post("/api/login", content=(big[i:i + 65536] for i in range(0, len(big), 65536)), headers={**H, "Content-Type": "application/json"})
+        self.assertEqual(r.status_code, 413, "sent without its length: refused as it arrives")
+        self.assertEqual(c.post("/api/share/view", content=b"x" * 2048, headers=H).status_code, 413)
+        self.assertEqual(c.get("/api/share/view").status_code, 405)
+        self.assertEqual(c.post("/index.html", content=b"", headers=H).status_code, 405)
+        self.assertEqual(c.post("/api/login", json={"username": "ada", "password": PW}, headers=H).status_code, 200, "within them")
+        self.assertEqual(https_guard.rule("/api/profiles/3/uploads/4/files")[1], 4 * 1024 ** 3)
+        with open(os.path.join(ROOT, "nginx.conf"), encoding="utf-8") as f:
+            caps = re.findall(r"client_max_body_size (\w+);", f.read())
+        self.assertEqual(caps, ["64k", "1k", "1k", "4g", "25m", "65m"], "nginx.conf's caps, as https_guard.RULES has them")
 
     def test_c_no_record_text_at_trace(self):
         """At the log level Trace, the app's log has each request's route and status, but never a record's text, a

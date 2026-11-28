@@ -26,7 +26,9 @@ if __name__ == "__main__":
                                            server_header=False, access_log=False))
     https = None
     if (files := server_settings.https_files()):
-        https = uvicorn.Server(uvicorn.Config(served, host="0.0.0.0", port=server_settings.value("HTTPS_PORT"),
+        # (#1159's review) reached by clients directly: no forwarded header believed, and nginx.conf's limits
+        from . import https_guard
+        https = uvicorn.Server(uvicorn.Config(https_guard.https_app(main.app), host="0.0.0.0", port=server_settings.value("HTTPS_PORT"),
                                               ssl_certfile=files[0], ssl_keyfile=files[1], proxy_headers=False,
                                               server_header=False, access_log=False, lifespan="off"))
         threading.Thread(target=https.run, name="https", daemon=True).start()

@@ -21,9 +21,7 @@ COOKIE = "sg_session"
 # over HTTPS the session cookie is named with the __Host- prefix, so the browser holds it to Secure, Path=/ and
 # this exact host (no subdomain can set or overwrite it); plain HTTP can't carry that prefix, so it keeps COOKIE
 COOKIE_HOST = "__Host-" + COOKIE
-# (#1159) under a URL base the cookie's Path is the base, which __Host- can't carry: over HTTPS it's __Secure- then
-COOKIE_SECURE_BASE = "__Secure-" + COOKIE
-SESSION_COOKIES = (COOKIE_HOST, COOKIE_SECURE_BASE, COOKIE)   # read in this order
+SESSION_COOKIES = (COOKIE_HOST, COOKIE)   # read in this order
 
 
 def url_base():
@@ -33,11 +31,10 @@ def url_base():
 
 
 def session_cookie(secure):
-    """(name, path) of the session cookie: __Host- at / over HTTPS, else at the URL base under one (#1159)."""
-    base = url_base()
-    if not base:
-        return (COOKIE_HOST if secure else COOKIE), "/"
-    return (COOKIE_SECURE_BASE if secure else COOKIE), base + "/"
+    """(name, path) of the session cookie: over HTTPS __Host- at /, under a URL base too (#1159's review: the host is
+    this server's, and the prefix keeps another name or a plain-HTTP page from setting it); over plain HTTP at the URL
+    base."""
+    return (COOKIE_HOST, "/") if secure else (COOKIE, url_base() + "/")
 DEVICE_COOKIE, DEVICE_DAYS = "sg_device", 365   # marks a browser that has signed in to an account before
 PASSWORD_MAX = 256
 HASH_WAIT = 2   # seconds a sign-in waits for its turn before the API answers 503 "busy, try again"

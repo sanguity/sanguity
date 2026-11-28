@@ -707,6 +707,37 @@ class View(unittest.TestCase):
         self.assertIn("outside.blocked", logged)
         self.assertIn("outside.none", logged)
 
+    def test_a_blocked_host_whatever_its_port_and_its_addresses(self):   # #1167's review
+        srv = _echo_host()
+        self.addCleanup(srv.shutdown)
+        name = f"localhost:{srv.server_address[1]}"
+        p = net.Permit("A test's own purpose", {name, "records.example.org:8443"})
+        c = net.connection(p, f"http://{name}/x")
+        c.request("GET", "/x")
+        self.assertEqual(c.getresponse().status, 200)
+        c.close()
+        self.setting("outside.blocked", ["records.example.org", "127.0.0.1"])
+        self.addCleanup(self.setting, "outside.blocked", [])
+        with self.assertRaisesRegex(net.Refused, "blocked under Outside connections"):
+            net.connection(p, "https://records.example.org:8443/x")   # blocked whatever the port
+        with self.assertRaisesRegex(net.Refused, "127.0.0.1: it's blocked"):
+            net.resolve(p, f"http://{name}/x")   # a name that resolves to a blocked address
+        c = net.connection(p, f"http://{name}/x")
+        with self.assertRaisesRegex(net.Refused, "127.0.0.1: it's blocked"):
+            c.request("GET", "/x")
+        c.close()
+        with self.assertRaisesRegex(net.Refused, "127.0.0.1: it's blocked"):
+            net.connection(p, f"http://{name}/x", ip="127.0.0.1")
+
+    def test_static_files_have_the_pages_headers(self):   # #1159's review: as nginx sends them
+        c = client()
+        for path in ("/css/app.css", "/js/util.js", "/icons/sprite.svg", "/fonts/inter-v4.001-latin.woff2", "/index.html"):
+            r = c.get(path)
+            self.assertEqual(r.status_code, 200, path)
+            self.assertEqual((r.headers.get("x-content-type-options"), r.headers.get("x-frame-options"), r.headers.get("referrer-policy"),
+                              "script-src 'self'" in r.headers.get("content-security-policy", "")), ("nosniff", "DENY", "no-referrer", True), path)
+            self.assertEqual(r.headers.get("cache-control"), "public, max-age=31536000, immutable" if "/fonts/" in path else "no-store", path)
+
     def test_a_feature_says_its_blocked(self):   # #1167
         """A Health Link whose host is blocked: the paste says why, and nothing is contacted."""
         self.setting("outside.healthLinks", False)

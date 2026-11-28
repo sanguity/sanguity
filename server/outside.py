@@ -327,13 +327,35 @@ def blocked():
     return set(settings.install_value("outside.blocked") or ())
 
 
+def _name(host):
+    """host without its port ("[::1]:8443" -> "::1"), lowercased: blocks are of a host whatever its port (#1167's review)."""
+    host = net.norm(host)
+    if host.startswith("["):
+        return host[1:host.index("]")] if "]" in host else host
+    return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+
+
+def blocked_names():
+    return {_name(h) for h in blocked()}
+
+
+def address_refusal(ip):
+    """(#1167's review) Why Sanguity won't connect to the address ip a name resolved to, or None: it's blocked (by itself,
+    whatever the port), or every outside connection is off."""
+    if settings.install_value("outside.none"):
+        return f"Sanguity won't contact {ip}: “No outside connections at all” is on, under Outside connections."
+    if _name(str(ip)) in blocked_names():
+        return f"Sanguity won't contact {ip}: it's blocked under Outside connections."
+    return None
+
+
 def refusal(purpose, host):
     """Why Sanguity won't contact host for purpose, whatever the permit says (net.py asks before anything is sent), or
     None: "No outside connections at all" is on, host is blocked, or its kind is switched off."""
     host = net.norm(host)
     if settings.install_value("outside.none"):
         return f"Sanguity won't contact {host}: “No outside connections at all” is on, under Outside connections."
-    if host in blocked():
+    if _name(host) in blocked_names():   # whatever the port
         return f"Sanguity won't contact {host}: it's blocked under Outside connections."
     kind = kind_of(purpose)
     if kind and not kind_on(kind):
@@ -341,7 +363,7 @@ def refusal(purpose, host):
     return None
 
 
-net.POLICY = refusal
+net.POLICY, net.ADDRESS_POLICY = refusal, address_refusal
 
 
 def _locks_out(db, before, after, request=None, s=None, *, key):

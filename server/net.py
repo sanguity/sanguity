@@ -113,6 +113,7 @@ class Permit:
 
 NOTHING = Permit("nothing", set())   # allows no host
 POLICY = None   # (#1167) outside.py sets it: (purpose, host) -> why it's refused, or None
+ADDRESS_POLICY = None   # (#1167's review) outside.py sets it: (ip) -> why that address is refused, or None
 
 
 def policy(permit, host):
@@ -123,6 +124,16 @@ def policy(permit, host):
     why = POLICY(permit.purpose, host)
     if why:
         raise Refused(why)
+
+
+def address_policy(ips):
+    """(#1167's review) The addresses a name resolved to (or one checked beforehand): refused when one is blocked."""
+    if ADDRESS_POLICY is None:
+        from . import outside   # noqa: F401
+    for ip in ips:
+        why = ADDRESS_POLICY(ip)
+        if why:
+            raise Refused(why)
 
 
 def _split(url):
@@ -145,7 +156,9 @@ def resolve(permit, url):
         raise Refused(f"Sanguity won't contact {host_of(url)}: it isn't one of the hosts allowed for "
                       f"{permit.purpose.lower()}.")
     infos = socket.getaddrinfo(name, port, type=socket.SOCK_STREAM)
-    return list(dict.fromkeys(i[4][0] for i in infos))
+    ips = list(dict.fromkeys(i[4][0] for i in infos))
+    address_policy(ips)
+    return ips
 
 
 # ---------------------------------------------------------------- (#1159) the outbound proxy
@@ -261,8 +274,21 @@ def open_socket(name, port, ip=None, timeout=20):
     """A connected socket to name (at ip, checked beforehand, when given), through the outbound proxy unless it's
     bypassed. Only connection() and probe() use it, once their permit allowed the host."""
     p = proxy_for(name, ip)
+    if ip:
+        address_policy([ip])
     if p is None:
-        return socket.create_connection((ip or name, port), timeout)
+        if ip:
+            return socket.create_connection((ip, port), timeout)
+        # (#1167's review) looked up here, each address checked against the blocks, and connected to as checked
+        ips = list(dict.fromkeys(i[4][0] for i in socket.getaddrinfo(name, port, type=socket.SOCK_STREAM)))
+        address_policy(ips)
+        err = None
+        for a in ips:
+            try:
+                return socket.create_connection((a, port), timeout)
+            except OSError as e:
+                err = e
+        raise err or OSError(f"{name} has no address")
     sock = socket.create_connection((p.host, p.port), timeout)
     try:
         (_socks5 if p.scheme == "socks5" else _http_connect)(sock, p, ip or name, port)
@@ -309,6 +335,8 @@ def connection(permit, url, purpose=None, ip=None, timeout=20, context=None):
     """A connection to url's host, after the permit allows it and the contact is recorded. Raises Refused."""
     scheme, name, port = _split(url)
     permit.contact(host_of(url), purpose)
+    if ip:   # (#1167's review) an address checked beforehand: not a blocked one
+        address_policy([ip])
     if scheme == "https":
         return _Conn(name, port, ip, timeout, context or ssl.create_default_context())
     return _ConnHTTP(name, port, ip, timeout)

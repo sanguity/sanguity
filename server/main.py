@@ -225,8 +225,6 @@ class UrlBase:
         await self.inner(scope, receive, send)
 
 
-app.add_middleware(UrlBase)
-
 
 def _same_site(origin, request, origins=None):
     """The browser's Origin names this site: the Host it reached us on, the host a reverse proxy in front says it
@@ -339,6 +337,11 @@ async def guard(request: Request, call_next):
         # an API answer opened directly is downloaded, never rendered (documents say inline themselves)
         resp.headers.setdefault("Content-Disposition", 'attachment; filename="api.json"')
     return resp
+
+
+# (#1159's review) added after guard, so it's outside it: guard, and everything else, sees the path without the base
+# (the CSRF check and the /api/ headers apply under a base as without one)
+app.add_middleware(UrlBase)
 
 
 # ---------------------------------------------------------------- dependencies
@@ -1887,11 +1890,26 @@ if not os.path.isdir(WWW) and os.path.isdir("/usr/share/nginx/html"):   # (#1159
 # built-in HTTPS itself (#1159, python -m server), serves the pages too, with nginx.conf's headers
 PAGE_HEADERS = {"Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP, "X-Content-Type-Options": "nosniff",
                 "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY", "X-Robots-Tag": "noindex, nofollow"}
+FONT_CACHE = "public, max-age=31536000, immutable"   # nginx.conf's for /fonts/: a font's version is in its name
+
+
+class Headed:
+    """(#1159's review) A static folder served with PAGE_HEADERS, as nginx.conf sends every file (fonts kept a year)."""
+    def __init__(self, inner, cache=None):
+        self.inner, self.headers = inner, {**PAGE_HEADERS, **({"Cache-Control": cache} if cache else {})}
+
+    async def __call__(self, scope, receive, send):
+        async def headed(msg):
+            if msg["type"] == "http.response.start":
+                keep = [(k, v) for k, v in msg.get("headers", []) if k.decode().lower() not in {h.lower() for h in self.headers}]
+                msg = {**msg, "headers": keep + [(k.lower().encode(), v.encode()) for k, v in self.headers.items()]}
+            await send(msg)
+        await self.inner(scope, receive, headed)
 if (os.environ.get("SANGUITY_SERVE_STATIC") == "1" or restart_settings.https_files()) and os.path.isdir(WWW):
     from fastapi.staticfiles import StaticFiles
 
     for sub in ("css", "js", "fonts", "icons"):
-        app.mount(f"/{sub}", StaticFiles(directory=os.path.join(WWW, sub)), name=sub)
+        app.mount(f"/{sub}", Headed(StaticFiles(directory=os.path.join(WWW, sub)), FONT_CACHE if sub == "fonts" else None), name=sub)
 
     # install as a phone app (#56): as nginx.conf sends them
     @app.get("/manifest.webmanifest", include_in_schema=False)
