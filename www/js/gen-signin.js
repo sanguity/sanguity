@@ -36,21 +36,27 @@ function drawSignin(d, note) {
   const msg = el("span", {class: "msg set-msg"});
   const mark = () => { const n = signinTyped().length; for (const [k] of SIGNIN_FIELDS) signinIn(k)?.closest(".set-row").classList.toggle("set-changed", signinTyped().some(([t]) => t === k));
     n ? card.setAttribute("data-dirty", n) : card.removeAttribute("data-dirty"); };
-  const secretHint = d.secret === "environment" ? `Set by ${d.secret_env} in the server's environment (.env, or the app's settings on TrueNAS or Unraid), so it's changed there.`
-    : d.secret ? "Saved, encrypted, and never shown again. Type a new one to replace it; left empty, it's kept."
+  const secretHint = d.secret ? "Saved, encrypted, and never shown again. Type a new one to replace it; left empty, it's kept."
     : "None saved: Sanguity signs in as a public client, with PKCE alone. Type the provider's secret for a confidential one.";
   const rows = SIGNIN_FIELDS.map(([k, label, type, placeholder, hint]) => {
-    const id = "signin-" + k, fixed = (locked && k !== "label") || (k === "secret" && d.secret === "environment");
+    const id = "signin-" + k;
+    // (#1119) what can't be changed here is text, never a field: the secret the environment sets (only that it's set),
+    // and with OIDC only on, all but the button's name
+    if (k === "secret" && d.secret === "environment")
+      return envRow({key: "oidc.secret", label, env: d.secret_env, help: "The provider's secret, for a confidential client. Never shown."}, d.settings_at,
+        {value: "Set there (never shown here)", head: ["p", {class: "set-row-name", id: id + "-lbl"}]});
+    if (locked && k !== "label")
+      return setRow([el("p", {class: "set-row-name", id: id + "-lbl"}, label), el("p", {class: "hint", text: (k === "secret" ? "" : hint + " ") + "Turn off Sign in with OIDC only, below, to change it."})],
+        el("p", {}, k === "secret" ? (d.secret ? "Saved (never shown)" : "None: a public client, with PKCE alone") : k === "issuer" ? el("code", {text: d[k]}) : d[k] || "None"),
+        {class: "set", "data-key": "oidc." + k});
     const input = el("input", {id, type, spellcheck: "false", autocapitalize: "none", autocomplete: k === "secret" ? "new-password" : "off",
-      placeholder: k === "secret" && d.secret ? "Saved" : placeholder, "aria-describedby": id + "-h", readonly: fixed || null, oninput: mark});
+      placeholder: k === "secret" && d.secret ? "Saved" : placeholder, "aria-describedby": id + "-h", oninput: mark});
     input.value = k === "secret" ? "" : d[k] ?? "";
-    const says = [k === "secret" ? secretHint : hint, fixed && locked && k !== "secret" ? "Turn off Sign in with OIDC only, below, to change it." : ""].filter(Boolean).join(" ");
-    return setRow([el("label", {for: id}, label, el("span", {class: "tag set-unsaved", text: "not saved"})), el("p", {class: "hint", id: id + "-h", text: says})],
+    return setRow([el("label", {for: id}, label, el("span", {class: "tag set-unsaved", text: "not saved"})), el("p", {class: "hint", id: id + "-h", text: k === "secret" ? secretHint : hint})],
       input, {class: "set", "data-key": "oidc." + k});
   });
-  const ro = (name, hint, ...value) => setRow([el("h3", {class: "sub", text: name}), el("p", {class: "hint", text: hint})], value);
   const testMsg = el("span", {class: "msg", role: "status"});
-  const test = el("button", {type: "button", class: "btn", text: "Test connection", disabled: !d.configured, onclick: async () => {
+  const test = el("button", {type: "button", class: "btn", text: "Test connection", onclick: async () => {
     test.disabled = true; sayIn(testMsg, "Asking the provider…");
     try {
       const r = await call("settings/install/oidc/test", "POST");
@@ -59,24 +65,28 @@ function drawSignin(d, note) {
     test.disabled = false;
     SgOutside.load();   // (each contact is listed there)
   }});
-  const only = el("input", {type: "checkbox", role: "switch", id: "signinOnly", checked: d.only, "aria-describedby": "signinOnlyH signinOnlyMsg",
-    disabled: !d.configured || (!d.only && !d.may_go_only), onchange: () => signinOnly(only)});
+  // (#1119) what can't be used yet is said, never a disabled control: Test connection before it's set up, OIDC only
+  // before this admin's own identity there has signed in
+  const offered = d.configured && (d.only || d.may_go_only);
+  const only = offered ? el("input", {type: "checkbox", role: "switch", id: "signinOnly", checked: d.only, "aria-describedby": "signinOnlyH signinOnlyMsg",
+    onchange: () => signinOnly(only)}) : null;
   const onlyHint = `Passwords, and passkeys on their own, stop signing in: everyone signs in with ${d.label}, then with their own code or passkey where ` +
-    "it asks. " + (d.only || d.may_go_only ? "" : "Offered once your own identity there has signed in: link it under Sign-in and security. ") +
+    "it asks. " + (offered ? "" : d.configured ? "Offered once your own identity there has signed in: link it under Sign-in and security. " : "Offered once it's set up. ") +
     "If the provider stops working, python -m server.manage oidc-only off turns this back.";
   card.replaceChildren(...present(
     el("div", {class: "set-hd"}, el("h2", {id: "gen-signin-hd", tabindex: -1, text: "Sign-in provider"})),
     // (its first line the hint, the rest behind the heading's ⓘ: one line at 1400 px, as every card's)
     helpNodes("One OpenID Connect provider, to sign in with on the sign-in page.\nLike Authentik, Keycloak, Authelia or Google: " +
-      "each person who links their identity there signs in with it. Nobody is contacted until it's set up. Each change applies at once."),
+      "each person who links their identity there signs in with it. Nobody is contacted until it's set up. Its fields apply with Save; Sign in with OIDC only, at once."),
     msg, signinReauth(), ...rows,
-    ro("Redirect URI", d.from_public_address ? "Register exactly this with the provider, as the app's redirect URI (or callback URL). It's made from the address the app gives out, under Host."
+    factRow("Redirect URI", d.from_public_address ? "Register exactly this with the provider, as the app's redirect URI (or callback URL). It's made from the address the app gives out, under Host."
       : "Register exactly this with the provider, as the app's redirect URI (or callback URL). It's this page's address: set a public address under Host so it stays the same.",
       el("p", {}, el("code", {text: d.redirect_uri || "none"}))),
-    ro("Test connection", d.configured ? `Reads the provider's discovery document and signing keys, from ${d.hosts.join(", ")}. ${d.linked === 1 ? "1 identity" : `${d.linked} identities`} linked.`
-      : "Set the issuer and the client ID, and save them, first.", el("div", {class: "row"}, test, testMsg)),
+    setRow([el("h3", {class: "sub", text: "Test connection"}), el("p", {class: "hint", text: d.configured
+      ? `Reads the provider's discovery document and signing keys, from ${d.hosts.join(", ")}. ${d.linked === 1 ? "1 identity" : `${d.linked} identities`} linked.`
+      : "Set the issuer and the client ID, and save them, first."})], d.configured ? el("div", {class: "row"}, test, testMsg) : el("p", {text: "Not set up yet."})),
     setRow([el("p", {class: "set-row-name", id: "signinOnlyL"}, "Sign in with OIDC only"), el("p", {class: "hint", id: "signinOnlyH", text: onlyHint})],
-      [el("label", {class: "check switch"}, only, ` Sign in with ${d.label} only`), el("p", {class: "msg", id: "signinOnlyMsg", role: "status"})])));
+      [only ? el("label", {class: "check switch"}, only, ` Sign in with ${d.label} only`) : el("p", {text: "Off"}), el("p", {class: "msg", id: "signinOnlyMsg", role: "status"})])));
   if (note) sayIn(msg, note, false, {say: false});
   mark();
 }

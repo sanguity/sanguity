@@ -6,15 +6,14 @@
    puts them back (genSecDiscard), as the sync defaults' are (admin-sources.js). Each is bounded by the server, never
    more lenient than Sanguity's own default; each change asks for the fresh check, in the card (admin.js fresh), and
    one that ends sign-ins says how many and asks for that count typed first (admin.js confirmed). One the server's
-   environment sets is shown locked, naming its variable; the Secure cookie and the password checks at once are the
-   environment's alone, shown read-only. call(), say(), same() and plural() are settings.js's. */
+   environment sets is its value as text, with its variable and where it's changed (util.js envRow, #1119); the Secure
+   cookie and the password checks at once are About's (gen-about.js). call(), say(), same() and plural() are settings.js's. */
 "use strict";   // $, el, setRow, ask, toast and sayIn come from util.js
 let GS = null;   // the Security section as the server last gave it: {settings: [...]}, and the variables
 const gsBox = () => $("#genSecReauth");
 const gsId = key => "gs-" + key.split(".")[1];
 const gsNums = () => GS ? GS.settings.filter(st => st.kind === "number") : [];
 const gsTyped = () => gsNums().filter(st => { const i = document.getElementById(gsId(st.key)); return i && !i.disabled && i.value !== String(st.value); });
-const gsWhere = env => `Set by ${env} where the server is set up (.env, or the app's settings on TrueNAS or Unraid): change it there, or take it out to change it here.`;
 
 async function loadGenSecurity(note) {
   let d;
@@ -25,35 +24,30 @@ async function loadGenSecurity(note) {
 /* the rows, from the server's answer; typed: the numbers changed and not saved, kept as typed */
 function gsDraw(d, note, typed = {}) {
   const body = $("#genSecBody"), back = body.contains(document.activeElement) ? document.activeElement.id : null;
-  GS = {...d.sections.find(s => s.id === "security"), vars: d.variables};
+  GS = {...d.sections.find(s => s.id === "security"), vars: d.variables, at: d.settings_at ?? GS?.at};
   const now = k => GS.settings.find(st => st.key === k).value;   // You → Sign-in and security's lengths, as they are now (account.js)
   ME.session = {days: now("security.sessionDays"), hours_without_2fa: now("security.sessionHours"), idle_minutes: now("security.idleMinutes")};
   sessLasts();
   const tag = st => st.from === "install" && !same(st.value, st.default) ? el("span", {class: "tag", text: "set for this server"}) : null;
   const rows = GS.settings.map(st => {
-    const id = gsId(st.key), locked = !st.can_change, help = [st.help, locked ? gsWhere(st.env) : ""].filter(Boolean).join(" ");
+    const id = gsId(st.key);
+    if (!st.can_change)   // (#1119) set by the environment: its value as text, and where it's changed
+      return envRow(st, GS.at, {value: st.kind === "choice" ? st.choices[st.value] : String(st.value), head: ["p", {class: "set-row-name", id: id + "-lbl"}]});
     if (st.kind === "choice") {   // who may create profiles: saved as it's picked
-      return setRow([el("p", {class: "set-row-name", id: id + "-lbl"}, st.label, tag(st)), el("p", {class: "hint", id: id + "-h", text: help})],
+      return setRow([el("p", {class: "set-row-name", id: id + "-lbl"}, st.label, tag(st)), el("p", {class: "hint", id: id + "-h", text: st.help})],
         el("fieldset", {class: "set-radios", "aria-labelledby": id + "-lbl", "aria-describedby": id + "-h"},
           el("div", {class: "seg wrap"}, ...Object.entries(st.choices).map(([v, l]) => el("label", {},
-            el("input", {type: "radio", name: id, id: `${id}-${v}`, value: v, checked: v === st.value, disabled: locked,
+            el("input", {type: "radio", name: id, id: `${id}-${v}`, value: v, checked: v === st.value,
               onchange: () => gsChoose(st, v)}), l)))), {"data-key": st.key});
     }
     const row = setRow([el("label", {for: id}, st.label, tag(st), el("span", {class: "tag set-unsaved", text: "not saved"})),
-      el("p", {class: "hint", id: id + "-h", text: help})], null, {"data-key": st.key});
+      el("p", {class: "hint", id: id + "-h", text: st.help})], null, {"data-key": st.key});
     const input = el("input", {type: "number", id, step: 1, min: st.min, max: st.max, value: typed[st.key] ?? st.value, class: "set-num",
-      disabled: locked, "aria-describedby": id + "-h", oninput: () => { row.classList.toggle("set-changed", input.value !== String(st.value)); gsCount(); }});
+      "aria-describedby": id + "-h", oninput: () => { row.classList.toggle("set-changed", input.value !== String(st.value)); gsCount(); }});
     row.querySelector(".set-row-ctl").append(input);
     row.classList.toggle("set-changed", input.value !== String(st.value));
     return row;
   });
-  // the environment's alone, each with where it's set (#998)
-  const v = GS.vars, secure = {"1": "Always", "0": "Never"}[String(v.COOKIE_SECURE.value).trim()] ||
-    `Automatic: Secure when the page is opened over HTTPS${location.protocol === "https:" ? ", as this one is" : ""}`;
-  const fixed = (name, says, hint) => setRow([el("p", {class: "set-row-name", text: name}), el("p", {class: "hint", text: hint})], el("p", {text: says}));
-  rows.push(fixed("Secure session cookie", secure + ".", "Set by COOKIE_SECURE where the server is set up (.env, the Secure cookie field on TrueNAS or Unraid)."),
-    fixed("Password checks at once", `${v.HASH_PARALLEL.value} at a time, each using 64 MiB of memory; more wait their turn.`,
-      "Set by HASH_PARALLEL in .env or the app's environment variables, read when the server starts."));
   body.replaceChildren(...rows);
   body.onkeydown = ev => { if (ev.key === "Enter" && ev.target.matches(".set-num")) { ev.preventDefault(); $("#setBar .btn.primary")?.click(); } };   // Enter: the bar's Save (#991)
   gsCount();
@@ -110,18 +104,18 @@ function genSecDiscard() {
 
 /* ---------------------------------------------------------------- General → Experimental (#1096) */
 /* each of its settings a switch, saved as it's switched (the fresh check, in the card), as the weekly directory update's
-   is (admin-sources.js); one the environment sets shown locked, naming its variable. Connected sources' (the only one
+   is (admin-sources.js); one the environment sets as text (util.js envRow). Connected sources' (the only one
    now) shows or hides their parts of Install at once (admin.js csShown) */
 async function loadGenExperimental() {
   let d;
   try { d = await call("settings/install"); }
   catch (e) { sayIn($("#genExpMsg"), e.message, true); return; }
   $("#genExpBody").replaceChildren(...d.sections.find(s => s.id === "experimental").settings.map(st => {
-    const id = "gx-" + st.key.split(".")[1], locked = !st.can_change;
-    const sw = el("input", {type: "checkbox", role: "switch", id, checked: st.value ? "" : null, disabled: locked, "aria-labelledby": id + "-lbl", "aria-describedby": id + "-h",
+    const id = "gx-" + st.key.split(".")[1];
+    if (!st.can_change) return envRow(st, d.settings_at, {value: st.value ? "On" : "Off", head: ["p", {class: "set-row-name", id: id + "-lbl"}]});   // (#1119)
+    const sw = el("input", {type: "checkbox", role: "switch", id, checked: st.value ? "" : null, "aria-labelledby": id + "-lbl", "aria-describedby": id + "-h",
       onchange: () => gxSwitch(st, sw)});
-    return setRow([el("p", {class: "set-row-name", id: id + "-lbl", text: st.label}),
-      el("p", {class: "hint", id: id + "-h", text: [st.help, locked ? gsWhere(st.env) : ""].filter(Boolean).join(" ")})],
+    return setRow([el("p", {class: "set-row-name", id: id + "-lbl", text: st.label}), el("p", {class: "hint", id: id + "-h", text: st.help})],
       el("label", {class: "check switch"}, sw), {"data-key": st.key});   // (named by the row's name, as a sync default's switch)
   }));
 }

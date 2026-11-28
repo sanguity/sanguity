@@ -974,6 +974,7 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct .msg.bad{color:var(--crit)}
 .acct .msg code{background:var(--hover);padding:1px var(--sp-1);border-radius:var(--r-sm);user-select:all}
 .acct .tag{display:inline-block;margin-left:var(--sp-2);font-size:var(--fs-1);font-weight:var(--fw-semibold);color:var(--ink2);background:var(--hover);border-radius:var(--r-pill);padding:1px var(--sp-2);vertical-align:1px;outline:1px solid transparent;outline-offset:-1px}
+.acct .tag.env{margin-left:0}   /* (#1119) after a space, so a tag wrapped under its name starts at its left edge */
 .acct .muted{color:var(--muted);font-size:var(--fs-2)}
 .acct .tbl{width:100%;border-collapse:collapse;font-size:var(--fs-3);margin-top:var(--sp-2)}
 .acct .tbl th{text-align:left;color:var(--muted);font-weight:var(--fw-medium);font-size:var(--fs-2);padding:var(--sp-1) var(--sp-2) var(--sp-1) 0}

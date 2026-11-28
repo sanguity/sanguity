@@ -379,7 +379,10 @@ def _install_sections(db):
         items = [_install_item(d, have) for d in settings.SETTINGS.values() if d.section == sid and d.scope == "install"]
         if items:
             out.append({"id": sid, "title": title, "help": help, "settings": items})
-    return {"sections": out, "variables": _variables(), "saved_ignored": config.saved_ignored()}
+    # settings_at: where this install's environment is set (general.py, by the way it's deployed), named beside each
+    # setting the environment sets, which changes only there (#1119)
+    return {"sections": out, "variables": _variables(), "saved_ignored": config.saved_ignored(),
+            "settings_at": general.KINDS[general.deployment()]["settings"]}
 
 
 @router.get("/api/settings/install")

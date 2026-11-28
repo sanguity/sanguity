@@ -2,7 +2,8 @@
    receiver behind a reverse proxy: the bar's Save asks the server what it changes first (routes_host.py: the address
    phones are given, and how many profiles' phones need the new one), asks when any do, then the fresh check. Beside it,
    read-only (#998: the receiver's settings are its own): its published port, time zone, how long unclaimed data is
-   kept and what a restore replaced, each with where it's set. admin.js starts it (adminStart: loadPhone);
+   kept and what a restore replaced, each with where it's set (util.js factRow: the last three under Needs a restart,
+   #1121); set by the environment, the upload address is text (util.js envRow, #1119). admin.js starts it (adminStart: loadPhone);
    settings-nav.js's bar saves it (ADM: phoneSave, phoneDiscard). */
 "use strict";
 
@@ -17,45 +18,46 @@ async function loadPhone(note) {
   catch (e) { card.replaceChildren(el("h2", {text: "Phone receiver"}), el("p", {class: "msg bad", text: e.message})); return; }
   const sec = d.sections.find(s => s.id === "phone");
   if (!sec) { card.hidden = true; return; }
-  drawPhone(sec, d.variables, h, note);
+  drawPhone(sec, d.variables, h, note, d.settings_at);
 }
 
-function drawPhone(sec, vars, h, note) {
-  const card = $("#gen-phone"), st = sec.settings.find(s => s.key === "phone.uploadUrl"), locked = !st.can_change;
+function drawPhone(sec, vars, h, note, at) {
+  const card = $("#gen-phone"), st = sec.settings.find(s => s.key === "phone.uploadUrl");
   RX_PHONE = {sec, st};
   const msg = el("span", {class: "msg set-msg"});
-  const box = el("input", {id: "phoneUrl", type: "url", spellcheck: "false", autocapitalize: "none", autocomplete: "off",
-    placeholder: "https://health.example.com/ingest", "aria-labelledby": "phoneUrlName", "aria-describedby": "phoneUrlHint phoneUrlNow",
-    readonly: locked || null});
-  box.value = st.value;
-  const row = el("div", {class: "set set-row", "data-key": st.key});
+  const now = el("p", {class: "hint", id: "phoneUrlNow"}, `Phones are given ${h.upload.length === 1 ? "" : "one of "}`,
+    ...h.upload.flatMap((a, i) => [i ? ", " : "", el("code", {text: a})]),
+    h.phones ? `; ${plural(h.phones, "profile")} ${h.phones === 1 ? "has" : "have"} a phone with an upload secret.` : ".");
+  let row;
+  if (!st.can_change) {   // (#1119) set by the environment: the address as text, and where it's changed
+    row = envRow(st, at, {head: ["h3", {class: "sub", id: "phoneUrlName"}], helpId: "phoneUrlHint", value: el("code", {text: st.value}), more: now});
+  } else {
+    const box = el("input", {id: "phoneUrl", type: "url", spellcheck: "false", autocapitalize: "none", autocomplete: "off",
+      placeholder: "https://health.example.com/ingest", "aria-labelledby": "phoneUrlName", "aria-describedby": "phoneUrlHint phoneUrlNow"});
+    box.value = st.value;
+    row = el("div", {class: "set set-row", "data-key": st.key});
+    box.oninput = () => mark();
+    row.append(
+      el("div", {class: "set-row-lbl"}, el("h3", {class: "sub", id: "phoneUrlName"}, st.label, el("span", {class: "tag set-unsaved", text: "not saved"})),
+        el("div", {id: "phoneUrlHint"}, helpNodes(st.help))),
+      el("div", {class: "set-row-ctl"}, box, now));
+  }
   const mark = () => { const d = phoneDirty(); row.classList.toggle("set-changed", d); d ? card.setAttribute("data-dirty", 1) : card.removeAttribute("data-dirty"); };
-  box.oninput = mark;
-  row.append(
-    el("div", {class: "set-row-lbl"}, el("h3", {class: "sub", id: "phoneUrlName"}, st.label,
-      st.from === "environment" ? el("span", {class: "tag", text: "set by the environment"}) : null,
-      el("span", {class: "tag set-unsaved", text: "not saved"})),
-      el("div", {id: "phoneUrlHint"}, helpNodes(st.help))),
-    el("div", {class: "set-row-ctl"}, box,
-      el("p", {class: "hint", id: "phoneUrlNow"}, `Phones are given ${h.upload.length === 1 ? "" : "one of "}`,
-        ...h.upload.flatMap((a, i) => [i ? ", " : "", el("code", {text: a})]),
-        h.phones ? `; ${plural(h.phones, "profile")} ${h.phones === 1 ? "has" : "have"} a phone with an upload secret.` : "."),
-      locked ? el("p", {class: "hint", text: `Set by ${st.env} in the server's environment (.env, or the app's settings on TrueNAS or ` +
-        "Unraid), so it's changed there."}) : null));
-  const ro = (name, where, ...value) => setRow([el("h3", {class: "sub", text: name}), el("p", {class: "hint", text: where})], value);
-  const v = n => vars[n] || {}, set = (x, from) => from === "environment" ? `${x} (set by the environment)` : x;
+  const v = n => vars[n] || {};
+  // (#1119) the receiver's time zone and days, and what a restore replaced, are changed under Needs a restart (#1121),
+  // a variable the environment sets winning there: each points there, tagged where the environment sets it
+  const env = n => h.from_environment?.includes(n) ? n : null, there = n => [el("a", {href: "#gen-restart", text: "Needs a restart"}), `, below (${n} in .env wins)`];
   card.replaceChildren(...present(
     el("div", {class: "set-hd"}, el("h2", {id: "gen-phone-hd", tabindex: -1, text: sec.title})),
     helpNodes(sec.help), msg, phoneReauth(), row,
-    ro("Receiver's published port", "Where this machine publishes the receiver, given in the upload address. RECEIVER_PORT in .env (8731 " +
-      "unless set) sets both; Watch Receiver Port on TrueNAS; on Unraid both Watch receiver port fields, the same number; on CasaOS " +
-      "its compose file, in both places.", set(String(v("RECEIVER_PORT").value), v("RECEIVER_PORT").from)),
-    ro("Time zone", "Where the receiver's days start and end for watch and scale readings. TZ in .env (UTC unless set); Timezone " +
-      "on TrueNAS, Time zone on Unraid; CasaOS gives its own.", el("code", {text: h.tz})),
-    ro("Unclaimed data", "Phone data that no profile or secret names is deleted this long after it's first found. " +
-      "SLOT_GRACE_DAYS in .env (7 unless set).", plural(h.slot_grace_days, "day")),
-    ro("What a restore replaced", "Kept this long after a restore, then deleted, by the app and the receiver alike. " +
-      "RESTORE_KEEP_DAYS in .env sets both.", set(`${v("RESTORE_KEEP_DAYS").value} days`, v("RESTORE_KEEP_DAYS").from))));
+    factRow("Receiver's published port", "Where this machine publishes the receiver, given in the upload address.", String(v("RECEIVER_PORT").value),
+      "RECEIVER_PORT in .env (8731 unless set) sets both; Watch Receiver Port on TrueNAS; on Unraid both Watch receiver port fields, the same " +
+      "number; on CasaOS its compose file, in both places", v("RECEIVER_PORT").from === "environment" ? "RECEIVER_PORT" : null),
+    factRow("Time zone", "Where the receiver's days start and end for watch and scale readings.", h.tz, there("TZ"), env("TZ")),
+    factRow("Unclaimed data", "Phone data that no profile or secret names is deleted this long after it's first found.", plural(h.slot_grace_days, "day"),
+      there("SLOT_GRACE_DAYS"), env("SLOT_GRACE_DAYS")),
+    factRow("What a restore replaced", "Kept this long after a restore, then deleted, by the app and the receiver alike.",
+      `${v("RESTORE_KEEP_DAYS").value} days`, there("RESTORE_KEEP_DAYS"), env("RESTORE_KEEP_DAYS"))));
   if (note) sayIn(msg, note, false, {say: false});
   mark();
 }
@@ -80,7 +82,7 @@ async function phoneSave(msg, had) {
   toast("Saved the upload address.");
 }
 function phoneDiscard() {
-  if (!RX_PHONE) return;
+  if (!RX_PHONE?.st.can_change) return;
   $("#phoneUrl").value = RX_PHONE.st.value;
   $("#gen-phone .set-row").classList.remove("set-changed");
   $("#gen-phone").removeAttribute("data-dirty");
