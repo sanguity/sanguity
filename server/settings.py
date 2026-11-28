@@ -1059,6 +1059,32 @@ define("activity.days", "logging", "Activity kept for (days)", 365, whole(30, 36
        help="Each profile's activity and the install's own: older entries are deleted once a day.")
 
 
+# ---------------------------------------------------------------- (#1159) Install → General → This server
+section("instance", "This server", "Its name, whether it looks for new versions, and what new people start with.")
+
+
+def instance_name(v):
+    """"" (none) or a short name shown in the browser's title and the top bar, to tell installs apart."""
+    if not isinstance(v, str):
+        raise SettingError("The server's name must be some text.")
+    v = " ".join(v.split())
+    if len(v) > 40 or any(ord(c) < 0x20 or 0x7f <= ord(c) < 0xa0 for c in v):
+        raise SettingError("The server's name is at most 40 characters, on one line.")
+    return v
+
+
+define("instance.name", "instance", "Name of this server", "", instance_name, scope="install", private=False, kind="text",
+       screen=False, help="Shown in the browser's title and the top bar, to tell installs apart (Home, Test). Empty: none.")
+define("updates.check", "instance", "Check for new versions", False, yes_no("Checking for new versions"), scope="install",
+       private=False, kind="toggle", screen=False,
+       help="Once a day, this server asks GitHub for Sanguity's latest release (api.github.com, listed under Outside "
+            "connections) and tells admins when there's a newer one. Nothing about this server or anyone is sent. Off: "
+            "nobody is asked.")
+# the defaults for new people: the install's own rows of these settings of each person's (a broader row is the
+# default under a narrower one), which each person can still change for themselves
+NEW_PEOPLE = ("dates.timeZone", "dates.format", "units")
+
+
 # ---------------------------------------------------------------- storage
 INSTALL_ROWS = "profile_id IS NULL AND user_id IS NULL"   # the install's own values: a restore keeps today's (#1005)
 

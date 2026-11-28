@@ -205,6 +205,14 @@
 
   <!-- General (#998): the server's own settings, each of its sections a card of its own, its id in General's has
        (groups.js), shown to admins with the rest (admin.js); the group's h1 names it, no card of its own repeating it -->
+  <!-- General → This server (#1159, gen-instance.js): its name, checking for new versions, defaults for new people -->
+  <section class="card conn adm" id="gen-instance" hidden>
+    <h2>This server</h2>
+    <p class="hint">Its name, whether it looks for new versions, and what new people start with.</p>
+    <div id="genInstReauth" class="reauth" hidden></div>
+    <div id="genInst"></div>
+    <span class="msg" id="genInstMsg" role="status"></span>
+  </section>
   <section class="card conn adm" id="gen-host" hidden><h2>Host</h2></section>   <!-- the public addresses (admin-host.js, #1000) -->
   <section class="card conn adm" id="gen-phone" hidden><h2>Phone receiver</h2></section>   <!-- the upload address (admin-phone.js, #1003) -->
   <!-- General → Notifications (#1130, notify.js): the install's own notification server, its access token, Test -->
@@ -479,6 +487,7 @@
 <script src="js/admin-phone.js"></script>
 <script src="js/gen-about.js"></script>
 <script src="js/gen-demo.js"></script>
+<script src="js/gen-instance.js"></script>
 <script src="js/gen-restart.js"></script>
 <script src="js/gen-ocr.js"></script>
 <script src="js/settings-nav.js"></script>

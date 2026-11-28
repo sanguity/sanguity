@@ -1351,7 +1351,7 @@ def install_moved_check(browser, base, cookies, check):
     install = ["General", "Accounts and sign-in", "Backups", "Logs and activity", "Connected sources (experimental)", "Outside connections", "About"]
     check("Install in order (#1153): General, Accounts and sign-in, Backups, Logs and activity, Connected sources (experimental), Outside "
           "connections, About; General keeps its install-wide setup alone", ok and got["install"][-7:] == install
-          and got["general"][2] == ["gen-host", "gen-phone", "gen-notify", "gen-restart", "gen-ocr", "gen-demo"], [got, errs])
+          and got["general"][2] == ["gen-instance", "gen-host", "gen-phone", "gen-notify", "gen-restart", "gen-ocr", "gen-demo"], [got, errs])
     check("…Backups holds Folder and key after the backups; Logs and activity, Logging then Install activity; Connected sources its switch "
           "first, then Set up a source, the sync defaults and the Provider directory (they're on here); About is About alone",
           ok and got["backups"][2] == ["backups", "bk-files"] and got["logs"][2] == ["logging", "installLog"]
@@ -4356,6 +4356,40 @@ def main():
               and got1121["refused"][0].startswith("Not saved: One file must be a whole number from 1 to 4,096") and got1121["refused"][1] == "99999"
               and got1121["dirty"] == "1" and got1121["saved"][1:] == [4096, "Restart needed", False] and "apply once the server restarts" in got1121["saved"][0]
               and got1121["after"][:3] == [[1], 2048, False] and "checking them" in got1121["after"][3], [got1121, errs1121])
+        # General → This server (#1159): the server's name goes into the browser's title and the top bar at once; a
+        # default for new people saved as it's picked; Needs a restart offers the log level as a choice and the outbound
+        # proxy's password, write-only, after the proxy's rows
+        ctx1159 = browser.new_context(viewport={"width": 1400, "height": 900})
+        ctx1159.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
+        p1159, errs1159, got1159 = ctx1159.new_page(), [], {}
+        p1159.on("pageerror", lambda e: errs1159.append(str(e)))
+        try:
+            p1159.goto(base + "/settings.html?profile=1#gen-instance")
+            p1159.wait_for_selector("#giName", timeout=20000)
+            p1159.fill("#giName", "Home lab")
+            p1159.click("#genInst button:has-text('Save name')")
+            p1159.locator("#genInstMsg", has_text="Home lab").wait_for(timeout=10000)
+            got1159["name"] = [p1159.title(), p1159.inner_text("header .brand-word")]
+            p1159.select_option("#giFormat", "dmy")
+            p1159.locator("#genInstMsg", has_text="new people start with it").wait_for(timeout=10000)
+            got1159["format"] = p1159.evaluate("[document.getElementById('giFormat').value, document.activeElement.id]")
+            got1159["fits"] = p1159.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            p1159.goto(base + "/settings.html?profile=1#gen-restart")
+            p1159.wait_for_selector("#rsProxyPw", timeout=20000)
+            got1159["restart"] = p1159.evaluate("""[[...document.querySelectorAll('#rs-log-level option')].map(o => o.textContent),
+                [...document.querySelectorAll('#genRsBody .set-row')].slice(-2).map(r => r.dataset.name || r.querySelector('label')?.textContent)]""")
+        except Exception as e:
+            got1159["stopped"] = stopped(e)
+        finally:
+            for k, v in (("instance.name", ""),):
+                strict.request.put(base + f"/api/settings/install/{k}", data=json.dumps({"value": v}), headers={"X-Sanguity": "1", "Content-Type": "application/json"})
+            strict.request.put(base + "/api/settings/install/defaults/dates.format", data=json.dumps({"value": None}), headers={"X-Sanguity": "1", "Content-Type": "application/json"})
+            ctx1159.close()
+        check("General → This server (#1159): its name in the title and the top bar at once, a default for new people saved as "
+              "it's picked; Needs a restart's log level a choice, the proxy's password after the proxy's rows", "stopped" not in got1159
+              and not errs1159 and got1159["name"] == ["Settings: General · Sanguity · Home lab", "Sanguity · Home lab"]
+              and got1159["format"] == ["dmy", "giFormat"] and got1159["fits"]
+              and got1159["restart"] == [["Info", "Debug", "Trace"], ["OUTBOUND_PROXY_BYPASS", "Proxy password"]], [got1159, errs1159])
         # (#991) This person's and You's sections show the profile's and the person's own settings only: a server's own
         # (scope "install", as General's will be, #1000-#1004) is Install's, read from /api/settings/install, even where
         # the profile's sections list it beside theirs. One answered here into Dates and times, and a section of its own

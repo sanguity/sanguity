@@ -20,10 +20,16 @@ removing it, stops the next request even in the middle of a pull.
   Errors                                  what a host that didn't answer, or broke off, raises: (OSError, HTTPException)
   why(e) -> str                           one of those in plain words, for people ("its name wasn't found")
 
+  open_socket(name, port, ip=None, timeout)   (#1159) a socket to name, through the outbound proxy (PROXY, set by
+                                          outside.py from Needs a restart's) unless the host is local or on its bypass
+                                          list: HTTP CONNECT or SOCKS5, with its username and password if it has them;
+                                          a name only the proxy looks up, an address checked beforehand as it is
+  proxy_answers()                         whether the proxy in force takes a connection (its settings are kept on it)
+
 Each host is recorded once per permit and purpose (record(host, purpose)), before anything is sent to it, so an
 attempt that fails is listed too. Only the host is recorded: never a path, query, token or anything else sent.
 """
-import http.client, socket, ssl, urllib.parse
+import base64, http.client, ipaddress, socket, ssl, urllib.parse
 
 Errors = (OSError, http.client.HTTPException)
 DEFAULT_PORTS = {"https": 443, "http": 80}
@@ -42,6 +48,8 @@ def why(e):
         return "its HTTPS certificate isn't valid"
     if isinstance(e, ssl.SSLError):
         return "the secure connection failed"
+    if isinstance(e, ProxyError):   # (#1159) its own words
+        return str(e)
     return "the connection broke off"
 
 
@@ -127,25 +135,161 @@ def resolve(permit, url):
     return list(dict.fromkeys(i[4][0] for i in infos))
 
 
-class _Pinned(http.client.HTTPSConnection):
-    """HTTPS to host, connecting to an address checked beforehand; the certificate is checked for host."""
+# ---------------------------------------------------------------- (#1159) the outbound proxy
+
+class ProxyError(OSError):
+    """The outbound proxy didn't take the connection: said in plain words (never its password)."""
+
+
+class Proxy:
+    """An HTTP (CONNECT) or SOCKS5 proxy every outside connection goes through, but the local ones and the bypass
+    list's. The permit, the contact's record and an address checked beforehand apply as without one: the proxy is
+    asked for that address then (and the certificate still checked for the host); else for the name, which only the
+    proxy looks up."""
+    def __init__(self, scheme, host, port, user="", password="", bypass=()):
+        self.scheme, self.host, self.port, self.user, self.password = scheme, host, int(port), user or "", password or ""
+        self.bypass = [b for b in bypass if b]
+
+    def bypasses(self, name, ip=None):
+        name = (name or "").lower().strip("[]").rstrip(".")
+        for addr in (name, ip):
+            try:
+                a = ipaddress.ip_address(str(addr).split("%")[0]) if addr else None
+            except ValueError:
+                a = None
+            if a is not None:
+                if a.is_private or a.is_loopback or a.is_link_local:
+                    return True
+                for b in self.bypass:
+                    try:
+                        if a in ipaddress.ip_network(b, strict=False):
+                            return True
+                    except ValueError:
+                        continue
+        if name == "localhost" or "." not in name or name.endswith(LOCAL_SUFFIXES):
+            return True
+        return any(name == b or (b.startswith(".") and (name.endswith(b) or name == b[1:])) for b in self.bypass)
+
+
+LOCAL_SUFFIXES = (".localhost", ".local", ".lan", ".home", ".internal", ".localdomain", ".home.arpa")
+PROXY = None   # outside.py sets it: () -> the Proxy in force, or None; read before each connection
+
+
+def proxy_for(name, ip=None):
+    p = PROXY() if PROXY else None
+    return None if p is None or p.bypasses(name, ip) else p
+
+
+def _read_until(sock, end, most=16384):
+    data = b""
+    while end not in data:
+        chunk = sock.recv(1024)
+        if not chunk:
+            raise ProxyError("the outbound proxy broke off")
+        data += chunk
+        if len(data) > most:
+            raise ProxyError("the outbound proxy's answer was too long")
+    return data
+
+
+def _exactly(sock, n):
+    data = b""
+    while len(data) < n:
+        chunk = sock.recv(n - len(data))
+        if not chunk:
+            raise ProxyError("the outbound proxy broke off")
+        data += chunk
+    return data
+
+
+def _http_connect(sock, p, host, port):
+    target = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+    head = f"CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n"
+    if p.user:
+        head += "Proxy-Authorization: Basic " + base64.b64encode(f"{p.user}:{p.password}".encode()).decode() + "\r\n"
+    sock.sendall((head + "\r\n").encode())
+    status = _read_until(sock, b"\r\n\r\n").split(b"\r\n", 1)[0].split()
+    code = status[1] if len(status) > 1 else b""
+    if code == b"407":
+        raise ProxyError("the outbound proxy wants a username and password it wasn't given")
+    if code != b"200":
+        raise ProxyError(f"the outbound proxy refused it ({code.decode(errors='replace')[:3] or 'no answer'})")
+
+
+def _socks5(sock, p, host, port):
+    sock.sendall(b"\x05\x02\x00\x02" if p.user else b"\x05\x01\x00")
+    ver, method = _exactly(sock, 2)
+    if ver != 5 or method == 0xFF:
+        raise ProxyError("the outbound proxy (SOCKS5) took none of the ways to sign in Sanguity offers")
+    if method == 2:
+        if not p.user:
+            raise ProxyError("the outbound proxy wants a username and password it wasn't given")
+        u, w = p.user.encode()[:255], p.password.encode()[:255]
+        sock.sendall(bytes([1, len(u)]) + u + bytes([len(w)]) + w)
+        if _exactly(sock, 2)[1] != 0:
+            raise ProxyError("the outbound proxy refused its username and password")
+    try:
+        a = ipaddress.ip_address(host)
+        addr = (b"\x01" if a.version == 4 else b"\x04") + a.packed
+    except ValueError:
+        name = host.encode("idna")[:255]
+        addr = b"\x03" + bytes([len(name)]) + name   # the proxy looks the name up, never this server
+    sock.sendall(b"\x05\x01\x00" + addr + port.to_bytes(2, "big"))
+    _, rep, _, kind = _exactly(sock, 4)
+    _exactly(sock, {1: 4, 4: 16}.get(kind) or _exactly(sock, 1)[0])
+    _exactly(sock, 2)
+    if rep != 0:
+        raise ProxyError({2: "the outbound proxy's rules don't allow it", 3: "the outbound proxy can't reach that network",
+                          4: "the outbound proxy can't reach that host", 5: "the host refused the outbound proxy",
+                          6: "it took too long to answer the outbound proxy"}.get(rep, "the outbound proxy refused it"))
+
+
+def open_socket(name, port, ip=None, timeout=20):
+    """A connected socket to name (at ip, checked beforehand, when given), through the outbound proxy unless it's
+    bypassed. Only connection() uses it, once its permit allowed the host."""
+    p = proxy_for(name, ip)
+    if p is None:
+        return socket.create_connection((ip or name, port), timeout)
+    sock = socket.create_connection((p.host, p.port), timeout)
+    try:
+        (_socks5 if p.scheme == "socks5" else _http_connect)(sock, p, ip or name, port)
+    except BaseException:
+        sock.close()
+        raise
+    return sock
+
+
+def proxy_answers(timeout=5):
+    """(#1159) Whether the outbound proxy in force takes a connection (nothing is sent to it): tried and kept on that."""
+    p = PROXY() if PROXY else None
+    if p is None:
+        return True
+    try:
+        socket.create_connection((p.host, p.port), timeout).close()
+        return True
+    except OSError:
+        return False
+
+
+class _Conn(http.client.HTTPSConnection):
+    """HTTPS to host (at an address checked beforehand, when given), through the outbound proxy unless bypassed; the
+    certificate is checked for host."""
     def __init__(self, host, port, ip, timeout, context):
         super().__init__(host, port, timeout=timeout, context=context)
         self._ip = ip
 
     def connect(self):
-        sock = socket.create_connection((self._ip, self.port), self.timeout)
-        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+        self.sock = self._context.wrap_socket(open_socket(self.host, self.port, self._ip, self.timeout), server_hostname=self.host)
 
 
-class _PinnedHTTP(http.client.HTTPConnection):
-    """Plain HTTP to host, connecting to an address checked beforehand; the Host header still names host."""
+class _ConnHTTP(http.client.HTTPConnection):
+    """Plain HTTP to host, as _Conn; the Host header still names host."""
     def __init__(self, host, port, ip, timeout):
         super().__init__(host, port, timeout=timeout)
         self._ip = ip
 
     def connect(self):
-        self.sock = socket.create_connection((self._ip, self.port), self.timeout)
+        self.sock = open_socket(self.host, self.port, self._ip, self.timeout)
 
 
 def connection(permit, url, purpose=None, ip=None, timeout=20, context=None):
@@ -153,10 +297,6 @@ def connection(permit, url, purpose=None, ip=None, timeout=20, context=None):
     scheme, name, port = _split(url)
     permit.contact(host_of(url), purpose)
     if scheme == "https":
-        ctx = context or ssl.create_default_context()
-        if ip:
-            return _Pinned(name, port, ip, timeout, ctx)
-        return http.client.HTTPSConnection(name, port, timeout=timeout, context=ctx)
-    if ip:
-        return _PinnedHTTP(name, port, ip, timeout)
-    return http.client.HTTPConnection(name, port, timeout=timeout)
+        return _Conn(name, port, ip, timeout, context or ssl.create_default_context())
+    return _ConnHTTP(name, port, ip, timeout)
+

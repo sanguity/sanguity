@@ -3,7 +3,7 @@
 Roles on a profile:  owner (view, import/edit, share, delete) · editor (view, import/edit) · viewer (view).
 Admin is an account flag for managing accounts only; it gives no access to anyone's records.
 """
-import ipaddress, json, logging, os, secrets, string, sys, threading, traceback, urllib.parse
+import ipaddress, json, logging, os, secrets, string, sys, threading, time, traceback, urllib.parse
 from contextlib import asynccontextmanager
 from typing import Literal, Optional
 
@@ -58,6 +58,20 @@ if not log.handlers:   # in place of Python's last-resort handler: the same stde
     _h.addFilter(QuietTracebacks())
     log.addHandler(_h)
 logging.getLogger("uvicorn.error").addFilter(QuietTracebacks())
+# (#1159) the app's own log at Info, Debug or Trace (Needs a restart's LOG_LEVEL). Debug adds each request's method,
+# route (its pattern, /api/profiles/{pid}/labs, never the path itself, which can name a lab) and status; Trace also the
+# names of its query fields (never their values) and each outside contact's host (outside.py). Never a record's
+# contents, a name, a value typed in or a secret, at any level: tests/test_server_settings.py checks it at Trace.
+TRACE = 5
+logging.addLevelName(TRACE, "TRACE")
+LOG_LEVELS = {"info": logging.INFO, "debug": logging.DEBUG, "trace": TRACE}
+
+
+def set_log_level(level=None):
+    log.setLevel(LOG_LEVELS.get(level or restart_settings.value("LOG_LEVEL"), logging.INFO))
+
+
+set_log_level()
 RANK = {"viewer": 1, "editor": 2, "owner": 3}
 WWW = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "www")
 
@@ -197,6 +211,23 @@ async def lifespan(app):
 app = FastAPI(title="Sanguity", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 
+class UrlBase:
+    """(#1159) Under a URL base, a request whose path still has it (a reverse proxy that passes it on, or the app serving
+    its pages itself) is routed as without it; the base alone is its root."""
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket") and (base := config.url_base()):
+            path = scope.get("path", "")
+            if path == base or path.startswith(base + "/"):
+                scope = {**scope, "path": path[len(base):] or "/", "raw_path": None}
+        await self.inner(scope, receive, send)
+
+
+app.add_middleware(UrlBase)
+
+
 def _same_site(origin, request, origins=None):
     """The browser's Origin names this site: the Host it reached us on, the host a reverse proxy in front says it
     served (X-Forwarded-Host, passed on by our nginx), or an address listed in PUBLIC_ORIGINS (origins: another list
@@ -290,7 +321,13 @@ async def guard(request: Request, call_next):
         if request.headers.get("x-sanguity") != "1" or (origin and not _same_site(origin, request)):
             _audit("csrf.refused", request, path=request.url.path, origin=(origin or "")[:200])
             return JSONResponse({"detail": "Request refused (cross-site check)."}, status_code=403)
+    began = time.monotonic()
     resp = await call_next(request)
+    if log.isEnabledFor(logging.DEBUG):   # (#1159) the route's pattern and the status, never the path or a value
+        route = getattr(request.scope.get("route"), "path", None) or "(no route)"
+        fields = sorted(request.query_params.keys())[:20] if log.isEnabledFor(TRACE) else None
+        log.debug("request %s %s %d %dms%s", request.method, route, resp.status_code, (time.monotonic() - began) * 1000,
+                  f" fields={','.join(f[:40] for f in fields)}" if fields else "")
     if request.url.path.startswith("/api/"):
         # a calendar feed (routes_calendar.py) may be kept by the calendar app itself, never by a shared cache
         if not resp.headers.get("Cache-Control", "").startswith("private"):
@@ -368,7 +405,7 @@ BACKGROUND = "x-sanguity-background"   # (#1063) a request the page makes on its
 
 
 def _session(request, db):
-    token = request.cookies.get(config.COOKIE_HOST) or request.cookies.get(config.COOKIE)
+    token = next((t for n in config.SESSION_COOKIES if (t := request.cookies.get(n))), None)
     if not token or len(token) > 200:
         return None
     s = db.execute("""SELECT s.id AS sid, s.created AS s_created, s.last_seen, s.expires, s.verified_at, s.idp_mfa, s.stepped_at, u.* FROM sessions s
@@ -485,10 +522,10 @@ def _start_session(request, response, db, uid, how=None, idp_mfa=False):
                (sec.token_hash(token), uid, now, now, now + life,
                 _client_ip(request), (request.headers.get("user-agent") or "")[:300], now, int(idp_mfa)))
     secure = _secure(request)
-    response.set_cookie(config.COOKIE_HOST if secure else config.COOKIE, token, max_age=life,
-                        path="/", httponly=True, samesite="strict", secure=secure)
+    name, path = config.session_cookie(secure)   # (#1159) at the URL base, under one
+    response.set_cookie(name, token, max_age=life, path=path, httponly=True, samesite="strict", secure=secure)
     if secure and request.cookies.get(config.COOKIE):   # one from before the prefix, or from plain HTTP
-        response.delete_cookie(config.COOKIE, path="/", httponly=True, samesite="strict")
+        response.delete_cookie(config.COOKIE, path=path, httponly=True, samesite="strict")
     if how:
         u = db.execute("SELECT id, username FROM users WHERE id=?", (uid,)).fetchone()
         _audit("login.ok", request, u, warn=False, method=how)
@@ -837,18 +874,20 @@ def _remember_device(request, response, db, uid):
                   ON CONFLICT(token_hash, user_id) DO UPDATE SET last_seen=excluded.last_seen""", (sec.token_hash(token), uid, now, now))
     # only ever sent to the sign-in endpoint; it lets nobody in, it only keeps this browser's tries apart.
     # Set again on every sign-in, so a browser in use keeps it as long as the server does.
-    response.set_cookie(config.DEVICE_COOKIE, token, max_age=config.DEVICE_DAYS * 86400, path="/api/login",
+    response.set_cookie(config.DEVICE_COOKIE, token, max_age=config.DEVICE_DAYS * 86400, path=config.url_base() + "/api/login",
                         httponly=True, samesite="strict", secure=_secure(request))
 
 
 @app.post("/api/logout")
 def logout(request: Request, response: Response, db=Depends(get_db)):
-    for name in (config.COOKIE_HOST, config.COOKIE):
+    for name in config.SESSION_COOKIES:
         if (token := request.cookies.get(name)):
             db.execute("DELETE FROM sessions WHERE token_hash=?", (sec.token_hash(token),))
-    response.delete_cookie(config.COOKIE, path="/", httponly=True, samesite="strict", secure=_secure(request))
+    path = config.session_cookie(False)[1]
+    response.delete_cookie(config.COOKIE, path=path, httponly=True, samesite="strict", secure=_secure(request))
     if _secure(request):
-        response.delete_cookie(config.COOKIE_HOST, path="/", httponly=True, samesite="strict", secure=True)
+        name, path = config.session_cookie(True)
+        response.delete_cookie(name, path=path, httponly=True, samesite="strict", secure=True)
     return {"ok": True}
 
 
@@ -884,12 +923,25 @@ def me(s=Depends(any_user), db=Depends(get_db)):
             "connected_sources": settings.connected_sources(),   # (#1096) whether any page offers them: on or off, no more
             "sign_in_provider": oidc.brief(db),   # (#1109) the provider's button name and whether it's the only way in, or None
             "version": general.version()["version"],   # the records page's foot (None: a checkout or a build without one)
+            "instance_name": settings.install_value("instance.name") or None,   # (#1159) the title's and the top bar's
+            "update": _update_for(db, s),   # (#1159) admins: a newer release, when checking for them is on
             "calendar_feeds": calendar.count_for(db, s["id"]),   # what changing the password or removing a passkey ends (#597)
             # the install's HTTPS address (PUBLIC_ORIGINS), for "install from this address" on a plain-HTTP page (#56)
             "https_address": next((o for o in sorted(config.setting("PUBLIC_ORIGINS")) if o.startswith("https://")), None),
             # backups late or failing (#200): the Admin menu item says so, for admins who may use it
             "backups_late": bool(s["is_admin"]) and not (must_change(db, s) or needs_2fa)
                             and not accounts.admin_needs_second_factor(db, s) and backup_jobs.late(db)}
+
+
+def _update_for(db, s):
+    """(#1159) For an admin, while checking for new versions is on: {"version", "url"} of a newer release, else None;
+    a check is started in the background when the last is a day old (updates.py)."""
+    if not s["is_admin"]:
+        return None
+    from . import updates
+    updates.maybe_check(db)
+    st = updates.state(db)
+    return {"version": st["latest"], "url": st["url"]} if st["newer"] else None
 
 
 def _session_ends(db, s):
@@ -1829,7 +1881,13 @@ app.include_router(__import__("server.routes_followups", fromlist=["router"]).ro
 app.include_router(__import__("server.routes_requests", fromlist=["router"]).router)    # records requests (#1133)
 
 
-if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves www/ and only proxies /api/ here
+if not os.path.isdir(WWW) and os.path.isdir("/usr/share/nginx/html"):   # (#1159) the released image's copy, nginx's
+    WWW = "/usr/share/nginx/html"
+# in Docker, nginx serves www/ and only proxies /api/ here; a server run without nginx (development), or serving
+# built-in HTTPS itself (#1159, python -m server), serves the pages too, with nginx.conf's headers
+PAGE_HEADERS = {"Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP, "X-Content-Type-Options": "nosniff",
+                "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY", "X-Robots-Tag": "noindex, nofollow"}
+if (os.environ.get("SANGUITY_SERVE_STATIC") == "1" or restart_settings.https_files()) and os.path.isdir(WWW):
     from fastapi.staticfiles import StaticFiles
 
     for sub in ("css", "js", "fonts", "icons"):
@@ -1838,13 +1896,11 @@ if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves w
     # install as a phone app (#56): as nginx.conf sends them
     @app.get("/manifest.webmanifest", include_in_schema=False)
     def manifest():
-        return FileResponse(os.path.join(WWW, "manifest.webmanifest"), media_type="application/manifest+json",
-                            headers={"Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP})
+        return FileResponse(os.path.join(WWW, "manifest.webmanifest"), media_type="application/manifest+json", headers=PAGE_HEADERS)
 
     @app.get("/sw.js", include_in_schema=False)
     def service_worker():
-        return FileResponse(os.path.join(WWW, "sw.js"), media_type="text/javascript",
-                            headers={"Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP})
+        return FileResponse(os.path.join(WWW, "sw.js"), media_type="text/javascript", headers=PAGE_HEADERS)
 
     @app.get("/{page}")
     @app.get("/", include_in_schema=False)
@@ -1852,5 +1908,4 @@ if os.environ.get("SANGUITY_SERVE_STATIC") == "1":   # in Docker, nginx serves w
         if page not in ("index.html", "login.html", "setup.html", "account.html", "import.html", "settings.html", "providers.html", "summary.html", "share.html",
                         "admin.html", "sources.html", "sharing.html", "guide.html"):
             raise HTTPException(404)
-        return FileResponse(os.path.join(WWW, page), media_type="text/html",
-                            headers={"Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP})
+        return FileResponse(os.path.join(WWW, page), media_type="text/html", headers=PAGE_HEADERS)

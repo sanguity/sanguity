@@ -51,7 +51,7 @@ def return_addresses(request):
     for origin in seen:
         scheme, _, host = origin.partition("://")
         why = ("plain HTTP" if scheme != "https" else "a home-network or tailnet address" if _local(host) else None)
-        out.append({"url": origin + directory.RETURN_PATH, "current": origin == here, "likely_accepted": why is None,
+        out.append({"url": origin + config.url_base() + directory.RETURN_PATH, "current": origin == here, "likely_accepted": why is None,   # (#1159: the URL base)
                     "why": f"Vendors are unlikely to accept {why} outside their sandboxes." if why else None})
     return out
 

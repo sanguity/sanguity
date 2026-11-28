@@ -210,6 +210,9 @@ ROUTES = {
     ("DELETE", "/api/settings/install/demo"): (ADMIN, None),
     ("GET", "/api/settings/install/restart"): (ADMIN, None), ("PUT", "/api/settings/install/restart/values"): (ADMIN, None),   # General → Needs a restart (#1121)
     ("POST", "/api/settings/install/restart"): (ADMIN, None),
+    ("PUT", "/api/outside/proxy-password"): (ADMIN, None),   # (#1159) the outbound proxy's password, write-only
+    ("GET", "/api/settings/install/instance"): (ADMIN, None), ("PUT", "/api/settings/install/defaults/{key}"): (ADMIN, None),   # General → This server (#1159)
+    ("POST", "/api/settings/install/updates/check"): (ADMIN, None),
     ("POST", "/api/settings/install/taken/seen"): (ADMIN, None),   # General's word on what was taken from the environment (#1158)
     # General -> Text recognition (#1129): the pass, a language imported, downloaded or removed; and a document's text and
     # the search of documents' text, as the records are
@@ -371,7 +374,7 @@ class Reach(unittest.TestCase):
             scripts = re.findall(r'<script src="js/([\w-]+\.js)"></script>', f.read())
         install = ["admin.js", "admin-sources.js", "admin-backups.js", "outside.js", "activity.js", "admin-host.js",
                    "gen-security.js", "gen-signin.js", "gen-backups.js", "admin-phone.js", "gen-about.js", "gen-demo.js", "gen-restart.js",
-                   "gen-ocr.js"]   # General's sections (#998, #1101, #1109, #1121, #1129)
+                   "gen-ocr.js", "gen-instance.js"]   # General's sections (#998, #1101, #1109, #1121, #1129, #1159)
         self.assertEqual([s for s in install if s not in scripts], [], "Install's scripts on the Settings page")
         heads = set()
         for s in install:
@@ -486,7 +489,8 @@ PLAIN_SETTINGS = {"sync.attachAuto", "sync.attachMaxMB", "sync.attachTypes", "sy
                   "directory.weekly",   # on or off (#992)
                   "experimental.connectedSources",   # (#1096) on or off
                   "costs.taxStart",   # (#1136) a month, 1 to 12, for Costs' tax-year report: nothing about anyone's health
-                  "ocr.languages", "ocr.downloads"}   # (#1129) language codes, and on or off
+                  "ocr.languages", "ocr.downloads",   # (#1129) language codes, and on or off
+                  "instance.name", "updates.check"}   # (#1159) the server's name (no one's), and on or off
 
 
 class AtRest(unittest.TestCase):

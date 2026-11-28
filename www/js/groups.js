@@ -116,8 +116,9 @@ const SG_PAGES = {
         ["Units", "sec-units", "metric imperial mmol mg kg lb pounds kilograms weight temperature celsius fahrenheit height cm inches lab tests"]]},
     // Install: the Admin page's groups (#167: admin.js, admin-sources.js, admin-backups.js, outside.js, activity.js),
     // admins only. General (#998) first: the server's own settings, each of its sections (#1000-#1005) a part in its has
-    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-host", "gen-phone", "gen-notify", "gen-restart", "gen-ocr", "gen-demo"], place: "admin", words: "server install configuration",
-     finds: [["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names published web port forwarded request"],
+    {id: "general", title: "General", icon: "wrench", part: "Install", admin: true, has: ["gen-instance", "gen-host", "gen-phone", "gen-notify", "gen-restart", "gen-ocr", "gen-demo"], place: "admin", words: "server install configuration",
+     finds: [["This server", "gen-instance", "name instance title update check new version release github defaults new people time zone date format units"],   // (#1159)
+       ["Host", "gen-host", "public addresses origins reverse proxy domain url passkey names published web port forwarded request"],
        ["Phone receiver", "gen-phone", "upload address watch scale health connect receiver port time zone unclaimed restore replaced"],
        ["Notifications", "gen-notify", "notification server ntfy topic push access token test send"],   // (#1130)
        ["Needs a restart", "gen-restart", "restart now upload limits file size files journal photo sync attachment pulls timeout health links password checks at once hash parallel trusted proxies forwarded time zone unclaimed restore replaced kept server-settings " +

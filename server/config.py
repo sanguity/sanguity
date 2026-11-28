@@ -21,6 +21,23 @@ COOKIE = "sg_session"
 # over HTTPS the session cookie is named with the __Host- prefix, so the browser holds it to Secure, Path=/ and
 # this exact host (no subdomain can set or overwrite it); plain HTTP can't carry that prefix, so it keeps COOKIE
 COOKIE_HOST = "__Host-" + COOKIE
+# (#1159) under a URL base the cookie's Path is the base, which __Host- can't carry: over HTTPS it's __Secure- then
+COOKIE_SECURE_BASE = "__Secure-" + COOKIE
+SESSION_COOKIES = (COOKIE_HOST, COOKIE_SECURE_BASE, COOKIE)   # read in this order
+
+
+def url_base():
+    """(#1159) The URL base in force: "" (the address's root) or a path such as /sanguity (Needs a restart's)."""
+    from . import server_settings
+    return server_settings.value("URL_BASE")
+
+
+def session_cookie(secure):
+    """(name, path) of the session cookie: __Host- at / over HTTPS, else at the URL base under one (#1159)."""
+    base = url_base()
+    if not base:
+        return (COOKIE_HOST if secure else COOKIE), "/"
+    return (COOKIE_SECURE_BASE if secure else COOKIE), base + "/"
 DEVICE_COOKIE, DEVICE_DAYS = "sg_device", 365   # marks a browser that has signed in to an account before
 PASSWORD_MAX = 256
 HASH_WAIT = 2   # seconds a sign-in waits for its turn before the API answers 503 "busy, try again"
@@ -90,7 +107,8 @@ MANAGED = {
     "OIDC_ACR": "Sign-in provider's acr that counts as two factors: " + _SSO,
     "OIDC_ONLY": "Sign in with OIDC only: " + _SSO + " (taken out, the page's switch again)",
     "NOTIFY_TOKEN": "Notifications' access token: a secret a secret manager rotates (or NOTIFY_TOKEN_FILE)",
-    # (#1159) the outbound proxy's password joins here, as OUTBOUND_PROXY_PASSWORD (and _FILE), read with managed()
+    "OUTBOUND_PROXY_PASSWORD": "the outbound proxy's password (#1159): a secret a secret manager rotates (or "
+                               "OUTBOUND_PROXY_PASSWORD_FILE, a Docker secret)",
 }
 _managed_warned = set()
 
@@ -303,7 +321,7 @@ def public_address(origins=None):
     their names, as the return address has always been taken), else the first; None while it lists none: then the
     address a page was opened at. origins: another list than the one in force (General → Host's change, #1000)."""
     origins = sorted(setting("PUBLIC_ORIGINS") if origins is None else origins, key=lambda o: (not o.startswith("https://"), o))
-    return origins[0] if origins else None
+    return origins[0] + url_base() if origins else None   # (#1159) with the URL base, where one is set
 
 
 def given_base():

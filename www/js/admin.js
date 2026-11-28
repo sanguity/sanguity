@@ -68,7 +68,7 @@ function adminGate() {
   $("#secNotice").hidden = $("#codeNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
   // (#1153) connected sources' parts only while they're on (a group's csHas): off, their group holds the switch alone
   const off = sgConnected(ME) ? [] : SG_PAGES.settings.groups.flatMap(g => g.csHas || []);
-  for (const id of ["gen-host", "signin-rules", "signin-provider", "gen-phone", "gen-notify", "gen-restart", "gen-ocr", "gen-demo", "backups", "bk-files",
+  for (const id of ["gen-instance", "gen-host", "signin-rules", "signin-provider", "gen-phone", "gen-notify", "gen-restart", "gen-ocr", "gen-demo", "backups", "bk-files",
                     "logging", "installLog", "cs-switch", "admin", "sec-sync", "directory", "install-about"]) if (!off.includes(id)) gateCard($("#" + id));
 }
 function gateCard(card) {
@@ -471,7 +471,7 @@ async function adminStart(first) {
   if (ME.user.admin_needs_two_factor) { adminGate(); SET_NAV.again(); return; }
   loadInstallLog();
   await Promise.all([loadUsers(), loadNotice(), loadGenSecurity(), loadRequireTf(), cs && loadSetup(), cs && loadSync(), loadBackups(),
-                     loadHost(), loadSignin(), loadGenBackups(), loadPhone(), loadNotifyServer(), loadGenRestart(), loadGenExperimental(), loadGenOcr(), loadGenDemo(), loadGenAbout(),
+                     loadHost(), loadSignin(), loadGenBackups(), loadPhone(), loadNotifyServer(), loadGenRestart(), loadGenInstance(), loadGenExperimental(), loadGenOcr(), loadGenDemo(), loadGenAbout(),
                      cs && loadDirectory()]);   // General's parts (#998); #992: the directory's lists, an admin's alone
   SET_NAV.again();
 }

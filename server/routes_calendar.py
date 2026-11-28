@@ -28,7 +28,7 @@ def _base_url(request):
     if (origin := config.public_address()):
         return origin
     host = _request_host(request)
-    return f"{request.url.scheme}://{host}" if host else str(request.base_url)
+    return (f"{request.url.scheme}://{host}" if host else str(request.base_url).rstrip("/")) + config.url_base()   # (#1159)
 
 
 def _path(pid, token):

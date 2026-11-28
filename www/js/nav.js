@@ -629,6 +629,7 @@ const SgNav = (() => {
   document.addEventListener("DOMContentLoaded", () => {
     api("me").then(r => r.ok ? r.json() : null).then(me => {
       meSaid(me);
+      if (me?.instance_name) sgInstance(me.instance_name);   // (#1159) the title and the top bar (util.js)
       if (me) {   // New profile where it's offered (sgMayNew)
         npSep.hidden = npLink.hidden = !sgMayNew(me);
         for (const e of document.querySelectorAll("[data-np]")) e.hidden = (e.dataset.np === "offer") !== sgMayNew(me);

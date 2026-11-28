@@ -158,6 +158,14 @@ Everything on `main` so far; it becomes the first tagged release.
   encrypted, only for finding the document, behind "Text found by text recognition" in its drawer. Other languages
   in Settings → General → Text recognition: a language file imported, or downloaded from the tesseract-ocr project
   once an admin turns that on (listed under Outside connections).
+- New server settings (#1159): a URL base (Sanguity under a path behind a reverse proxy: cookies, redirects, the
+  sign-in provider's return address, share links, calendar feeds and notifications' Click use it), an outbound HTTP or
+  SOCKS5 proxy for every outside connection (with a bypass list, a username, and a write-only password the
+  environment may manage, `OUTBOUND_PROXY_PASSWORD`), the log level (Info, Debug, Trace; never health data), built-in
+  HTTPS from a certificate and key in the data folder (checked before it's saved, its names and expiry shown, warned 30
+  days ahead), each tried at the next start and kept once healthy; and, on General → This server, the server's name
+  (the title and the top bar), an opt-in check for new versions (GitHub's releases only, listed under Outside
+  connections) and the time zone, date format and units new people start with.
 
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for

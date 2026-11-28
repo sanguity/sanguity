@@ -426,6 +426,57 @@ def install_about(s=Depends(admin)):
     return general.about()
 
 
+# ---------------------------------------------------------------- (#1159) General → This server
+
+def _instance(db):
+    from . import updates
+    have = settings.stored(db, "install")
+    return {"name": settings.install_value("instance.name") or "", "updates": updates.state(db),
+            "defaults": {k: have.get(k, settings.SETTINGS[k].default) for k in settings.NEW_PEOPLE},
+            "set": sorted(k for k in settings.NEW_PEOPLE if k in have),
+            "date_formats": settings.DATE_FORMATS, "units": settings.UNIT_CHOICES}
+
+
+@router.get("/api/settings/install/instance")
+def instance_state(s=Depends(admin), db=Depends(get_db)):
+    """This server's name, the update check and what it last found, and the defaults new people start with."""
+    return _instance(db)
+
+
+@router.put("/api/settings/install/defaults/{key}")
+def new_people_default(key: str, body: Value, request: Request, s=Depends(admin), db=Depends(get_db)):
+    """A default for new people (a time zone, a date format, the units): the install's own row of that setting of each
+    person's, under theirs; null takes it away. The fresh check, then logged."""
+    if key not in settings.NEW_PEOPLE:
+        raise HTTPException(404, "That isn't one of the defaults for new people.")
+    d = settings.get_def(key)
+    try:
+        value = None if body.value is None or body.value == "" else d.clean(body.value)
+    except settings.SettingError as e:
+        raise HTTPException(400, str(e))
+    have = settings.stored(db, "install")
+    if have.get(key) == value or (value is None and key not in have):
+        return _instance(db)
+    fresh(request, s, "change a server setting")
+    with dbm.transaction(db):
+        if value is None:
+            settings.clear(db, [key], "install")
+        else:
+            settings.put(db, key, value, scope="install", by=s["id"])
+        _log(db, s, None, "install", {"setting": key, "label": f"{d.label}, for new people", "from": have.get(key), "to": value}, request)
+    return _instance(db)
+
+
+@router.post("/api/settings/install/updates/check")
+def updates_check_now(s=Depends(admin), db=Depends(get_db)):
+    """Check for a new version now (while the check is on): what it found, or why it couldn't."""
+    from . import updates
+    if not updates.on():
+        raise HTTPException(409, "Checking for new versions is off: turn it on first.")
+    updates.check(db, s)
+    return _instance(db)
+
+
 # ---------------------------------------------------------------- General → Needs a restart (#1121, server_settings.py)
 
 class RestartValues(BaseModel):
@@ -456,8 +507,73 @@ def _proxies_guard(request, value, typed):
         raise HTTPException(409, {"code": "confirm", "message": f"{goes['message']} Type {TRUST_ALL} to confirm.", "confirm": goes})
 
 
+CHANGE_IT = "change it"   # (#1159) typed to confirm a URL base, built-in HTTPS or an outbound proxy
+RISKY_SAYS = {
+    "Address": "After the restart Sanguity answers at the new URL base only: your reverse proxy must forward it, or "
+               "nobody reaches the app.",
+    "Built-in HTTPS": "After the restart Sanguity also serves HTTPS on its own port with this certificate.",
+    "Outbound proxy": "After the restart every outside connection goes through this proxy: a sign-in with the sign-in "
+                      "provider, connected sources and notifications stop working while it can't be reached.",
+}
+
+
+def _next_with(values):
+    nxt = dict(server_settings.next_values())
+    for name, v in values.items():
+        d = server_settings.DEFS[name]
+        nxt[name] = d.default if v is None or v == "" else d.check(v)
+    return nxt
+
+
+def _https_check(values):
+    """(#1159) Built-in HTTPS's certificate and key, checked as the server will load them, before they're saved."""
+    if not {"HTTPS_CERT", "HTTPS_KEY"} & set(values):
+        return
+    nxt = _next_with(values)
+    if bool(nxt.get("HTTPS_CERT")) != bool(nxt.get("HTTPS_KEY")):
+        raise HTTPException(400, "Built-in HTTPS needs both its certificate file and its key file (or neither, to turn it off).")
+    if (files := server_settings.https_files(nxt)):
+        try:
+            server_settings.certificate(*files)
+        except server_settings.Refused as e:
+            raise HTTPException(400, f"Not saved: {e}")
+
+
+def _risky_guard(values, typed):
+    """(#1159) A change to the URL base, built-in HTTPS or the outbound proxy can cut people off: asked first, as
+    trusting everyone is (_confirmed's 409). Tried at the next start and kept once healthy; manage.py config reset puts
+    one back from the command line."""
+    nxt, before = _next_with(values), server_settings.next_values()
+    groups = [g for g, n in server_settings.RISKY.items()
+              if any(before.get(k, d.default) != nxt.get(k, d.default) and nxt.get(k, d.default) != d.default
+                     for k, d in server_settings.DEFS.items() if d.group == g)]
+    if groups and _said(typed) != _said(CHANGE_IT):
+        names = ", ".join(server_settings.RISKY[g] for g in groups)
+        goes = {"count": 1, "type": CHANGE_IT, "title": "Change how the server is reached?", "action": "Save",
+                "message": " ".join(RISKY_SAYS[g] for g in groups) + " If it doesn't come up healthy it goes back to the "
+                           "settings before by itself; if it does but locks you out, python -m server.manage config reset "
+                           f"{names} puts it back."}
+        raise HTTPException(409, {"code": "confirm", "message": f"{goes['message']} Type {CHANGE_IT} to confirm.", "confirm": goes})
+
+
+def _https_state():
+    """(#1159) Built-in HTTPS's certificate as the next start loads it: its names and expiry, warned 30 days before."""
+    files = server_settings.https_files(server_settings.next_values())
+    if not files:
+        return None
+    try:
+        return server_settings.certificate(*files)
+    except server_settings.Refused as e:
+        return {"problem": str(e)}
+
+
 def _restart_state():
+    from . import outside
     st = server_settings.state()
+    st["https"] = _https_state()
+    nxt = server_settings.next_values().get("OUTBOUND_PROXY", "")   # (#1159) its password: write-only, or the environment's
+    st["proxy_password"] = {"source": outside.proxy_password_source(address=nxt),
+                            "env": config.managed_by(outside.PROXY_PASSWORD_ENV) or outside.PROXY_PASSWORD_ENV}
     if not settings.connected_sources():   # (#1096) none of theirs while they're off, as About's limits
         st["settings"] = [r for r in st["settings"] if r["group"] != "Connected sources" and r["name"] not in ("CONNECT_TIMEOUT", "DIRECTORY_TIMEOUT")]
     kind = general.deployment()
@@ -497,6 +613,8 @@ def restart_values(body: RestartValues, request: Request, s=Depends(admin), db=D
             raise HTTPException(400, str(e))
         if name == "FORWARDED_ALLOW_IPS":
             _proxies_guard(request, v, body.confirm)
+    _https_check(body.values)
+    _risky_guard(body.values, body.confirm)
     fresh(request, s, "change a server setting")
     try:
         changed = server_settings.change(body.values, by=s["username"])

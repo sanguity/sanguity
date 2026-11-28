@@ -31,6 +31,7 @@ from fastapi.testclient import TestClient   # noqa: E402
 from server import accounts, crypto, db as dbm, main, net, outside, profiles as prof, shl, smart, sync   # noqa: E402
 from tests import netguard   # noqa: E402
 from tests.fakefhir import FakeFHIR   # noqa: E402
+from tests.fakeproxy import FakeProxy   # noqa: E402
 import shl_server   # noqa: E402
 
 logging.getLogger("sanguity.security").setLevel(logging.ERROR)
@@ -87,7 +88,7 @@ class Static(unittest.TestCase):
     def test_the_gateway_is_where_the_network_is(self):
         with open(os.path.join(ROOT, GATEWAY), encoding="utf-8") as fh:
             src = fh.read()
-        self.assertIn("import http.client, socket", src)
+        self.assertRegex(src, r"\nimport [^\n]*\bhttp\.client, [^\n]*\bsocket\b")
 
 
 class Gateway(unittest.TestCase):
@@ -138,6 +139,59 @@ class Gateway(unittest.TestCase):
             conn.connect()
         conn.close()
         self.assertEqual(netguard.take(), ["203.0.113.9:80"])
+
+    def test_through_the_outbound_proxy(self):   # #1159
+        """An HTTP (CONNECT) or SOCKS5 proxy with a username and password: the permit still decides, the name goes to
+        the proxy (never looked up here), an address checked beforehand is the one asked for, a wrong password is said
+        in plain words, and local hosts and the bypass list's go direct."""
+        srv = _echo_host()
+        p = net.Permit("t", {"records.example.org"})
+        for kind in ("http", "socks5"):
+            fp = FakeProxy(kind, srv.server_address[1], user="sg", password="pebble lantern").start()
+            self.addCleanup(fp.stop)
+            with mock.patch.object(net, "PROXY", lambda: net.Proxy(kind, "127.0.0.1", fp.port, "sg", "pebble lantern", [])):
+                for ip in (None, "93.184.215.14"):
+                    c = net.connection(p, "http://records.example.org/x", ip=ip)
+                    c.request("GET", "/x")
+                    r = c.getresponse()
+                    self.assertEqual((r.status, r.read()), (200, b"records.example.org"), kind)
+                    c.close()
+                self.assertEqual(fp.asked, ["records.example.org:80", "93.184.215.14:80"], kind)
+                self.assertEqual(netguard.take(), [], "the name went to the proxy: never looked up here")
+                with self.assertRaises(net.Refused):
+                    net.connection(p, "http://other.example.org/x")
+            with mock.patch.object(net, "PROXY", lambda: net.Proxy(kind, "127.0.0.1", fp.port, "sg", "not it", [])):
+                c = net.connection(p, "http://records.example.org/x")
+                with self.assertRaises(net.ProxyError) as e:
+                    c.request("GET", "/x")
+                c.close()
+                self.assertRegex(net.why(e.exception), "outbound proxy (refused its username|wants a username)", kind)
+        prox = net.Proxy("http", "127.0.0.1", 9, bypass=[".example.net", "93.184.215.0/24", "files.example.com"])
+        for host, ip in (("localhost", None), ("printer.lan", None), ("nas", None), ("10.0.0.4", None), ("a.example.net", None),
+                         ("example.net", None), ("files.example.com", None), ("x.example.org", "192.168.1.5"), ("x.example.org", "93.184.215.14")):
+            self.assertTrue(prox.bypasses(host, ip), host)
+        for host in ("records.example.org", "example.net.evil.example", "www.files.example.com"):
+            self.assertFalse(prox.bypasses(host), host)
+
+
+def _echo_host():
+    """A plain HTTP server on this machine answering each GET with the Host it was sent."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Echo(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = self.headers.get("Host", "").encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Echo)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
 
 
 class View(unittest.TestCase):
@@ -524,6 +578,79 @@ class View(unittest.TestCase):
                 db.execute("DELETE FROM meta WHERE k='oidc'")
                 db.close()
                 oidc._cache.clear()
+
+    def test_update_check_off_by_default_github_only_once_on(self):   # #1159
+        """Checking for new versions contacts nobody until an admin turns it on; then GitHub's releases API alone, through
+        the gateway, listed under Outside connections; a newer release is said to admins only."""
+        from server import updates
+        db = dbm.connect()
+        self.addCleanup(db.close)
+        self.assertNotIn("updates", self.view(self.robin))
+        with self.assertRaises(net.Refused):
+            net.connection(updates.permit(db), updates.RELEASES)
+        self.assertEqual(self.robin.post("/api/settings/install/updates/check", headers=H).status_code, 409)
+        r = self.robin.put("/api/settings/install/updates.check", json={"value": True}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.addCleanup(lambda: self.robin.put("/api/settings/install/updates.check", json={"value": False}, headers=H))
+        self.assertEqual(self.kim.put("/api/settings/install/updates.check", json={"value": False}, headers=H).status_code, 403)
+        v = self.view(self.robin)
+        self.assertEqual(v["updates"]["hosts"], ["api.github.com"])
+        self.assertIn("api.github.com", v["may_contact"])
+        self.assertTrue(updates.permit(db).allows("api.github.com"))
+        self.assertFalse(updates.permit(db).allows("github.com"))
+        sent = []
+
+        class Answer:
+            status = 200
+
+            def read(self, n):
+                return json.dumps({"tag_name": "v9.9.0", "html_url": "https://github.com/sanguity/sanguity/releases/tag/v9.9.0"}).encode()
+
+        class Conn:
+            def request(self, method, path, headers):
+                sent.append((method, path, sorted(headers)))
+
+            def getresponse(self):
+                return Answer()
+
+            def close(self):
+                pass
+
+        def fake(permit, url, **kw):
+            permit.contact(net.host_of(url))
+            return Conn()
+        with mock.patch.object(updates.net, "connection", fake), mock.patch.dict(os.environ, {"SANGUITY_IMAGE_VERSION": "0.2.0"}):
+            st = self.robin.post("/api/settings/install/updates/check", headers=H).json()["updates"]
+            self.assertEqual((st["latest"], st["newer"], st["current"]), ("9.9.0", True, "0.2.0"))
+            self.assertEqual(self.robin.get("/api/me").json()["update"]["version"], "9.9.0")
+            self.assertIsNone(self.kim.get("/api/me").json()["update"])
+        self.assertEqual(sent, [("GET", "/repos/sanguity/sanguity/releases/latest", ["Accept", "User-Agent"])], "nothing about the server")
+        self.assertEqual([c["host"] for c in self.view(self.robin)["updates"]["contacts"]], ["api.github.com"])
+
+    def test_instance_name_and_defaults_for_new_people(self):   # #1159
+        r = self.robin.put("/api/settings/install/instance.name", json={"value": "  Home   lab "}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.addCleanup(lambda: self.robin.put("/api/settings/install/instance.name", json={"value": ""}, headers=H))
+        self.assertEqual(self.kim.get("/api/me").json()["instance_name"], "Home lab")
+        self.assertEqual(self.robin.put("/api/settings/install/instance.name", json={"value": "x" * 41}, headers=H).status_code, 400)
+        self.lee.put("/api/settings/user/dates.format", json={"value": "ymd"}, headers=H)   # lee chose their own
+        for key, value in (("dates.format", "dmy"), ("dates.timeZone", "Europe/Paris"), ("units", {"weight": "kg", "temperature": "C"})):
+            r = self.robin.put(f"/api/settings/install/defaults/{key}", json={"value": value}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            self.addCleanup(lambda k=key: self.robin.put(f"/api/settings/install/defaults/{k}", json={"value": None}, headers=H))
+        self.assertEqual(self.kim.put("/api/settings/install/defaults/dates.format", json={"value": "mdy"}, headers=H).status_code, 403)
+        self.assertEqual(self.robin.put("/api/settings/install/defaults/theme", json={"value": "dark"}, headers=H).status_code, 404)
+        self.assertEqual(self.robin.put("/api/settings/install/defaults/dates.format", json={"value": "yyyy"}, headers=H).status_code, 400)
+        db = dbm.connect()
+        accounts.create(db, "nell", password=PW["kim"])
+        db.close()
+        nell = client()
+        self.assertEqual(nell.post("/api/login", json={"username": "nell", "password": PW["kim"]}, headers=H).status_code, 200)
+        mine = nell.get("/api/settings/user").json()
+        self.assertEqual((mine["dates.format"], mine["dates.timeZone"], mine["units"]["weight"]), ("dmy", "Europe/Paris", "kg"))
+        self.assertEqual(self.lee.get("/api/settings/user").json()["dates.format"], "ymd", "their own choice stays")
+        r = nell.put("/api/settings/user/dates.format", json={"value": "mdy"}, headers=H)
+        self.assertEqual(r.json()["dates.format"], "mdy", "each person can still change it")
 
     def test_signed_out_gets_nothing(self):
         self.assertEqual(client().get("/api/outside").status_code, 401)

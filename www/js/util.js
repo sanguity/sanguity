@@ -670,8 +670,20 @@ function sayIn(m, text, bad = false, {repeat = true, say = true} = {}) {
    when say is given, those words said politely: for a view changed by a link (the records tabs' too, #1075) or a
    button elsewhere, which a screen reader wouldn't otherwise (reliably) mention */
 function viewTitle(title, say) {
-  document.title = title ? `${title} · Sanguity` : "Sanguity";
+  document.title = title ? `${title} · ${sgBrand()}` : sgBrand();
   if (say) announce(say);
+}
+/* (#1159) this server's name (Settings → General → This server), from /api/me (nav.js): after "Sanguity" in the
+   browser's title, and in the top bar after the brand's word (hidden with it where the bar is narrow) */
+let SG_INSTANCE = null;
+const sgBrand = () => SG_INSTANCE ? `Sanguity · ${SG_INSTANCE}` : "Sanguity";
+function sgInstance(name) {
+  if (name !== undefined) SG_INSTANCE = name || null;
+  document.title = document.title.replace(/(^|· )Sanguity(?: · .*)?$/, (_, lead) => lead + sgBrand());
+  const word = document.querySelector("header.topbar .brand-word");
+  if (!word) return;
+  word.querySelector(".brand-inst")?.remove();
+  if (SG_INSTANCE) word.append(el("small", {class: "brand-inst", text: ` · ${SG_INSTANCE}`}));
 }
 /* scrollTo/scrollIntoView's behavior: "smooth", unless the person asked for less motion (CSS can't turn off a
    script's smooth scroll; app.css turns off the transitions) */

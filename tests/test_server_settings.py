@@ -17,7 +17,8 @@ TMP = tempfile.mkdtemp(prefix="sanguity-server-settings-test-")
 RESTARTS = ("UPLOAD_MAX_FILE_MB", "UPLOAD_MAX_TOTAL_MB", "UPLOAD_MAX_FILES", "UPLOAD_MAX_ZIP_RATIO", "JOURNAL_PHOTO_MAX_MB", "SYNC_HOURS",
             "SYNC_MAX_RESOURCES", "SYNC_MAX_ATTACHMENT_MB", "CONNECT_TIMEOUT", "SHL_MAX_MB", "SHL_MAX_FILES", "SHL_TIMEOUT",
             "HASH_PARALLEL", "FORWARDED_ALLOW_IPS", "TZ", "SLOT_GRACE_DAYS", "RESTORE_KEEP_DAYS", "OIDC_TIMEOUT", "NOTIFY_TIMEOUT",
-            "DIRECTORY_TIMEOUT", "DOWNLOAD_TIMEOUT")
+            "DIRECTORY_TIMEOUT", "DOWNLOAD_TIMEOUT", "URL_BASE", "HTTPS_CERT", "HTTPS_KEY", "HTTPS_PORT", "LOG_LEVEL",
+            "OUTBOUND_PROXY", "OUTBOUND_PROXY_USER", "OUTBOUND_PROXY_BYPASS")
 for name in RESTARTS + ("SANGUITY_SAVED_SETTINGS", "TZ_DEFAULT", "PUBLIC_ORIGINS", "SANGUITY_DEPLOYMENT"):
     os.environ.pop(name, None)
 os.environ["CONNECTED_SOURCES"] = "1"
@@ -43,12 +44,38 @@ GOOD = {"UPLOAD_MAX_FILE_MB": 2048, "UPLOAD_MAX_TOTAL_MB": 8192, "UPLOAD_MAX_FIL
         "SYNC_HOURS": 6, "SYNC_MAX_RESOURCES": 5000, "SYNC_MAX_ATTACHMENT_MB": 100, "CONNECT_TIMEOUT": 60, "SHL_MAX_MB": 32,
         "SHL_MAX_FILES": 20, "SHL_TIMEOUT": 40, "HASH_PARALLEL": 4, "FORWARDED_ALLOW_IPS": "172.16.0.0/12, 10.0.0.5",
         "TZ": "America/Chicago", "SLOT_GRACE_DAYS": 14, "RESTORE_KEEP_DAYS": 60, "OIDC_TIMEOUT": 30, "NOTIFY_TIMEOUT": 20,
-        "DIRECTORY_TIMEOUT": 120, "DOWNLOAD_TIMEOUT": 90}
+        "DIRECTORY_TIMEOUT": 120, "DOWNLOAD_TIMEOUT": 90, "URL_BASE": "/sanguity", "HTTPS_CERT": "tls/cert.pem",
+        "HTTPS_KEY": "tls/key.pem", "HTTPS_PORT": 9443, "LOG_LEVEL": "debug", "OUTBOUND_PROXY": "http://proxy.lan:3128",
+        "OUTBOUND_PROXY_USER": "sanguity", "OUTBOUND_PROXY_BYPASS": ".example.org, 10.0.0.0/8"}
 BAD = {"UPLOAD_MAX_FILE_MB": 5000, "UPLOAD_MAX_TOTAL_MB": 0, "UPLOAD_MAX_FILES": 10**6, "UPLOAD_MAX_ZIP_RATIO": 5, "JOURNAL_PHOTO_MAX_MB": 26,
        "SYNC_HOURS": 0, "SYNC_MAX_RESOURCES": 10, "SYNC_MAX_ATTACHMENT_MB": 2048, "CONNECT_TIMEOUT": 1, "SHL_MAX_MB": 1000,
        "SHL_MAX_FILES": 0, "SHL_TIMEOUT": 600, "HASH_PARALLEL": 64, "FORWARDED_ALLOW_IPS": "proxy.example.test",
        "TZ": "Mars/Olympus_Mons", "SLOT_GRACE_DAYS": 0, "RESTORE_KEEP_DAYS": 1.5, "OIDC_TIMEOUT": 61, "NOTIFY_TIMEOUT": 2,
-       "DIRECTORY_TIMEOUT": 9, "DOWNLOAD_TIMEOUT": 301}
+       "DIRECTORY_TIMEOUT": 9, "DOWNLOAD_TIMEOUT": 301, "URL_BASE": "/api/x", "HTTPS_CERT": "../elsewhere.pem",
+       "HTTPS_KEY": "/etc/ssl/private/key.pem", "HTTPS_PORT": 80, "LOG_LEVEL": "verbose", "OUTBOUND_PROXY": "ftp://proxy.lan:21",
+       "OUTBOUND_PROXY_USER": "two words", "OUTBOUND_PROXY_BYPASS": "not a host!"}
+CHANGE_IT = "change it"   # (#1159) typed to confirm the URL base, built-in HTTPS and the proxy
+
+
+def make_certificate(name, days=90, names=("health.example.test",)):
+    """A self-signed certificate and its key in the data folder's tls/ (fictional names): (cert, key) relative paths."""
+    import datetime
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    key = ec.generate_private_key(ec.SECP256R1())
+    now = datetime.datetime.now(datetime.timezone.utc)
+    subject = x509.Name([x509.NameAttribute(x509.oid.NameOID.COMMON_NAME, names[0])])
+    cert = (x509.CertificateBuilder().subject_name(subject).issuer_name(subject).public_key(key.public_key())
+            .serial_number(x509.random_serial_number()).not_valid_before(now - datetime.timedelta(days=2))
+            .not_valid_after(now + datetime.timedelta(days=days))
+            .add_extension(x509.SubjectAlternativeName([x509.DNSName(n) for n in names]), critical=False).sign(key, hashes.SHA256()))
+    os.makedirs(os.path.join(TMP, "tls"), exist_ok=True)
+    with open(os.path.join(TMP, "tls", name + ".pem"), "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+    with open(os.path.join(TMP, "tls", name + "-key.pem"), "wb") as f:
+        f.write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    return f"tls/{name}.pem", f"tls/{name}-key.pem"
 
 
 def restart(**kw):
@@ -71,7 +98,6 @@ class RestartSettings(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.ctx.__exit__(None, None, None)
-        shutil.rmtree(TMP, True)
 
     def setUp(self):
         for p in (ss.path(), ss.receiver_path()):
@@ -80,8 +106,8 @@ class RestartSettings(unittest.TestCase):
         ss.forget()
         restart()
 
-    def put(self, values):
-        return self.c.put("/api/settings/install/restart/values", json={"values": values}, headers=H)
+    def put(self, values, confirm=None):
+        return self.c.put("/api/settings/install/restart/values", json={"values": values, "confirm": confirm}, headers=H)
 
     def state(self):
         return self.c.get("/api/settings/install/restart").json()
@@ -105,7 +131,11 @@ class RestartSettings(unittest.TestCase):
         """Saved, each waits for a restart (Restart needed, its next value shown) and the running server keeps the one
         it started with; after the start-up path, each is the one in force where it's used."""
         before = {n: ss.lookup(n)[1] for n in ss.DEFS}
-        r = self.put(GOOD)
+        cert, key = make_certificate("cert")
+        os.replace(os.path.join(TMP, cert), os.path.join(TMP, GOOD["HTTPS_CERT"]))
+        os.replace(os.path.join(TMP, key), os.path.join(TMP, GOOD["HTTPS_KEY"]))
+        self.assertEqual(self.put(GOOD).status_code, 409, "the URL base, HTTPS and the proxy are asked first")
+        r = self.put(GOOD, CHANGE_IT)
         self.assertEqual(r.status_code, 200, r.text)
         st = r.json()
         self.assertTrue(st["restart_needed"])
@@ -131,6 +161,8 @@ class RestartSettings(unittest.TestCase):
         restart()   # and kept at the next start
         self.assertEqual({n: ss.lookup(n)[1] for n in ss.DEFS}, GOOD)
         self.assertIsNone(self.state()["fell_back"])
+        self.assertEqual(config.url_base(), "/sanguity")
+        ss.reset(["URL_BASE"])   # (the rest of the tests at the root)
         r = self.put({n: None for n in GOOD})   # back to the defaults, at the next start
         self.assertTrue(r.json()["restart_needed"])
         restart()
@@ -447,6 +479,138 @@ class RestartSettings(unittest.TestCase):
         r = self.c.put("/api/settings/install/restart/values", json={"values": {"FORWARDED_ALLOW_IPS": "*"}, "confirm": "  Trust Everyone "}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(ss.next_values(), {"FORWARDED_ALLOW_IPS": "*"})
+
+
+class UrlBaseHttpsLogProxy(unittest.TestCase):
+    """(#1159) The URL base, built-in HTTPS's certificate, the log level, and the outbound proxy's password."""
+    c = None
+
+    @classmethod
+    def setUpClass(cls):
+        cls.c = RestartSettings.c
+
+    def setUp(self):
+        for p in (ss.path(), ss.receiver_path()):
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(p)
+        ss.forget()
+        restart()
+
+    def put(self, values, confirm=CHANGE_IT):
+        return self.c.put("/api/settings/install/restart/values", json={"values": values, "confirm": confirm}, headers=H)
+
+    def test_a_a_certificate_is_checked_before_its_saved_and_its_names_and_expiry_shown(self):
+        good, soon = make_certificate("good", 200, ("health.example.test", "sanguity.example.test")), make_certificate("soon", 20)
+        other = make_certificate("other")
+        r = self.put({"HTTPS_CERT": good[0]})
+        self.assertEqual(r.status_code, 400, "both, or neither")
+        r = self.put({"HTTPS_CERT": good[0], "HTTPS_KEY": other[1]})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("don't load together", r.json()["detail"])
+        self.assertEqual(self.put({"HTTPS_CERT": "tls/none.pem", "HTTPS_KEY": good[1]}).status_code, 400)
+        self.assertEqual(self.put({"HTTPS_CERT": good[0], "HTTPS_KEY": good[1]}, confirm=None).status_code, 409, "asked first")
+        r = self.put({"HTTPS_CERT": good[0], "HTTPS_KEY": good[1]})
+        self.assertEqual(r.status_code, 200, r.text)
+        h = r.json()["https"]
+        self.assertEqual((h["names"], h["warn"]), (["health.example.test", "sanguity.example.test"], False))
+        self.assertTrue(195 <= h["days_left"] <= 200, h)
+        h = self.put({"HTTPS_CERT": soon[0], "HTTPS_KEY": soon[1]}).json()["https"]
+        self.assertEqual((h["days_left"] <= 20, h["warn"]), (True, True), "warned 30 days before it expires")
+        expired = make_certificate("expired", -1)
+        self.assertIn("expired", self.put({"HTTPS_CERT": expired[0], "HTTPS_KEY": expired[1]}).json()["detail"])
+        self.assertEqual(ss.https_files(ss.next_values()), (os.path.join(TMP, soon[0]), os.path.join(TMP, soon[1])))
+
+    def test_b_the_url_base_everywhere(self):
+        """Under /sanguity: requests with it reach the app, its cookies are at it (__Secure- over HTTPS: __Host- needs
+        Path=/), and every address the app gives out has it."""
+        self.assertEqual(self.put({"URL_BASE": "sanguity/"}).status_code, 200)
+        restart()
+        try:
+            self.assertEqual(config.url_base(), "/sanguity")
+            web = TestClient(main.app, base_url="https://health.example.test")
+            self.assertEqual(web.get("/sanguity/api/healthz").status_code, 204)
+            r = web.post("/sanguity/api/login", json={"username": "ada", "password": PW}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            cookies = r.headers.get_list("set-cookie")
+            self.assertTrue(any(c.startswith("__Secure-sg_session=") and "Path=/sanguity/" in c and "Secure" in c for c in cookies), cookies)
+            self.assertTrue(any(c.startswith("sg_device=") and "Path=/sanguity/api/login" in c for c in cookies), cookies)
+            self.assertEqual(web.get("/sanguity/api/me").status_code, 200, "signed in under the base")
+            self.assertEqual(config.public_address(["https://health.example.test"]), "https://health.example.test/sanguity")
+            from server import oidc, routes_oidc
+            from starlette.requests import Request
+            req = Request({"type": "http", "scheme": "https", "path": "/", "headers": [(b"host", b"health.example.test")],
+                           "server": ("health.example.test", 443), "query_string": b""})
+            self.assertEqual(routes_oidc._cookie(req), ("__Secure-sanguity_oidc", "/sanguity/"))
+            self.assertEqual(oidc.redirect_uri(routes_oidc._page_origin(req)), "https://health.example.test/sanguity/login.html")
+            from server import routes_calendar
+            self.assertEqual(routes_calendar._base_url(req), "https://health.example.test/sanguity")
+            plain = TestClient(main.app, base_url="http://health.example.test")
+            r = plain.post("/sanguity/api/login", json={"username": "ada", "password": PW}, headers=H)
+            self.assertTrue(any(c.startswith("sg_session=") and "Path=/sanguity/" in c for c in r.headers.get_list("set-cookie")))
+            r = plain.post("/sanguity/api/logout", headers=H)
+            self.assertTrue(any(c.startswith("sg_session=") and "Path=/sanguity/" in c for c in r.headers.get_list("set-cookie")))
+        finally:
+            ss.reset(["URL_BASE"])
+        for bad in ("/api", "/a b", "/../x", "x" * 101):
+            self.assertEqual(self.put({"URL_BASE": bad}).status_code, 400, bad)
+
+    def test_c_no_record_text_at_trace(self):
+        """At the log level Trace, the app's log has each request's route and status, but never a record's text, a
+        profile's name, a value typed in or a password."""
+        from server import profiles as prof
+        out = io.StringIO()
+        h = logging.StreamHandler(out)
+        lg = logging.getLogger("sanguity")
+        lg.addHandler(h)
+        main.set_log_level("trace")
+        try:
+            db = dbm.connect()
+            uid = db.execute("SELECT id FROM users WHERE username='ada'").fetchone()[0]
+            pid = prof.create_profile(db, "Wren Quillfeather (fictional)", owner_id=uid)
+            db.close()
+            secret = "Marmalade-coloured rash on the left elbow"
+            r = self.c.post(f"/api/profiles/{pid}/journal", json={"kind": "symptom", "t": "2026-11-20", "title": secret,
+                                                                   "severity": 3, "note": "Quillfeather note text"}, headers=H)
+            self.assertEqual(r.status_code, 201, r.text)
+            self.assertEqual(self.c.get(f"/api/profiles/{pid}/journal").status_code, 200)
+            self.c.get("/api/directory", params={"q": "Marmalade elbow"})
+            self.c.post(f"/api/profiles/{pid}/documents/search", json={"q": "Marmalade elbow"}, headers=H)
+            self.c.post("/api/login", json={"username": "ada", "password": "a wrong passphrase Quillfeather"}, headers=H)
+        finally:
+            main.set_log_level("info")
+            lg.removeHandler(h)
+        text = out.getvalue()
+        self.assertIn("request POST /api/profiles/{pid}/journal 201", text)
+        self.assertIn("fields=q", text, "the names of the query's fields at Trace")
+        for word in ("Marmalade", "elbow", "Quillfeather", "Wren", "wrong passphrase"):
+            self.assertNotIn(word, text)
+
+    def test_d_the_proxy_password_is_write_only_and_kept_for_its_proxy(self):
+        from server import outside
+        self.assertEqual(self.c.put("/api/outside/proxy-password", json={"value": "lantern"}, headers=H).status_code, 409,
+                         "no proxy yet")
+        self.assertEqual(self.put({"OUTBOUND_PROXY": "socks5://proxy.lan:1080", "OUTBOUND_PROXY_USER": "sg"}).status_code, 200)
+        r = self.c.put("/api/outside/proxy-password", json={"value": "harbour lantern"}, headers=H)
+        self.assertEqual(r.json(), {"source": "install"})
+        st = self.c.get("/api/settings/install/restart").json()
+        self.assertEqual(st["proxy_password"]["source"], "install")
+        self.assertNotIn("harbour lantern", json.dumps(st))
+        self.assertIsNone(outside.proxy(), "none in force until the restart")
+        restart()
+        ss.promote(say=QUIET)
+        p = outside.proxy()
+        self.assertEqual((p.scheme, p.host, p.port, p.user, p.password), ("socks5", "proxy.lan", 1080, "sg", "harbour lantern"))
+        with mock.patch.dict(os.environ, {"OUTBOUND_PROXY_PASSWORD": "from the environment"}):
+            self.assertEqual(outside.proxy().password, "from the environment", "managed by the environment, opt-in")
+            self.assertEqual(self.c.put("/api/outside/proxy-password", json={"value": "x"}, headers=H).status_code, 409)
+        self.assertEqual(self.put({"OUTBOUND_PROXY": "http://other.lan:3128"}).status_code, 200)
+        restart()
+        self.assertEqual(outside.proxy().password, "", "never sent to another proxy")
+        ss.reset()
+
+
+def tearDownModule():
+    shutil.rmtree(TMP, True)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@
 "use strict";
 let RS = null;   // the server's answer: {settings: [...], restart_needed, trying, fell_back, unreadable, settings_at}
 const rsId = name => "rs-" + name.toLowerCase().replace(/_/g, "-");
-const rsShown = (st, v) => st.kind === "number" ? `${Number(v).toLocaleString("en-US")} ${st.unit}` : String(v);
+const rsShown = (st, v) => st.kind === "number" ? (st.unit ? `${Number(v).toLocaleString("en-US")} ${st.unit}` : String(v)) : st.choices ? st.choices[v] : v === "" ? "none" : String(v);
 const rsTyped = () => RS ? RS.settings.filter(st => { const i = document.getElementById(rsId(st.name)); return i && i.value.trim() !== String(st.next ?? st.value); }) : [];
 
 async function loadGenRestart(note) {
@@ -23,27 +23,57 @@ function rsDraw(note, typed = {}) {
   const body = $("#genRsBody"), back = body.contains(document.activeElement) ? document.activeElement.id : null, rows = [];
   let group = null;
   for (const st of RS.settings) {
-    if (st.group !== group) rows.push(el("h3", {class: "sub", text: group = st.group}));
+    if (st.group !== group) rows.push(el("h3", {class: "sub", text: group = st.group}), ...rsGroupNote(group));
     const id = rsId(st.name), waits = "next" in st, hint = [st.help,
-      st.kind === "number" ? `From ${st.min.toLocaleString("en-US")} to ${st.max.toLocaleString("en-US")}; ${rsShown(st, st.default)} unless changed.` : `${st.default} unless changed.`,
+      st.kind === "number" ? `From ${st.min.toLocaleString("en-US")} to ${st.max.toLocaleString("en-US")}; ${rsShown(st, st.default)} unless changed.` : st.default === "" ? "" : `${rsShown(st, st.default)} unless changed.`,
       waits ? `In force now: ${rsShown(st, st.value)}; ${rsShown(st, st.next)} after a restart.` : ""].filter(Boolean).join(" ");
     const row = setRow([el("label", {for: id}, st.label, waits ? el("span", {class: "tag", text: "Restart needed"}) : null,
       el("span", {class: "tag set-unsaved", text: "not saved"})), el("p", {class: "hint", id: id + "-h", text: hint})], null, {"data-name": st.name});
-    const input = el("input", st.kind === "number"
+    const input = st.choices ? el("select", {id, "aria-describedby": id + "-h"}, ...Object.entries(st.choices).map(([v, l]) => el("option", {value: v, text: l})))   // (#1159) the log level
+      : el("input", st.kind === "number"
       ? {type: "number", id, step: 1, min: st.min, max: st.max, class: "set-num", "aria-describedby": id + "-h"}
       : {type: "text", id, spellcheck: "false", autocapitalize: "none", autocomplete: "off", "aria-describedby": id + "-h"});
     input.value = typed[st.name] ?? String(st.next ?? st.value);
-    input.oninput = () => { row.classList.toggle("set-changed", input.value.trim() !== String(st.next ?? st.value)); rsCount(); };
+    input.oninput = input.onchange = () => { row.classList.toggle("set-changed", input.value.trim() !== String(st.next ?? st.value)); rsCount(); };
     row.querySelector(".set-row-ctl").append(input);
     row.classList.toggle("set-changed", input.value.trim() !== String(st.next ?? st.value));
     rows.push(row);
   }
+  const lastProxy = rows.findLastIndex(r => RS.settings.some(st => st.group === "Outbound proxy" && r.dataset?.name === st.name));
+  if (lastProxy >= 0) rows.splice(lastProxy + 1, 0, ...rsProxyPwRow());   // (#1159) its password after the proxy's rows
   body.replaceChildren(...rows);
   body.onkeydown = ev => { if (ev.key === "Enter" && ev.target.matches("input")) { ev.preventDefault(); $("#setBar .btn.primary")?.click(); } };   // Enter: the bar's Save
   rsState();
   rsCount();
   if (note) sayIn($("#genRsMsg"), note, false, {say: false});
   if (back && !body.contains(document.activeElement)) document.getElementById(back)?.focus({preventScroll: true});
+}
+/* (#1159) under a group's heading: built-in HTTPS's certificate as the next start loads it (its names and expiry, warned
+   30 days before), and the outbound proxy's password, write-only (or the environment's, opt-in) */
+function rsGroupNote(group) {
+  if (group === "Built-in HTTPS" && RS.https) {
+    const h = RS.https;
+    if (h.problem) return [el("p", {class: "msg bad", text: `The certificate the next start loads: ${h.problem}`})];
+    return [el("p", {class: h.warn ? "warn" : "hint"}, `Certificate for ${h.names.join(", ")}; it expires ${fmtD(h.expires * 1000)}`,
+      h.warn ? `, in ${plural(h.days_left, "day")}: renew it soon.` : ".")];
+  }
+  return [];
+}
+function rsProxyPwRow() {
+  const pw = RS.proxy_password, env = pw.source === "environment";
+  const box = el("input", {type: "password", id: "rsProxyPw", autocomplete: "new-password", "aria-describedby": "rsProxyPwH", disabled: env});
+  return [setRow([el("label", {for: "rsProxyPw", text: "Proxy password"}), el("p", {class: "hint", id: "rsProxyPwH", text: env
+      ? `Managed by the environment (${pw.env}): change it there.` : pw.source ? "Set, and never shown. Type a new one to replace it, or Remove it." : "None set. Only if the proxy asks for one; kept for this proxy alone, and never shown."})],
+    env ? null : el("div", {class: "form inline"}, box,
+      el("button", {type: "button", class: "btn", text: "Set password", onclick: () => rsProxyPw(box.value)}),
+      pw.source ? el("button", {type: "button", class: "btn", text: "Remove", onclick: () => rsProxyPw("")}) : null))];
+}
+async function rsProxyPw(value) {
+  try {
+    await fresh(() => call("outside/proxy-password", "PUT", {value}), $("#genRsReauth"));
+    await loadGenRestart(value ? "The proxy's password is set." : "The proxy's password is removed.");
+    document.getElementById("rsProxyPw")?.focus();
+  } catch (e) { sayIn($("#genRsMsg"), `Not changed: ${e.message}`, true); }
 }
 /* what waits for, or came of, a restart: Restart needed with Restart now; the new values being checked; a fall back */
 function rsState() {
@@ -70,7 +100,7 @@ async function genRsSave(msg, had) {
   let d;   // (trusting every address is typed to confirm first: admin.js confirmed)
   try { d = await confirmed(typed => fresh(() => call("settings/install/restart/values", "PUT", {values, confirm: typed}), $("#genRsReauth"))); }
   catch (e) { sayIn(msg, `Not saved: ${e.why || e.message}`, true); return; }
-  if (!d) { sayIn(msg, "Not saved: the trusted proxies weren't confirmed.", true); return; }
+  if (!d) { sayIn(msg, "Not saved: it wasn't confirmed.", true); return; }
   RS = d;
   const said = `Saved ${todo.map(st => `“${st.label}”`).join(", ")}: ${RS.restart_needed ? "they apply once the server restarts." : "back as the server runs now."}`;
   rsDraw(said);

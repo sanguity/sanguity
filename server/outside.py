@@ -25,6 +25,9 @@ way out, under a permit made here from what the install was told to contact:
         the provider directory's two published lists (#992; directory/update.py): the hosts directory/build.py names
         for them, only when an admin presses Add the lists or Update now, or once a week after an admin turned that
         on. Account-level: no profile is involved.
+  updates.permit(db, who, ip)   (#1159, updates.py)
+        GitHub's releases API (api.github.com), for Sanguity's latest release, at most once a day, only while an admin
+        has turned checking for new versions on (the install setting updates.check). Account-level.
   for_ocr(db, who, ip)   (#1129, ocr.py)
         a text recognition language an admin downloads from the tesseract-ocr project's tessdata_fast: its host
         (raw.githubusercontent.com) only while an admin has turned that on (the install setting ocr.downloads), and
@@ -40,23 +43,27 @@ Only the host is kept: never the path, query, token, key or passcode.
   recent(db, pid, limit=100) -> [{"at", "host", "purpose", "actor"}]   from the activity log
   view(db, s) -> what the Admin page's "Outside connections" section shows (GET /api/outside)
 """
-import json
+import json, logging
 
-from . import activity, crypto, db as dbm, net, settings
+from . import activity, config, crypto, db as dbm, net, settings
+
+log = logging.getLogger("sanguity.outside")
+TRACE = 5   # (#1159) main.TRACE: each contact's host and purpose, at the log level Trace
 
 ACTION = "outside"
 SOURCE = "Connected source: "                        # + sign-in, sync, disconnect, test
 LINK, LINK_FILE, CARD_KEYS = "SMART Health Link", "SMART Health Link file", "Health Card issuer's keys"
 DIRECTORY = "Provider directory"
 NOTHING_ELSE = ("Sanguity contacts only the hosts listed here, and only for the reason given. Nothing else leaves "
-                "this server: no telemetry, analytics, update checks, fonts or maps, and no host that nobody "
-                "connected. Every request to another server goes through one gateway that refuses any host not "
+                "this server: no telemetry, analytics, fonts or maps, no update check unless an admin turns it on, "
+                "and no host that nobody connected. Every request to another server goes through one gateway that refuses any host not "
                 "listed, and records each contact here.")
 
 
 def record(db, pid, host, purpose, who=None, ip=None, actor=None):
     """Note that Sanguity is about to contact host for purpose (a short phrase, like "SMART Health Link")."""
     host, purpose = net.norm(str(host)[:255]), str(purpose)[:80]
+    log.log(TRACE, "outside contact %s for %s", host, purpose)
     activity.log(db, ACTION, who, pid, {"host": host, "purpose": purpose}, ip, actor=actor)
     now = dbm.now()
     for r in db.execute("SELECT id, host FROM outside_contacts WHERE profile_id IS ? AND purpose=?", (pid, purpose)).fetchall():
@@ -204,7 +211,9 @@ def view(db, s):
     told = sorted(notify.hosts())   # (#1130) the notification server: everyone's to see, as anyone may turn them on
     from . import ocr
     languages = sorted(ocr_hosts()) if admin else []   # (#1129) tessdata_fast's, while downloads are on
-    allowed = sorted({h for x in sources for h in x["may_contact"]} | set(signin) | set(told) | set(languages))
+    from . import updates
+    newer = sorted(updates.hosts()) if admin else []   # (#1159) GitHub's releases, while an admin has the check on
+    allowed = sorted({h for x in sources for h in x["may_contact"]} | set(signin) | set(told) | set(languages) | set(newer))
     pick = lambda *ps: [c for c in contacts if c["purpose"] in ps]
     return {"nothing_else": NOTHING_ELSE, "admin": admin, "connected_sources": on, "may_contact": allowed, "sources": sources,
             "health_links": pick(LINK, LINK_FILE), "card_keys": pick(CARD_KEYS),
@@ -212,4 +221,65 @@ def view(db, s):
             **({"sign_in": {"hosts": signin, "contacts": pick(oidc.PURPOSE)}} if signin else {}),
             **({"notifications": {"hosts": told, "contacts": pick(notify.PURPOSE)}} if told else {}),
             **({"languages": {"hosts": languages, "contacts": pick(ocr.PURPOSE)}} if admin and (languages or pick(ocr.PURPOSE)) else {}),
+            **({"updates": {"hosts": newer, "contacts": pick(updates.PURPOSE)}} if admin and (newer or pick(updates.PURPOSE)) else {}),
             "earlier": [c for c in contacts if c["purpose"].startswith(SOURCE) and c["host"] not in allowed]}
+
+
+# ---------------------------------------------------------------- (#1159) the outbound proxy
+
+PROXY_PASSWORD_META, PROXY_PASSWORD_ENV = "outside.proxy_password", "OUTBOUND_PROXY_PASSWORD"
+_password = {}   # the saved password, read once: {"proxy": the proxy's address it's for, "password"}
+
+
+def proxy_password_source(db=None, address=None):
+    """Where the proxy's password comes from: "environment" (OUTBOUND_PROXY_PASSWORD or its _FILE, #1158's opt-in),
+    "install" (saved here for the proxy at address: by default the one in force), or None."""
+    if config.managed(PROXY_PASSWORD_ENV) is not None:
+        return "environment"
+    return "install" if _saved_password(db, address) else None
+
+
+def _saved_password(db=None, address=None):
+    from . import server_settings
+    if "proxy" not in _password:
+        own = db is None
+        db = db or dbm.connect()
+        try:
+            stored = dbm.meta_get(db, PROXY_PASSWORD_META)
+            _password.update(json.loads(crypto.dec(stored)) if stored else {"proxy": None})
+        except ValueError:
+            _password.update(proxy=None)
+        finally:
+            if own:
+                db.close()
+    address = server_settings.value("OUTBOUND_PROXY") if address is None else address
+    return _password.get("password") if address and _password.get("proxy") == address else None
+
+
+def set_proxy_password(db, value, for_proxy):
+    """A password for the proxy for_proxy (the address it's kept for: sent to no other); "" removes it."""
+    value = (value or "").strip()
+    if len(value) > 200 or any(not 0x20 <= ord(c) <= 0x7e for c in value):
+        raise ValueError("A proxy password is up to 200 letters, digits, spaces and signs.")
+    dbm.meta_set(db, PROXY_PASSWORD_META, crypto.enc(json.dumps({"proxy": for_proxy, "password": value})) if value else None)
+    _password.clear()
+
+
+def proxy():
+    """The outbound proxy in force (net.PROXY): Needs a restart's, with its password, or None."""
+    from . import server_settings
+    address = server_settings.value("OUTBOUND_PROXY")
+    if not address:
+        return None
+    scheme, rest = address.split("://", 1)
+    host, port = rest.rsplit(":", 1)
+    user = server_settings.value("OUTBOUND_PROXY_USER")
+    password = config.managed(PROXY_PASSWORD_ENV)
+    if password is None and user:
+        password = _saved_password() or ""
+    return net.Proxy(scheme, host.strip("[]"), int(port), user, password or "",
+                     [b.strip() for b in server_settings.value("OUTBOUND_PROXY_BYPASS").split(",")])
+
+
+net.PROXY = proxy
+

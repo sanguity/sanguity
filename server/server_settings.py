@@ -52,8 +52,10 @@ class Def:
 
     def public(self):
         lo, hi = getattr(self.check, "lo", None), getattr(self.check, "hi", None)
+        choices = getattr(self.check, "choices", None)   # (#1159) a choice's {value: label}
         return {"name": self.name, "group": self.group, "label": self.label, "unit": self.unit, "help": self.help,
-                "kind": self.kind, "default": self.default, **({"min": lo, "max": hi} if lo is not None else {})}
+                "kind": self.kind, "default": self.default, **({"min": lo, "max": hi} if lo is not None else {}),
+                **({"choices": choices} if choices else {})}
 
 
 DEFS = {}   # name (the variable's) -> Def, in the page's order
@@ -223,6 +225,182 @@ define("SLOT_GRACE_DAYS", "Phone receiver", "Unclaimed data, kept", whole(1, 365
        default=7, read=_days, receiver=True, app=False)
 define("RESTORE_KEEP_DAYS", "Backups", "What a restore replaced, kept", whole(1, 3650, "What a restore replaced"), "days",
        "Deleted this long after the restore, here and by the receiver.", receiver=True)
+
+
+# ---------------------------------------------------------------- (#1159) the address, built-in HTTPS, the log, the proxy
+# Each can cut people off (a URL base the reverse proxy doesn't forward, a certificate that doesn't load, a proxy that
+# isn't there), so each is a restart setting: tried at the next start and kept once healthy (watch(): for HTTPS its own
+# port serving too, for the proxy one connection to it, made by net.py), else the start after falls back. Saving one
+# is confirmed first (routes_settings.py), and a certificate is checked before it's saved (certificate()).
+
+def url_base(v):
+    """"" (the address's root) or a path such as /sanguity: segments of letters, digits and . _ ~ -, no trailing /."""
+    if not isinstance(v, str) or len(v) > 100:
+        raise Refused("A URL base is a path such as /sanguity, at most 100 characters.")
+    v = v.strip()
+    if v in ("", "/"):
+        return ""
+    v = "/" + v.strip("/")
+    if not re.fullmatch(r"(/[A-Za-z0-9._~-]+)+", v) or any(p in (".", "..") for p in v.split("/")[1:]):
+        raise Refused("A URL base is a path such as /sanguity: letters, digits and . _ ~ - between the slashes.")
+    if v.split("/")[1].lower() in ("api", "js", "css", "fonts", "icons", "connect"):
+        raise Refused(f"A URL base can't start with /{v.split('/')[1]}: Sanguity's own addresses do.")
+    return v
+
+
+def data_file(what):
+    """A file's path in the data folder, kept relative to it ("" for none): nothing outside it is ever read."""
+    def check(v):
+        if not isinstance(v, str) or len(v) > 300:
+            raise Refused(f"{what} is a file's path in the data folder, at most 300 characters.")
+        v = v.strip()
+        if not v:
+            return ""
+        root = os.path.realpath(config.DATA_DIR)
+        full = os.path.realpath(os.path.join(root, v))
+        if os.path.commonpath([root, full]) != root or full == root:
+            raise Refused(f"{what} must be a file in the data folder ({config.DATA_DIR}), such as tls/cert.pem.")
+        return os.path.relpath(full, root)
+    return check
+
+
+def full_path(rel):
+    return os.path.join(config.DATA_DIR, rel) if rel else ""
+
+
+def one_of(choices, what):
+    def check(v):
+        v = v.strip().lower() if isinstance(v, str) else v
+        if v not in choices:
+            raise Refused(f"{what} is one of: {', '.join(choices.values())}.")
+        return v
+    check.choices = choices
+    return check
+
+
+LOG_LEVELS = {"info": "Info", "debug": "Debug", "trace": "Trace"}
+_PROXY = re.compile(r"(http|socks5)://([a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?|\[[0-9a-f:.]+\]):(\d{1,5})")
+
+
+def proxy_address(v):
+    """"" (none), or http://host:port or socks5://host:port. Never a username or password in it: they're their own."""
+    if not isinstance(v, str) or len(v) > 300:
+        raise Refused("The proxy is an address such as http://proxy.lan:3128 or socks5://10.0.0.2:1080.")
+    v = v.strip().lower().rstrip("/")
+    if not v:
+        return ""
+    if "@" in v:
+        raise Refused("Give the proxy's username and password in their own fields, not in its address.")
+    m = _PROXY.fullmatch(v)
+    if not m or not 1 <= int(m.group(3)) <= 65535:
+        raise Refused("The proxy is an address such as http://proxy.lan:3128 or socks5://10.0.0.2:1080: http or "
+                      "socks5, its host, and its port.")
+    return v
+
+
+def proxy_user(v):
+    if not isinstance(v, str) or len(v) > 100 or ":" in v or any(not 0x21 <= ord(c) <= 0x7e for c in v.strip()):
+        raise Refused("The proxy's username is up to 100 letters, digits and signs, with no spaces or colon.")
+    return v.strip()
+
+
+BYPASS_MOST = 50
+
+
+def proxy_bypass(v):
+    """Hosts reached without the proxy besides the local ones (always): names (a leading . or *. for every name under
+    one), addresses and networks, comma-separated."""
+    items = v if isinstance(v, list) else str(v).split(",") if isinstance(v, str) else None
+    if items is None or len(items) > BYPASS_MOST:
+        raise Refused(f"The proxy's bypass list is up to {BYPASS_MOST} names, addresses or networks, comma-separated.")
+    out = []
+    for item in (str(i).strip().lower() for i in items):
+        if item.startswith("*."):
+            item = item[1:]
+        if not item:
+            continue
+        try:
+            item = str(ipaddress.ip_network(item, strict=False)) if "/" in item else str(ipaddress.ip_address(item.strip("[]")))
+        except ValueError:
+            item = item.rstrip(".")
+            if not re.fullmatch(r"\.?[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9][a-z0-9-]{0,62})*", item):
+                raise Refused(f"“{item[:60]}” isn't a name (proxy.lan, .example.org), an address or a network (10.0.0.0/8).") from None
+        if item not in out:
+            out.append(item)
+    return ", ".join(out)
+
+
+define("URL_BASE", "Address", "URL base", url_base, kind="text", default="", read=url_base,
+       help="Serve Sanguity under a path of your domain, such as /sanguity, behind a reverse proxy that forwards that "
+            "path with it taken off (nginx's proxy_pass with a trailing /, Traefik's StripPrefix). Every page, address "
+            "the app gives out and cookie uses it. Empty: at the address's root.")
+define("HTTPS_CERT", "Built-in HTTPS", "Certificate file", data_file("The certificate"), kind="path", default="",
+       read=data_file("The certificate"),
+       help="A PEM certificate (with its chain) in the data folder, such as tls/cert.pem: with its key, Sanguity also "
+            "serves HTTPS itself on its own port, so passkeys and installing the app work without a reverse proxy. "
+            "Checked before it's saved.")
+define("HTTPS_KEY", "Built-in HTTPS", "Key file", data_file("The key"), kind="path", default="", read=data_file("The key"),
+       help="The certificate's private key (PEM, without a passphrase), in the data folder, such as tls/key.pem.")
+define("HTTPS_PORT", "Built-in HTTPS", "HTTPS port", whole(1024, 65535, "The HTTPS port"), "", default=8443, read=int,
+       help="Where HTTPS is served inside the app's container: publish this port from it to reach it.")
+define("LOG_LEVEL", "Logging", "Log level", one_of(LOG_LEVELS, "The log level"), kind="choice", default="info",
+       read=one_of(LOG_LEVELS, "The log level"),
+       help="How much the app writes to its own log. Debug adds each request's method, route and status; Trace also "
+            "each outside contact's host and the names of a request's query fields. Never a record's contents, a "
+            "name, a value typed in, a password or a token, at any level.")
+define("OUTBOUND_PROXY", "Outbound proxy", "Proxy", proxy_address, kind="text", default="", read=proxy_address,
+       help="Every outside connection (connected sources, Health Links, the sign-in provider, notifications, downloads) "
+            "through this HTTP or SOCKS5 proxy, such as http://proxy.lan:3128 or socks5://10.0.0.2:1080. The hosts "
+            "allowed and their checks stay as they are. Empty: none.")
+define("OUTBOUND_PROXY_USER", "Outbound proxy", "Proxy username", proxy_user, kind="text", default="", read=proxy_user,
+       help="Only if the proxy asks for one. Its password is set on its own, and never shown.")
+define("OUTBOUND_PROXY_BYPASS", "Outbound proxy", "Reached without the proxy", proxy_bypass, kind="text", default="",
+       read=proxy_bypass, help="Names (.example.org for every name under it), addresses and networks, comma-separated. "
+                               "Local addresses (this network's, localhost, .local, .lan, .internal) always are.")
+RISKY = {"Address": "URL_BASE", "Built-in HTTPS": "HTTPS_CERT", "Outbound proxy": "OUTBOUND_PROXY"}   # confirmed first
+
+
+def value(name):
+    """The value in force of a restart setting."""
+    return lookup(name)[1]
+
+
+def https_files(values=None):
+    """(certificate path, key path) of built-in HTTPS in values ({name: value}; the ones in force), or None while off."""
+    get = (lambda n: values.get(n, DEFS[n].default)) if values is not None else value
+    cert, key = get("HTTPS_CERT"), get("HTTPS_KEY")
+    return (full_path(cert), full_path(key)) if cert and key else None
+
+
+WARN_DAYS = 30
+
+
+def certificate(cert, key, now=None):
+    """(#1159) A certificate and key checked as the server loads them: {"names", "expires", "days_left", "warn"}, or
+    Refused in plain words. The key must be the certificate's own; an expired certificate isn't taken."""
+    import ssl
+    from cryptography import x509
+    try:
+        ssl.create_default_context(ssl.Purpose.CLIENT_AUTH).load_cert_chain(cert, key)
+    except FileNotFoundError as e:
+        raise Refused(f"There's no file at {e.filename or cert}.") from None
+    except ssl.SSLError:
+        raise Refused("The certificate and key don't load together: check that both are PEM files, that the key is the "
+                      "certificate's own, and that it isn't protected by a passphrase.") from None
+    except OSError as e:
+        raise Refused(f"The certificate or key couldn't be read ({type(e).__name__}).") from None
+    with open(cert, "rb") as f:
+        c = x509.load_pem_x509_certificates(f.read())[0]
+    try:
+        alt = c.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+        names = [str(n) for n in alt.get_values_for_type(x509.DNSName) + alt.get_values_for_type(x509.IPAddress)]
+    except x509.ExtensionNotFound:
+        names = [a.value for a in c.subject.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)]
+    ends, now = int(c.not_valid_after_utc.timestamp()), int(now if now is not None else time.time())
+    if ends <= now:
+        raise Refused("That certificate has expired: renew it first.")
+    left = (ends - now) // 86400
+    return {"names": names[:20], "expires": ends, "days_left": left, "warn": left <= WARN_DAYS}
 
 
 # ---------------------------------------------------------------- the file
