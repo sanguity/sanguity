@@ -64,6 +64,16 @@ function claimFigures(rows, sub = true) {
     statTile("Billed by providers", usd(billed), sub && "list prices, before insurance")];
 }
 function costRows() { return inPeriod(DATA.costs || []); }
+/* where the claims came from, one wording (#1163): imported from the insurer's files (each insurer's name and months),
+   a health plan's connection, or typed in */
+function claimsFrom(rows) {
+  const g = {file: [], sync: [], manual: []};
+  for (const r of rows) { const o = sourceOf(byId.get(r.id)?.imp)?.origin; (g[o] || g.file).push(r); }
+  const span = xs => (t => t ? ` (${t})` : "")(insurerSpans(xs).map(([n, a, b]) => `${n}, ${monthYear(a)} – ${monthYear(b)}`).join("; "));
+  const parts = [g.file.length && "from your insurer's claims you imported" + span(g.file), g.sync.length && "from your health plan's connection" + span(g.sync),
+    g.manual.length && "typed in by you"].filter(Boolean);
+  return parts.length ? (s => s[0].toUpperCase() + s.slice(1) + ".")(listOf(parts)) : "";
+}
 /* a table that stacks where its box is narrow (#443): each row its first cell, then the others, each named by its
    column (labelCells, util.js; table.stack, app.css), so no Costs table scrolls sideways. n: the table or its box */
 const stacked = n => { const t = n.matches("table") ? n : n.querySelector("table"); t.classList.add("stack"); labelCells(t); return n; };
@@ -79,17 +89,27 @@ function renderCosts() {
   drawCosts();
   for (const h of $("#view-costs").querySelectorAll("table.data thead")) { costTh(h); thSeen.observe(h); }
 }
+/* #199, #1163: what would be here and every real way in: claims files to upload (named), a payments file, a claim or
+   a payment typed in (each its own form), a bill (#1128), a health plan's connection only while connected sources are
+   on; and that nothing connects to a bank. The ways in only for owners and editors */
+function costsEmpty() {
+  const link = (hash, text) => el("a", {class: "empty-next", href: `sources.html?profile=${PROFILE.id}${hash}`, text});   // each a next step, as an empty state's are
+  const es = emptyState("No claims or payments yet. Costs shows your insurance claims and what you paid for care.", null);
+  if (canEdit()) es.append(el("p", {text: "Ways to add them:"}), el("ul", {class: "costs-ways"},
+    el("li", {}, link("#upload", "Upload claims files"), ": UnitedHealthcare or Blue Cross Blue Shield claims.json, an EOB spreadsheet (CSV), or Blue Button (FHIR) claims from your insurer's website."),
+    el("li", {}, link("#upload", "Upload a payments file"), ": a CSV of what you paid (date, payee, amount), downloaded yourself from where you keep track."),
+    el("li", {}, link("#claim", "Type in a claim"), " · ", link("#payment", "Type in a payment")),
+    el("li", {}, el("button", {class: "btn empty-next needs-server", type: "button", id: "billFirst", text: "Add a bill",
+      onclick: () => { billState.first = true; billState.edit = "new"; renderCosts(); $("#bill-service")?.focus(); }})),
+    sgConnected(ME) ? el("li", {}, link("#portals", "Connect your health plan"), " (experimental)") : null));
+  es.append(el("p", {class: "hint", text: "Sanguity doesn't connect to banks, cards or HSA accounts: payments are what you type in or upload."}));
+  return es;
+}
 function drawCosts() {
   const box = $("#view-costs"); box.replaceChildren();
   const claims = !!(DATA.costs || []).length;
   if (!claims && !((DATA.outOfPocket || {}).payments || []).length && !((DATA.oop || {}).bills || []).length && !billState.first) {
-    // #199: what would be here, and one way to start (claims also come from a health plan's export or connection);
-    // a provider's bill typed in beside it (#1128), its form on What you paid
-    const es = emptyState("Insurance claims and what you paid out of pocket appear here, from a health plan or typed in.",
-      canEdit() ? {href: `sources.html?profile=${PROFILE.id}#payment`, text: "Type in a claim or payment"} : null);
-    if (canEdit()) es.append(" ", el("button", {class: "btn empty-next large needs-server", type: "button", id: "billFirst", text: "Add a bill",
-      onclick: () => { billState.first = true; billState.edit = "new"; renderCosts(); $("#bill-service")?.focus(); }}));
-    box.append(es);
+    box.append(costsEmpty());
     return;
   }
   // a new period starts at the top of the lists, with no payment open
@@ -104,7 +124,7 @@ function drawCosts() {
     // returning to the one before (#442), and kept for the next visit (save(), core.js; #456)
     el("div", {class: "seg", id: "costView", role: "group", "aria-label": "Show the costs as"}, ...[["claims", "Claims"], ["paid", "What you paid"]].map(([k, l]) =>
       el("button", {type: "button", "aria-pressed": costState.view === k, text: l, onclick: () => { if (costState.view !== k) { costState.view = k; hideTip(); keepFocus(renderCosts); save(); tabAddress(true); } }}))),
-    costState.view === "paid" ? null : el("span", {class: "hint", style: {margin: 0}, text: insurerHint(DATA.costs)})));   // where the claims came from
+    costState.view === "paid" ? null : el("span", {class: "hint", style: {margin: 0}, text: claimsFrom(DATA.costs)})));   // where the claims came from (#1163)
   box.append(...present(costLinks(true)));
   if (costState.view === "paid") { renderPaid(box, rows, periodText); return; }
   const billed = sumOf(rows, "billed"), paid = sumOf(rows, "paid"), owe = sumOf(rows, "owe");
@@ -196,12 +216,14 @@ function drawCosts() {
   box.append(tc);
   claimsFit(tc.querySelector(".tablewrap"));   // stacked now, not a frame late (#467)
 }
-/* ---- out of pocket (#55): payments typed in or from a finance app's export, and claims' shares with no payment.
+/* ---- out of pocket (#55): payments typed in or from a payments file uploaded, and claims' shares with no payment.
    Where each amount came from, the HSA/FSA tags and the payment-to-claim matches are worked out by the server
    (server/oop.py, DATA.oop); this counts each once: a payment that arrived twice once, a claim's share only until a
    payment is matched to it. */
 const paidState = {q: "", open: null, limit: 200};   // limit: the amounts listed, 200 more at a time like the claims (#201)
-const OOP_SRC = {typed: "Typed in", export: "Finance export"};
+/* where a payment came from, one label each wherever it's said (#1163): its row, its editor, the hint (taxreport.py
+   says the same in its CSV) */
+const OOP_SRC = {typed: "Typed in by you", records: "Imported with your records"};
 const usd2 = v => (v || 0).toLocaleString("en-US", {style: "currency", currency: "USD"});   // with its cents, as usd (#543)
 function oopRows() {
   const pays = (DATA.outOfPocket || {}).payments || [], o = DATA.oop || {};
@@ -209,7 +231,7 @@ function oopRows() {
   const claimOf = new Map((DATA.costs || []).filter(c => c.id != null).map(c => [c.id, c]));
   const rows = [];
   pays.forEach((p, i) => {
-    const x = info.get(i) || {i, key: p.key, src: /^manual:/.test(p.key || "") ? "typed" : "export", hsa: p.hsa || null};
+    const x = info.get(i) || {i, key: p.key, src: /^manual:/.test(p.key || "") ? "typed" : "records", hsa: p.hsa || null};
     rows.push({type: "pay", d: p.d, who: p.payee || "", group: p.group || "Other", amount: p.amount || 0, counted: x.dup != null ? 0 : (p.amount || 0),
       src: x.src, hsa: x.hsa || null, hsaFrom: x.hsaFrom, key: x.key, i, dup: x.dup, claim: x.claim != null ? claimOf.get(x.claim) || null : null,
       match: x.match, receipt: x.receipt, marked: x.marked, account: p.account || "", memo: p.memo || "", est: p.est});
@@ -224,7 +246,8 @@ function oopRows() {
   return rows;
 }
 function paidRows() { return inPeriod(oopRows()); }
-const srcText = r => r.type === "claim" ? `Claim: your share${r.ins ? " per " + r.ins : ""}` : OOP_SRC[r.src] + (r.est ? " (estimated)" : "");
+const srcText = r => r.type === "claim" ? `Your share, per ${r.ins ? r.ins + "'s" : "the"} claim; no payment recorded`
+  : (OOP_SRC[r.src] || OOP_SRC.records) + (r.est ? " (estimated)" : "");
 const oopKey = r => r.type === "claim" ? "c" + r.id : "p" + r.i;
 async function sendMark(body, msg) {
   sayIn(msg, "Saving…");
@@ -244,14 +267,14 @@ function oopEditor(r) {
     : `${usd2(r.amount)} to ${r.who || "(no payee)"}, ${fmtD(dayTs(r.d))}`}));
   const lines = [];
   if (r.type === "pay") {
-    lines.push(`Where the number came from: ${srcText(r).toLowerCase()}${r.account ? ", paid from " + r.account : ""}${r.memo ? " (" + r.memo + ")" : ""}.`);
+    lines.push(`Where the number came from: ${srcText(r).toLowerCase()}${r.account ? ", paid with " + r.account : ""}${r.memo ? " (" + r.memo + ")" : ""}.`);
     if (r.dup != null) {
       const o = oopRows().find(x => x.type === "pay" && x.i === r.dup);
       lines.push(`Counted once: it looks like the ${o ? srcText(o).toLowerCase() : "other"} payment${o ? " of " + fmtD(dayTs(o.d)) : ""}, which is counted instead.`);
     }
     if (r.claim) lines.push(`Paid the claim “${r.claim.title}” of ${fmtD(dayTs(r.claim.d))} (your share ${usd2(r.claim.owe)}), ${r.match === "auto" ? "matched by amount, date and provider" : "matched by hand"}; that share isn't counted again.`);
     else if (r.counted) lines.push("Not matched to a claim.");
-    if (r.hsa) lines.push(`Tagged ${r.hsa}${r.hsaFrom === "account" ? " from the account it was paid from" : r.hsaFrom === "typed" ? " when it was typed in" : ""}.`);
+    if (r.hsa) lines.push(`Tagged ${r.hsa}${r.hsaFrom === "account" ? " from what it was paid with" : r.hsaFrom === "typed" ? " when it was typed in" : ""}.`);
   } else lines.push(`Where the number came from: the claim's patient responsibility${r.ins ? ", as " + r.ins + " reported it" : ""}. It's counted until a payment is matched to the claim.`);
   for (const l of lines) box.append(el("p", {class: "hint", style: {margin: "2px 0"}, text: l}));
   const btns = el("div", {class: "btns my-2"});
@@ -266,7 +289,7 @@ function oopEditor(r) {
     const target = r.type === "claim" ? {event: r.id} : {payment: r.key};
     const now = r.type === "claim" ? (r.hsa || "auto") : r.hsaFrom === "marked" ? (r.hsa || "none") : "auto";
     const opts = r.type === "claim" ? [["auto", "Not tagged"], ["HSA", "HSA"], ["FSA", "FSA"]]
-      : [["auto", r.hsaFrom === "account" || r.hsaFrom === "typed" ? `As ${r.hsaFrom === "typed" ? "typed in" : "the account says"} (${r.hsa})` : "Not tagged"], ["HSA", "HSA"], ["FSA", "FSA"], ["none", "Neither"]];
+      : [["auto", r.hsaFrom === "account" || r.hsaFrom === "typed" ? `As ${r.hsaFrom === "typed" ? "typed in" : "its paid with says"} (${r.hsa})` : "Not tagged"], ["HSA", "HSA"], ["FSA", "FSA"], ["none", "Neither"]];
     const hsa = el("select", {id: "oopHsaSel"}, ...opts.map(([v, t]) => el("option", {value: v, text: t, selected: v === now || null})));
     const form = el("div", {class: "oop-form needs-server"}, el("label", {for: "oopHsaSel"}, el("span", {text: "Paid with"}), hsa));   // Save and its fields: off offline (offline.js, #449)
     let claim = null;
@@ -292,7 +315,7 @@ function oopEditor(r) {
   return box;
 }
 function renderPaid(box, claimRows, periodLabel) {
-  const meta = DATA.outOfPocket || {}, all = oopRows(), claims = !!(DATA.costs || []).length;
+  const all = oopRows(), claims = !!(DATA.costs || []).length;
   const card = el("div", {class: "card", id: "paidCard"});
   // the view's heading and its ⓘ, named for what it's about, not the period (#447)
   const h2 = el("div", {class: "set-hd"}, el("h2", {text: `Out of pocket · ${periodLabel}`}));
@@ -306,35 +329,28 @@ function renderPaid(box, claimRows, periodLabel) {
   const pays = counted.filter(r => r.type === "pay"), shares = counted.filter(r => r.type === "claim");
   const has = s => all.some(r => r.src === s);
   // each source: its name, what the ⓘ adds, and its shorter name where all three are named (one line at 390 px, #467)
-  const ways = [has("typed") && ["payments typed in", ""], has("export") && ["a finance export", meta.exported ? ` (exported ${fmtD(dayTs(meta.exported))})` : "", "an export"],
+  const ways = [has("typed") && ["payments typed in", ""], has("records") && ["payments imported with your records", "", "imported"],
     has("claim") && ["claims' shares", " with no payment matched", "claims"]].filter(Boolean);
   const from = whole => "From " + (xs => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs.at(-1))(ways.map(w => whole ? w[0] + w[1] : ways.length > 2 && w[2] || w[0])) + ".";
   // the view's heading, its figures under it in their card (#448); its hint one line, where the amounts came from, and
-  // the rest behind its ⓘ: when the export was, how each amount is counted and what isn't (#280, #465)
-  h2.append(aboutWords({title: "what you paid"}, from(true), "A payment that arrived two ways is counted once, and a claim's share only until a payment is matched to it. Click a row below to see where its number came from.",
-    meta.excluded ? `Not counted: ${meta.excluded}.` : null));
+  // the rest behind its ⓘ: how each amount is counted (#280, #465)
+  h2.append(aboutWords({title: "what you paid"}, from(true), "A payment that arrived two ways is counted once, and a claim's share only until a payment is matched to it. Click a row below to see where its number came from."));
   const top = [h2, el("p", {class: "hint", text: from(false)})];
   const tile = statTile;
-  const typed = sum(pays.filter(r => r.src === "typed")), exp = sum(pays.filter(r => r.src === "export"));
+  const typed = sum(pays.filter(r => r.src === "typed")), exp = sum(pays.filter(r => r.src !== "typed"));
   const prem = sum(counted.filter(r => /premium/i.test(r.group)));
   const hsa = sum(counted.filter(r => r.hsa === "HSA")), fsa = sum(counted.filter(r => r.hsa === "FSA"));
   const dups = rows.filter(r => r.dup != null).length, matched = pays.filter(r => r.claim).length;
   // the figures (#278): the total and its two parts first (with no claims, the HSA's), the rest under More figures
   const hsaTile = tile("Paid with an HSA", usd(hsa), "tagged HSA", "oopHsa");
   const head = [tile("Total out of pocket", usd(sum(counted)), `${pays.length} payment${pays.length === 1 ? "" : "s"}${shares.length ? ` + ${shares.length} claim share${shares.length === 1 ? "" : "s"}` : ""}`, "oopTotal"),
-    tile("Payments", usd(sum(pays)), [typed && `${usd(typed)} typed in`, exp && `${usd(exp)} from an export`].filter(Boolean).join("\u00a0· ") || "none in this period"),
+    tile("Payments", usd(sum(pays)), [typed && `${usd(typed)} typed in`, exp && `${usd(exp)} imported`].filter(Boolean).join("\u00a0· ") || "none in this period"),
     claims ? tile("Claim shares with no payment", usd(sum(shares)), "per the insurers; counted until a payment matches") : hsaTile];
   const tiles = [];
   if (claims) tiles.push(tile("Payments matched to claims", matched.toLocaleString("en-US"), dups ? `${dups} that arrived twice, counted once` : "by amount, date and provider, or by hand"), hsaTile);
   else if (dups) tiles.push(tile("Counted once", dups.toLocaleString("en-US"), "payments that arrived twice"));
   tiles.push(tile("Paid with an FSA", usd(fsa), "tagged FSA", "oopFsa"));
-  if (prem) tiles.push(tile("Insurance premiums", usd(prem), counted.some(r => r.est && /premium/i.test(r.group)) ? "includes estimated months" : "paid from your accounts"));
-  const bal = meta.balance || {}, settled = bal.owed === 0 && bal.asOf ? fmtD(dayTs(bal.asOf)) : "";
-  if (claims && has("export")) {   // the finance export's view: what the insurers listed against the bills paid
-    const gap = sumOf(claimRows, "owe") - sum(pays.filter(r => r.group === "Medical bills"));
-    tiles.push(tile(gap >= 0 ? (settled ? "Reduced or forgiven" : "Share not yet paid") : "Paid beyond listed share", usd(Math.abs(gap)),
-      gap >= 0 ? (settled ? `negotiated down or written off\u00a0· you owe $0 as of ${settled}` : "still owed, on a plan, or reduced") : "includes bills from earlier periods"));
-  }
+  if (prem) tiles.push(tile("Insurance premiums", usd(prem), counted.some(r => r.est && /premium/i.test(r.group)) ? "includes estimated months" : "premiums paid"));
   // HSA and FSA by year, under More figures too
   const years = new Map();
   for (const r of counted) if (r.hsa) {
@@ -362,12 +378,12 @@ function renderPaid(box, claimRows, periodLabel) {
         acc[0] += s; acc[1] += p;
         return [zdate(dayTs(k + "-15")).toLocaleDateString(undefined, {month: "long", year: "numeric"}), usd(s), usd(p), usd(acc[0]), usd(acc[1]), usd(acc[0] - acc[1])];
       });
-      cum.append(stacked(chartTable(["Month", "Your share listed", "Bills paid", "Share so far", "Paid so far", settled ? "Reduced so far" : "Difference"], out.reverse())));
+      cum.append(stacked(chartTable(["Month", "Your share listed", "Bills paid", "Share so far", "Paid so far", "Difference"], out.reverse())));
     } else {
       const svg = chartSvg("Your share and the bills you paid, running totals. Table lists them by month.", {id: "paidChart", height: 210});   // its height from the start, so what's under it doesn't move when it's drawn a frame later (#473); a tab stop (#652)
       const leg = ckLegend([["var(--measure)", "Your share per insurers, running total", "line"], [INK2, "Medical bills you paid, running total", "line"]]);
       leg.classList.add("mb-2"); cum.append(leg, svg);
-      requestAnimationFrame(() => drawPaidCum(svg, claimRows, bills, settled));
+      requestAnimationFrame(() => drawPaidCum(svg, claimRows, bills));
     }
   }
   // breakdowns, then every amount
@@ -693,7 +709,7 @@ function costLinks(claims) {
 const usdAxis = v => v >= 1e6 ? `$${ckNum(v / 1e6)}M` : v >= 1e3 ? `$${ckNum(v / 1e3)}K` : `$${ckNum(v)}`;
 /* the value gutter: as wide as the widest of these numbers */
 const costGutter = vals => Math.max(...vals.map(v => labelW(usdAxis(v), ""))) + 12;
-function drawPaidCum(svg, claimRows, payRows, settled) {
+function drawPaidCum(svg, claimRows, payRows) {
   const pts = [...claimRows.filter(r => r.owe).map(r => ({d: r.d, a: r.owe, s: 0})), ...payRows.map(r => ({d: r.d, a: r.amount, s: 1}))].sort((a, b) => a.d.localeCompare(b.d));
   if (!pts.length) { svg.replaceChildren(); svg.removeAttribute("tabindex"); return; }   // nothing to step through: no tab stop (#652)
   const t0 = dayTs(pts[0].d), t1 = Math.max(dayTs(pts.at(-1).d), t0 + 30 * DAY);
@@ -729,7 +745,7 @@ function drawPaidCum(svg, claimRows, payRows, settled) {
     const a = at(series[0], t), b = at(series[1], t), rows = [el("div", {class: "v", text: fmtD(t)}),
       el("div", {class: "s"}, el("span", {class: "k", style: {background: color[0]}}), `Your share so far ${usd(a)}`),
       el("div", {class: "s"}, el("span", {class: "k", style: {background: color[1]}}), `Bills paid so far ${usd(b)}`),
-      el("div", {class: "s", text: `${settled ? "Reduced so far" : "Difference"} ${usd(a - b)}`})];
+      el("div", {class: "s", text: `Difference ${usd(a - b)}`})];
     ckTip(svg, x(t), rows);
     return tipWords(rows);
   };

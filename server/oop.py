@@ -5,9 +5,12 @@ A profile's out-of-pocket amounts arrive three ways:
 
   typed     payments typed in on the Import page (manual_items.py, kind "payment"), maybe with a receipt (a
             "document" event of the same import) and an HSA/FSA tag
-  export    payments in a finance app's export (build.py's payments.json, the demo, a data.json): any
-            outOfPocket.payments entry an import other than hand entry brought
+  records   payments imported with other records (a Sanguity data.json loaded back in, build.py's payments.json):
+            any outOfPocket.payments entry an import other than hand entry brought
   claim     a claim's patient responsibility (its Costs row's "owe"), as the insurer reported it
+
+Each is said one way wherever it's shown (SRC_LABELS: the Costs tab says the same, costs.js OOP_SRC, and the tax-year
+report's CSV). Sanguity connects to no bank, card or HSA account: payments are what was typed in or uploaded (#1163).
 
 The same money can arrive two of those ways, so annotate() works out, for every payment and every claim share:
 
@@ -48,6 +51,7 @@ from . import costplan, crypto, db as dbm, edits, security as sec
 DUP_DAYS = 3
 MATCH_BEFORE, MATCH_AFTER = 3, 180
 HSA_TAGS = ("HSA", "FSA")
+SRC_LABELS = {"typed": "Typed in by you", "records": "Imported with your records"}
 _WORDS_IGNORED = {"the", "and", "inc", "llc", "pllc", "ltd", "corp", "dba", "of", "for", "fictional", "payment", "pmt",
                   "bill", "medical", "health", "center", "services", "group", "associates", "hospital", "clinic", "dr"}
 
@@ -168,7 +172,7 @@ def annotate(db, pid, data, imps=()):
             hsa = _account_tag(p.get("account"))
             src_tag = "account" if hsa else None
         receipt = by_key.get(p.get("receipt")) if p.get("receipt") else None
-        out_p.append({"i": i, "key": key, "src": "typed" if fmt == "manual" else "export", "imp": imp,
+        out_p.append({"i": i, "key": key, "src": "typed" if fmt == "manual" else "records", "imp": imp,
                       "hsa": hsa, "hsaFrom": src_tag, "claim": None, "match": None, "dup": None,
                       "receipt": receipt["id"] if receipt else None, "marked": bool(m),
                       "_p": p, "_m": m, "_day": _day(p.get("d")), "_amt": _money(p.get("amount"))})

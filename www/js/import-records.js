@@ -41,7 +41,7 @@
       ["insurer", "Insurer"], ["claim", "Claim #", "text", OPT], ["category", "Type of care", "select", [["", "Work it out"], ...CATS.map(c => [c, c])]]]],
     payment: ["Out-of-pocket payment", [["date", "Date", "date"], ["payee", "Paid to"], ["amount", "Amount", "money"],
       ["group", "For", "select", ["Medical bills", "Pharmacy", "Health insurance premiums", "Dental", "Vision", "Equipment & supplies", "Other medical"].map(g => [g, g])],
-      ["account", "Paid from", "text", OPT], ["hsa", "HSA or FSA", "select", [["", "Neither"], ["HSA", "HSA"], ["FSA", "FSA"]]],
+      ["account", "Paid with", "text", "HSA card, check… (optional)"], ["hsa", "HSA or FSA", "select", [["", "Neither"], ["HSA", "HSA"], ["FSA", "FSA"]]],
       ["memo", "Memo", "text", OPT], ["file", "Receipt (optional)", "file"]]],   // #55: the receipt is kept as a document
     upcoming: ["Upcoming appointment", [["date", "Date", "date"], ["time", "Time", "time"], ["title", "Title", "text", "Follow-up visit"],
       ["who", "Who"], ["where", "Where"]]],
@@ -259,13 +259,13 @@
     changed();
   });
 
-  // the Costs tab's "Type in what you paid" (#55) opens sources.html#payment: Type records in, with a payment's form
+  // the Costs tab's "Type in a payment" (#55) opens sources.html#payment, and its "Type in a claim" #claim (#1163): Type records in, with its form
   // (import-manual.js starts with lab results put away, #384). Focus goes into it once
   // the section is shown (import.js, once /api/me has answered), not before, when it would stay on the page (#388).
   // Add → Home reading (#264) opens sources.html#home-reading the same way, with a blood pressure at home's form; on
   // the Sources page itself only the address changes, and the form comes the same
   const typeIn = (hash, here) => {
-    const kind = {"#payment": "payment", "#home-reading": "home_bp"}[hash];
+    const kind = {"#payment": "payment", "#claim": "claim", "#home-reading": "home_bp"}[hash];
     if (!kind) return;
     SgSources.show("manual");
     const card = add(kind, false);

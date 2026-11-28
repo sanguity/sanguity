@@ -2267,6 +2267,8 @@ main.acct.guide{max-width:640px}
 .empty-state:not(.card) p{margin:0 0 var(--sp-2)}
 .empty-state p:only-child{margin-bottom:0}   /* with no next step (the Overview's groups, #440) */
 .empty-state .btn.empty-next{margin:0}
+.costs-ways{display:inline-block;text-align:start;max-width:60ch;margin:0 0 var(--sp-3);padding-inline-start:1.2em}   /* Costs' ways in (#1163) */
+.costs-ways li+li{margin-top:var(--sp-2)}
 .empty-acts{display:flex;flex-wrap:wrap;justify-content:center;gap:var(--sp-2)}
 @media (forced-colors:active){ .guide-back,.guide-way{border-color:ButtonText} }
 
