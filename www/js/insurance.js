@@ -69,7 +69,7 @@ async function drawInsurance(p, focus) {
           j => `Saved the photo of the ${s} of the card for ${c.name}.` + (j.removed?.length ? ` Taken out of the file before it was kept: ${j.removed.join(", ")}.` : ""),
           `${hd}-${s}`);
       };
-      return el("label", {class: "btn small pick"}, `${c[s] ? "Replace" : "Add"} ${s} photo…`, input);
+      return el("label", {class: "btn small pick ins-pick"}, `${c[s] ? "Replace" : "Add"} ${s} photo…`, input);
     };
     const acts = !edit ? null : el("div", {class: "acts", onclick: () => { INS_AT = i; }},
       btn("Change…", `Change the plan ${c.name}`, async () => {
