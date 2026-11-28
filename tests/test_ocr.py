@@ -35,6 +35,41 @@ def shaped(extra=b""):
     return struct.pack("<i", 24) + struct.pack("<24q", *([-1] * 22 + [196, 300])) + b"\0" * 200 + extra
 
 
+def parts_of(data):
+    """{part: its bytes} of a language file."""
+    n = struct.unpack("<i", data[:4])[0]
+    starts = struct.unpack(f"<{n}q", data[4:4 + 8 * n])
+    order = sorted((st, i) for i, st in enumerate(starts) if st != -1)
+    return {i: data[st:(order[k + 1][0] if k + 1 < len(order) else len(data))] for k, (st, i) in enumerate(order)}
+
+
+def with_config(data, config):
+    """A language file with config (bytes) as its part 0, its settings, before its other parts."""
+    parts = {**parts_of(data), 0: config}
+    n, at, starts, body = 24, 4 + 8 * 24, [-1] * 24, b""
+    for i in sorted(parts):
+        starts[i], at, body = at, at + len(parts[i]), body + parts[i]
+    return struct.pack("<i", n) + struct.pack(f"<{n}q", *starts) + body
+
+
+def png_header(w, h):   # a PNG's signature and IHDR: as far as anything reads before decoding it
+    return b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">IIBBBBB", w, h, 8, 0, 0, 0, 0) + b"\0" * 64
+
+
+def jpeg_header(w, h):
+    return b"\xff\xd8\xff\xe0" + struct.pack(">H", 16) + b"JFIF\0" + b"\0" * 9 + b"\xff\xc0" + struct.pack(">HBHHB", 11, 8, h, w, 1) + b"\0" * 64
+
+
+def tiff_pages(n, w=520, h=60):
+    """A little-endian TIFF header with n image file directories, each giving a page's width and height."""
+    out = bytearray(b"II*\x00" + struct.pack("<I", 8))
+    for k in range(n):
+        at = len(out)
+        nxt = at + 2 + 2 * 12 + 4 if k < n - 1 else 0
+        out += struct.pack("<H", 2) + struct.pack("<HHII", 256, 4, 1, w) + struct.pack("<HHII", 257, 4, 1, h) + struct.pack("<I", nxt)
+    return bytes(out)
+
+
 with open(os.path.join(TMP, "bin", "tesseract"), "w") as f:   # the stand-in, as a program on its own
     f.write(f'#!/bin/sh\nexec "{sys.executable}" -I "{os.path.join(ROOT, "tests", "fake_tesseract.py")}" "{CONTROL}" "$@"\n')
 os.chmod(os.path.join(TMP, "bin", "tesseract"), 0o755)
@@ -337,6 +372,61 @@ class Ocr(unittest.TestCase):
             self.assertFalse(ocr.available())
             self.assertFalse(self.c["ada"].get("/api/settings/install/ocr").json()["available"])
 
+    def runs(self):
+        with open(os.path.join(TMP, "runs.log"), encoding="utf-8") as f:
+            return [json.loads(x) for x in f]
+
+    def test_l_pictures_are_measured_from_their_own_headers_first(self):
+        """(#1129's review) a picture's size is read from its own header (not a PDF's word for it) and one over
+        MAX_PIXELS never reaches Tesseract; a TIFF of several pages is read a page at a time, MAX_PAGES at most; each
+        run is memory-limited and writes no file whatever a language's settings say"""
+        self.assertEqual([ocr.dimensions(fixture(n)) for n in ("scan.png", "scan.jpg", "scan.pbm")], [[(520, 60)]] * 3)
+        self.assertEqual(ocr.dimensions(tiff_pages(3)), [(520, 60)] * 3)
+        self.assertIsNone(ocr.dimensions(b"not a picture at all"))
+        before = len(self.runs())
+        for name, data in (("huge.png", png_header(10000, 9000)), ("huge.jpg", jpeg_header(9000, 9000)), ("huge.tif", tiff_pages(1, 9000, 9000))):
+            path = os.path.join(TMP, name)
+            with open(path, "wb") as f:
+                f.write(data)
+            self.assertEqual(ocr.read(path, name.rsplit(".", 1)[1])["why"], "too_big", name)
+        w, h, _ = pbm()   # a PDF that says its picture is 520 by 60 when the JPEG in it is far bigger
+        path = os.path.join(TMP, "lies.pdf")
+        with open(path, "wb") as f:
+            f.write(pdf([("image", {"/Width": w, "/Height": h, "/ColorSpace": "/DeviceGray", "/BitsPerComponent": 8, "/Filter": "/DCTDecode"},
+                          jpeg_header(9000, 9000))]))
+        self.assertEqual(ocr.read(path, "pdf")["state"], "none")
+        self.assertEqual(len(self.runs()), before, "none of them reached Tesseract")
+        path = os.path.join(TMP, "pages.tif")
+        with open(path, "wb") as f:
+            f.write(tiff_pages(3))
+        with mock.patch.object(ocr, "MAX_PAGES", 2):
+            got = ocr.read(path, "tif")
+        self.assertEqual((got["state"], got["pages"], got["read"], got["capped"]), ("found", 3, 2, "pages"))
+        runs = self.runs()[before:]
+        self.assertEqual([a[a.index("-c", a.index("tessedit_write_params_to_file=")) + 1] for a in runs],
+                         ["tessedit_page_number=0", "tessedit_page_number=1"])
+        self.assertTrue(all("debug_file=/dev/null" in a and "tessedit_write_params_to_file=" in a for a in runs))
+        with mock.patch.object(ocr.subprocess, "run", wraps=ocr.subprocess.run) as run:
+            ocr.read(os.path.join(TMP, "set", "scan.png"), "png")
+        self.assertIs(run.call_args.kwargs["preexec_fn"], ocr._limited, "its address space limited")
+
+    def test_la_a_document_read_by_its_text_is_logged_as_opened(self):
+        c = TestClient(main.app)   # a sign-in of its own: once a session, as opening a document is logged
+        self.assertEqual(c.post("/api/login", json={"username": "kim", "password": PW["kim"]}, headers=H).status_code, 200)
+        doc = self.docs["photo.pdf"]
+        self.assertEqual(c.get(f"/api/profiles/{self.pid}/document-text/{self.docs['blank.png']}").json()["state"], "none")
+        db = dbm.connect()
+        try:
+            seen = lambda d: [crypto.dec(r["detail"]) for r in db.execute(   # noqa: E731
+                "SELECT detail FROM activity WHERE action='document' AND profile_id=? AND item=?", (self.pid, d))]
+            self.assertEqual(seen(self.docs["blank.png"]), [], "no text, nothing read")
+            self.assertEqual(c.get(f"/api/profiles/{self.pid}/document-text/{doc}").json()["state"], "found")
+            c.get(f"/api/profiles/{self.pid}/documents/{doc}")   # then the document itself: the same entry
+            self.assertEqual(len(seen(doc)), 1)
+            self.assertIn("Photographed letter", seen(doc)[0])
+        finally:
+            db.close()
+
     # ------------------------------------------------------------ languages
 
     def put_language(self, name, data, who="ada"):
@@ -391,6 +481,31 @@ class Ocr(unittest.TestCase):
         self.assertEqual(r.json()["in_use"], ["eng"])
         self.assertEqual(settings.install_value("ocr.languages"), [], "taken out of the languages in use")
         self.assertEqual(self.c["ada"].put("/api/settings/install/ocr.languages", json={"value": ["eng"]}, headers=H).status_code, 400)
+
+    def test_na_a_language_files_own_settings_are_cut_to_recognitions(self):
+        """(#1129's review) a language file's settings (part 0) can name a file Tesseract writes: only recognition
+        settings naming no path are kept (Chinese's spaces, Hindi's segmentation), the rest taken out before it's tried"""
+        cfg = (b"#Fixes a spacing issue\npreserve_interword_spaces 1\ndebug_file /data/sanguity.db\n"
+               b"tessedit_write_params_to_file /run/secrets/sanguity/data_key\nclassify_debug_level 1\ntosp_old_to_method T\n"
+               b"textord_debug_tabfind 1\nchop_enable /tmp/x\n")
+        r = self.put_language("chi_sim.traineddata", with_config(shaped(), cfg))
+        self.assertEqual(r.status_code, 200, r.text)
+        with open(os.path.join(ocr.LANG_DIR, "chi_sim.traineddata"), "rb") as f:
+            kept = parts_of(f.read())
+        self.assertEqual(kept[0], b"preserve_interword_spaces 1\ntosp_old_to_method T\n")
+        self.assertEqual({k: v for k, v in kept.items() if k}, {k: v for k, v in parts_of(shaped()).items() if k}, "the rest as it was")
+        r = self.put_language("jpn.traineddata", with_config(shaped(), b"debug_file /data/sanguity.db\n"))
+        self.assertEqual(r.status_code, 200, r.text)
+        with open(os.path.join(ocr.LANG_DIR, "jpn.traineddata"), "rb") as f:
+            self.assertNotIn(0, parts_of(f.read()), "no settings left: none at all")
+        # one put in the folder some other way, its settings as they came, isn't used
+        with open(os.path.join(ocr.LANG_DIR, "kor.traineddata"), "wb") as f:
+            f.write(with_config(shaped(), b"tessedit_write_params_to_file /data/sanguity.db\n"))
+        r = self.c["ada"].put("/api/settings/install/ocr.languages", json={"value": ["chi_sim", "kor"]}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(ocr.in_use(), ["eng", "chi_sim"])
+        for code in ("chi_sim", "jpn", "kor"):
+            self.c["ada"].delete(f"/api/settings/install/ocr/languages/{code}", headers=H)
 
     def test_o_downloading_a_language_only_when_turned_on(self):
         served = []
@@ -457,6 +572,20 @@ class RealTesseract(unittest.TestCase):
             got = ocr.read(path, name.rsplit(".", 1)[1])
             self.assertEqual(got["state"], "found", name)
             self.assertIn(WORD, got["text"].lower(), name)
+        # a language file whose settings would write a file: taken out, and overridden on the command line besides
+        with open(os.path.join(ocr.TESSDATA, "eng.traineddata"), "rb") as f:
+            eng = f.read()
+        out = os.path.join(TMP, "written-by-a-language")
+        with mock.patch.object(ocr, "LANG_DIR", os.path.join(TMP, "real-languages")):
+            ocr.import_language("enm.traineddata", with_config(eng, f"debug_file {out}\ntessedit_write_params_to_file {out}\n".encode()))
+            with ocr._tessdata(["enm"]) as folder:
+                self.assertIn(WORD, ocr._tesseract(fixture("scan.png"), folder, ["enm"], time.monotonic() + 60).lower())
+        self.assertFalse(os.path.exists(out))
+        with ocr._tessdata(["eng"], {"eng": os.path.join(TMP, "raw-eng")}) as folder:   # the command line's own guard alone
+            with open(os.path.join(TMP, "raw-eng"), "wb") as f:
+                f.write(with_config(eng, f"debug_file {out}\n".encode()))
+            ocr._tesseract(fixture("scan.png"), folder, ["eng"], time.monotonic() + 60)
+        self.assertFalse(os.path.exists(out), "-c debug_file on the command line wins over a language's")
         path = os.path.join(TMP, "real-blank.png")
         with open(path, "wb") as f:
             f.write(fixture("blank.png"))

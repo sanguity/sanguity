@@ -7,6 +7,7 @@
                                                         tessdata_fast, while ocr.downloads is on
   DELETE /api/settings/install/ocr/languages/{code}     admin, after the fresh check: remove one added
   GET    /api/profiles/{pid}/document-text/{doc}        viewers and up: a document's text and state, for its drawer
+                                                        (its text logged as opening the document is)
   POST   /api/profiles/{pid}/documents/search           viewers and up, {q}: the records whose documents' text has q
                                                         (in the body, so what's searched is in no address)
 
@@ -17,8 +18,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
-from . import activity, db as dbm, ocr, settings
-from .main import _client_ip, admin, fresh, get_db, need, user
+from . import activity, crypto, db as dbm, ocr, settings
+from .main import _client_ip, _opened, admin, fresh, get_db, need, user
 
 router = APIRouter()
 
@@ -84,11 +85,16 @@ def ocr_remove(code: str, request: Request, s=Depends(admin), db=Depends(get_db)
 
 
 @router.get("/api/profiles/{pid}/document-text/{doc}")
-def document_text(pid: int, doc: str, s=Depends(user), db=Depends(get_db)):
+def document_text(pid: int, doc: str, request: Request, s=Depends(user), db=Depends(get_db)):
+    """A document's text, logged as opening the document is (once a session, by its record's title): it says what
+    the document does."""
     need(db, s, pid, "viewer")
     got = ocr.text_of(db, pid, doc[:64])
     if got is None:
         raise HTTPException(404, "Document not found.")
+    if got["state"] == "found":
+        r = db.execute("SELECT path FROM documents WHERE id=? AND profile_id=?", (doc[:64], pid)).fetchone()
+        _opened(db, s, pid, doc, {"path": crypto.dec(r["path"])}, request)
     return got
 
 
