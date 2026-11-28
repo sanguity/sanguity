@@ -617,7 +617,7 @@ def restore(db, pid, data, photo, written):
             out.add(_same(body, r["created"], r["created_name"]))
         return out
 
-    entries = seen("journal")
+    entries, spots = seen("journal"), None   # spots: the profile's (#1139), read once a photo names one
     moods = {b["t"] for b in (json.loads(k[0]) for k in entries) if b.get("kind") == "mood"}
     for x, body in got["journal"]:
         by, at, changed, changed_by = _who(x)
@@ -648,8 +648,12 @@ def restore(db, pid, data, photo, written):
             file = secrets.token_hex(16) + ".img"
             written.append(file)
             crypto.write_file(os.path.join(journal_photos.folder(pid), file), clean)
-            ph_id = db.execute("""INSERT INTO journal_photos(profile_id, entry_id, file, type, bytes, created, created_by)
-                                  VALUES(?, ?, ?, ?, ?, ?, NULL)""", (pid, jid, file, kind, len(clean), at or dbm.now())).lastrowid
+            spot = ph["spot"].get("name") if isinstance(ph.get("spot"), dict) else ph.get("spot")   # (#1139) by its name
+            spot = " ".join(spot.split())[:journal_photos.SPOT_MAX] if isinstance(spot, str) else ""
+            spots = journal_photos.spots(db, pid) if spot and spots is None else spots
+            ph_id = db.execute("""INSERT INTO journal_photos(profile_id, entry_id, file, type, bytes, created, created_by, spot_id)
+                                  VALUES(?, ?, ?, ?, ?, ?, NULL, ?)""", (pid, jid, file, kind, len(clean), at or dbm.now(),
+                                                                       journal_photos.spot_named(db, pid, spot, None, spots) if spot else None)).lastrowid
             pics.append({"id": ph_id, "alt": alt})
             n["photos"] += 1
         if pics:

@@ -12,6 +12,11 @@ profile's activity log (the kind of entry, never what it says).
   GET    /api/profiles/{pid}/journal/photos/{id}    a photo an entry lists, to anyone who can view the profile
 The symptom groups themselves are the setting journal.groups (PUT .../settings/journal.groups).
 
+#1139 adds spots (journal_photos.py), a photo tagged as its entry is saved ("photos": [{"id", "alt", "spot"}]), and:
+  PUT    /api/profiles/{pid}/journal/spots/{sid}                {name}: rename a spot (409: another is called that)
+  POST   /api/profiles/{pid}/journal/spots/{sid}/merge          {into}: its photos become spot into's; it goes
+  DELETE /api/profiles/{pid}/journal/spots/photos/{photo_id}    take a photo off its spot
+
 Each change's reply carries what it changed (#271), so the records page updates in place instead of loading the records
 again: "journal", the entries added or changed, as the records list them; "removed", the ids of those deleted. Its
 X-Records-Rev header is the records' revision after it (records.stamp, #405)."""
@@ -122,6 +127,46 @@ def photo(pid: int, photo_id: int, s=Depends(user), db=Depends(get_db)):
     data, media = got
     return Response(data, media_type=media, headers={"Content-Disposition": f'inline; filename="photo-{photo_id}"',
                                                      "Content-Security-Policy": DOC_CSP, "X-Frame-Options": "SAMEORIGIN"})
+
+
+class SpotName(BaseModel):
+    name: str
+
+
+class SpotMerge(BaseModel):
+    into: StrictInt
+
+
+def _spot_change(db, s, pid, request, response, action, change):
+    """A change to the profile's spots (#1139), logged as the journal's (the action, never a name); the reply carries
+    the entries whose photos it changed, as an entry's change does (#271). Called once need() has said editor."""
+    try:
+        with dbm.transaction(db):
+            ids = change()
+            records._bump(db, pid)
+            activity.log(db, "journal", s, pid, {"action": action}, _client_ip(request))
+    except photos.PhotoError as x:
+        raise HTTPException(x.status, str(x))
+    records.stamp(response, db, pid)
+    return {"ok": True, "journal": journal.listing(db, pid, ids) if ids else []}
+
+
+@router.put("/api/profiles/{pid}/journal/spots/{sid}")
+def rename_spot(pid: int, sid: int, body: SpotName, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    return _spot_change(db, s, pid, request, response, "spot.rename", lambda: photos.rename_spot(db, pid, sid, body.name))
+
+
+@router.post("/api/profiles/{pid}/journal/spots/{sid}/merge")
+def merge_spots(pid: int, sid: int, body: SpotMerge, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    return _spot_change(db, s, pid, request, response, "spot.merge", lambda: photos.merge_spots(db, pid, sid, body.into))
+
+
+@router.delete("/api/profiles/{pid}/journal/spots/photos/{photo_id}")
+def untag_photo(pid: int, photo_id: int, request: Request, response: Response, s=Depends(user), db=Depends(get_db)):
+    need(db, s, pid, "editor")
+    return _spot_change(db, s, pid, request, response, "spot.untag", lambda: [photos.untag(db, pid, photo_id)])
 
 
 @router.put("/api/profiles/{pid}/journal/{jid}")

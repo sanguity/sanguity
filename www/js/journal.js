@@ -163,7 +163,8 @@ function openJournal(e) {
     el("div", {class: "jpics"}, ...j.photos.map((p, i) => el("figure", {class: "jpic"},
       el("a", {href: jPhotoUrl(p), target: "_blank", rel: "noopener", "data-tip": "Open it full size"},
         el("img", {src: jPhotoUrl(p), alt: p.alt || `Photo ${i + 1} of ${j.photos.length} for ${jTitle(j)}`, loading: "lazy"})),
-      p.alt ? el("figcaption", {text: p.alt}) : null))));
+      p.alt || p.spot ? el("figcaption", {}, p.alt && p.spot ? [p.alt, el("br")] : p.alt || null, p.spot ? el("button", {class: "linkish", type: "button", text: `Spot: ${p.spot.name}`,
+        "aria-label": `Spot: ${p.spot.name}, every photo of it`, onclick: () => openSpot(p.spot.id)}) : null) : null))));
   const msg = el("p", {class: "hint edit-msg", role: "status"});
   const acts = el("div", {class: "btns dgo"});
   if (jCanWrite()) drawerMenu([{text: "Edit", run: () => journalForm(j, {}, () => openEvent(e))},   // in the ⋯ menu, as a record's corrections are (#270)
@@ -274,6 +275,7 @@ function journalHomeCard() {
     jCanWrite() || groups.length ? el("div", {class: "btns jgroup-btns"},   // #161: symptom groups, logged in one go
       jCanWrite() && groups.length ? el("button", {class: "btn", type: "button", text: "Log a symptom group", onclick: () => journalPickGroup(closeDrawer)}) : null,
       el("button", {class: "btn", type: "button", text: groups.length ? `Symptom groups (${groups.length})` : "Symptom groups", onclick: () => journalGroups(closeDrawer)})) : null,
+    jSpotsLine(),   // #1139: one spot over time
     aboutWords(JOURNAL_HINT, "Photos have where they were taken (GPS), the camera and the time taken out before they're kept. They're only in a share link when you tick “Photos in the journal”."));
   if (n) {
     const v = jList(true);
@@ -304,7 +306,7 @@ function openJournalList() {
   const body = jDrawer("Journal", JOURNAL.length ? `${JOURNAL.length} entr${JOURNAL.length === 1 ? "y" : "ies"} written by the people who use this profile` : "Nothing written yet");
   body.append(...[el("div", {class: "btns"}, jCanWrite() ? el("button", {class: "btn primary", type: "button", text: "Add an entry", onclick: () => journalForm(null, {}, openJournalList)}) : null,
       jCanWrite() && jGroups().length ? el("button", {class: "btn", type: "button", text: "Log a symptom group", onclick: () => journalPickGroup(openJournalList)}) : null,
-      aboutWords({title: "the journal"}, JOURNAL_HINT)),   // its ⓘ (#280)
+      aboutWords({title: "the journal"}, JOURNAL_HINT)), jSpotsLine(),   // its ⓘ (#280); the spots (#1139)
     ...jList(false).nodes].filter(Boolean));   // append(null) would write "null"
   showDrawer();
   renderTimeline();
@@ -344,7 +346,8 @@ function jWherePart(chosen, label = "Where on the body (optional)") {
    file itself (a data: address, as the page's policy allows) until the entry is saved. -> {node, get()} */
 const J_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"], J_PHOTOS_MAX = 6, J_PHOTO_MB = 20;
 function jPhotosPart(have, uid) {
-  const photos = (have || []).map(p => ({id: p.id, alt: p.alt || "", src: jPhotoUrl(p)}));
+  const photos = (have || []).map(p => ({id: p.id, alt: p.alt || "", spot: p.spot?.name || "", src: jPhotoUrl(p)}));
+  const spots = el("datalist", {id: `j-spots-${uid}`}, ...jSpotNames().map(n => el("option", {value: n})));   // earlier spots, or a new name (#1139)
   const list = el("div", {class: "jpics jpics-edit"}), msg = el("p", {class: "hint jphoto-msg", role: "status"});
   const input = el("input", {type: "file", id: `j-photo-${uid}`, accept: J_PHOTO_TYPES.join(","), multiple: true, class: "jphoto-in",
     "aria-labelledby": `j-photo-${uid}-l j-photo-${uid}-b`});   // "Photos (optional) …, Add photos…"
@@ -352,9 +355,12 @@ function jPhotosPart(have, uid) {
     list.replaceChildren(...photos.map((p, i) => {
       const alt = el("input", {type: "text", id: `j-alt-${uid}-${i}`, maxlength: 300, placeholder: "e.g. Red patch, 3 cm, left forearm", autocomplete: "off"});
       alt.value = p.alt; alt.oninput = () => { p.alt = alt.value; };
+      const spot = el("input", {type: "text", id: `j-spot-${uid}-${i}`, maxlength: 80, list: spots.id, placeholder: "e.g. Left forearm mole", autocomplete: "off"});
+      spot.value = p.spot; spot.oninput = () => { p.spot = spot.value; };
       // which photo it is, a field of the form: one removed or another put in its place is a change (drawer.js, #811)
       return el("figure", {class: "jpic"}, el("input", {type: "hidden", name: "photo", value: p.id}), el("img", {src: p.src, alt: p.alt || `Photo ${i + 1}`}),
         el("figcaption", {}, el("label", {for: alt.id, text: `What photo ${i + 1} shows (optional)`}), alt,
+          el("label", {for: spot.id, text: `The spot it's of, to see it over time (optional)`}), spot,
           el("button", {class: "btn", type: "button", text: "Remove", "aria-label": `Remove photo ${i + 1}`, onclick: () => {
             photos.splice(i, 1); draw(); sayIn(msg, "Photo removed. It's deleted once the entry is saved."); input.focus(); }})));
     }));
@@ -372,7 +378,7 @@ function jPhotosPart(have, uid) {
         const j = await r.json().catch(() => ({}));
         if (!r.ok) { sayIn(msg, typeof j.detail === "string" ? j.detail : `Couldn't send ${f.name} (${r.status}).`, true); continue; }
         const src = await new Promise((ok, no) => { const rd = new FileReader(); rd.onload = () => ok(rd.result); rd.onerror = no; rd.readAsDataURL(f); });
-        photos.push({id: j.id, alt: "", src});
+        photos.push({id: j.id, alt: "", spot: "", src});
         draw();
         sayIn(msg, `${f.name} added.` + (j.removed?.length ? ` Taken out of the file before it was kept: ${j.removed.join(", ")}.` : " There was nothing in it to take out, such as where it was taken."));
       } catch (err) { sayIn(msg, "Couldn't reach the server: " + err.message, true); }
@@ -381,8 +387,8 @@ function jPhotosPart(have, uid) {
   };
   draw();
   const node = el("div", {class: "jfield jphotos"}, el("span", {id: `j-photo-${uid}-l`}, "Photos (optional) ", el("span", {class: "hint", text: `JPEG, PNG or WebP, up to ${J_PHOTOS_MAX}`})),
-    el("label", {class: "btn pick", id: `j-photo-${uid}-b`}, "Add photos…", input), list, msg);   // the button's look (#353)
-  return {node, get: () => photos.map(p => ({id: p.id, alt: p.alt.trim()}))};
+    el("label", {class: "btn pick", id: `j-photo-${uid}-b`}, "Add photos…", input), list, spots, msg);   // the button's look (#353)
+  return {node, get: () => photos.map(p => ({id: p.id, alt: p.alt.trim(), spot: p.spot.trim()}))};
 }
 
 /* the add / edit form. j: the entry (null: a new one); preset: {kind, t} for a new one; back(): what Cancel shows */

@@ -1246,6 +1246,19 @@ SCHEMA = [
     ALTER TABLE sessions ADD COLUMN idp_mfa INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE sessions ADD COLUMN stepped_at INTEGER;
     """,
+    # version 50: spots (#1139; journal_photos.py): one place on the body over time, a mole, a rash or a wound, named
+    # by the person ("Left forearm mole"; encrypted) and tagged on the journal photos of it, to look at side by side.
+    # A photo is of one spot or none (spot_id); a spot no photo is of any more goes (journal_photos.tidy_spots).
+    """
+    CREATE TABLE journal_spots(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL);
+    CREATE INDEX journal_spots_profile ON journal_spots(profile_id);
+    ALTER TABLE journal_photos ADD COLUMN spot_id INTEGER REFERENCES journal_spots(id) ON DELETE SET NULL;
+    """,
 ]
 
 

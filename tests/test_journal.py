@@ -148,6 +148,7 @@ class Journal(unittest.TestCase):
         db = dbm.connect()
         db.execute("DELETE FROM journal")
         db.execute("DELETE FROM journal_photos")
+        db.execute("DELETE FROM journal_spots")
         db.execute("DELETE FROM settings WHERE key='journal.groups'")
         records._bump(db, self.pid)
         db.close()
@@ -643,6 +644,93 @@ class Journal(unittest.TestCase):
             return os.path.join(journal_photos.folder(self.pid), r["file"]) if r else None
         finally:
             db.close()
+
+    def test_spots(self):   # #1139: one spot over time
+        def entry(t, spot, note=""):
+            sent = self.photo(JPEG)
+            return sent["id"], self.add(kind="symptom", t=t, title="Mole", severity=0, note=note,
+                                          photos=[{"id": sent["id"], "alt": "", **({"spot": spot} if spot is not None else {})}])["id"]
+        a, ja = entry("2026-01-05", "Left forearm mole", "Fictional first look")
+        b, jb = entry("2026-03-05", "  left   FOREARM mole ")   # an earlier spot, in any letter case
+        c, jc = entry("2026-04-05", "Back of the neck")
+        d, jd = entry("2026-05-05", None)
+        spot = lambda: {p["id"]: p.get("spot") for e in self.robin.get(self.url()).json()["entries"] for p in e.get("photos", [])}
+        got = spot()
+        self.assertEqual(got[a], got[b])
+        self.assertEqual(got[a]["name"], "Left forearm mole", "the first name it was given")
+        self.assertEqual((got[c]["name"], got[d]), ("Back of the neck", None))
+        mole, neck = got[a]["id"], got[c]["id"]
+        self.assertEqual(self.kim.get(f"/api/profiles/{self.pid}/data").json()["journal"][0]["photos"][0]["spot"],
+                         {"id": mole, "name": "Left forearm mole"}, "in the records a viewer reads")
+        # kept with the photo, its name encrypted; never in the entry's body
+        db = dbm.connect()
+        self.assertTrue(db.execute("SELECT name FROM journal_spots WHERE id=?", (mole,)).fetchone()[0].startswith(crypto.FIELD))
+        self.assertNotIn("spot", journal.get(db, self.pid, ja)["photos"][0])
+        db.close()
+        self.add(status=400, kind="note", t="2026-04-04", note="x", photos=[{"id": self.photo(JPEG)["id"], "spot": "x" * 81}])
+        # renamed: never to another's name
+        sp = f"/api/profiles/{self.pid}/journal/spots"
+        r = self.lee.put(f"{sp}/{mole}", json={"name": "Mole, left forearm"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(sorted(e["id"] for e in r.json()["journal"]), [ja, jb], "the reply carries the entries it changed")
+        self.assertEqual(spot()[b]["name"], "Mole, left forearm")
+        r = self.lee.put(f"{sp}/{mole}", json={"name": "back of the NECK"}, headers=H)
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("merge", r.json()["detail"])
+        self.assertEqual(self.lee.put(f"{sp}/{mole}", json={"name": " "}, headers=H).status_code, 400)
+        # roles and CSRF
+        self.assertEqual(self.kim.put(f"{sp}/{mole}", json={"name": "x"}, headers=H).status_code, 403)
+        self.assertEqual(self.lee.put(f"{sp}/{mole}", json={"name": "x"}).status_code, 403)
+        self.assertEqual(self.kim.post(f"{sp}/{neck}/merge", json={"into": mole}, headers=H).status_code, 403)
+        self.assertEqual(self.kim.delete(f"{sp}/photos/{a}", headers=H).status_code, 403)
+        # merged: every photo of one is the other's, which keeps its name; the one merged goes
+        self.assertEqual(self.lee.post(f"{sp}/{neck}/merge", json={"into": neck}, headers=H).status_code, 400)
+        r = self.lee.post(f"{sp}/{neck}/merge", json={"into": mole}, headers=H)
+        self.assertEqual((r.status_code, [e["id"] for e in r.json()["journal"]]), (200, [jc]))
+        got = spot()
+        self.assertEqual({got[x]["id"] for x in (a, b, c)}, {mole})
+        self.assertEqual(self.lee.post(f"{sp}/{neck}/merge", json={"into": mole}, headers=H).status_code, 404, "gone")
+        self.assertEqual(self.lee.put(f"{sp}/{neck}", json={"name": "x"}, headers=H).status_code, 404)
+        # untagged: the photo stays with its entry, off the spot
+        r = self.lee.delete(f"{sp}/photos/{c}", headers=H)
+        self.assertEqual((r.status_code, [e["id"] for e in r.json()["journal"]]), (200, [jc]))
+        got = spot()
+        self.assertEqual((got[c], got[a]["id"]), (None, mole))
+        self.assertEqual(self.lee.delete(f"{sp}/photos/{c}", headers=H).status_code, 404, "not of a spot any more")
+        self.assertEqual(self.lee.delete(f"{sp}/photos/{d}", headers=H).status_code, 404)
+        # an entry saved again without the spot takes its photo off it; a spot no photo is of goes
+        self.assertEqual(self.robin.put(self.url(f"/{jb}"), json={"kind": "symptom", "t": "2026-03-05", "title": "Mole", "severity": 0,
+                                                              "photos": [{"id": b, "alt": ""}]}, headers=H).status_code, 200)
+        self.assertEqual(self.robin.delete(self.url(f"/{ja}"), headers=H).status_code, 200)
+        db = dbm.connect()
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM journal_spots WHERE profile_id=?", (self.pid,)).fetchone()[0], 0)
+        db.close()
+        # the activity log says what was done, never the spot's name
+        log = self.robin.get(f"/api/profiles/{self.pid}/activity?action=journal").json()
+        log = log["entries"] if isinstance(log, dict) else log
+        acts = [e["detail"].get("action") for e in log]
+        self.assertTrue({"spot.rename", "spot.merge", "spot.untag"} <= set(acts), acts)
+        self.assertNotIn("forearm", json.dumps(log))
+
+    def test_spots_in_export(self):   # #1139: carried by name, tagged again when the export is loaded
+        sent = [self.photo(JPEG)["id"] for _ in range(3)]
+        for i, (t, spot) in enumerate((("2026-01-05", "Left forearm mole"), ("2026-03-05", "Left forearm mole"), ("2026-04-05", None))):
+            self.add(kind="note", t=t, note=f"Fictional look {i}", photos=[{"id": sent[i], "alt": "", **({"spot": spot} if spot else {})}])
+        r = self.lee.get(f"/api/profiles/{self.pid}/export")
+        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+            data = json.loads(z.read("data.json"))
+        self.assertEqual([(e["photos"][0].get("spot") or {}).get("name") for e in data["journal"]], ["Left forearm mole"] * 2 + [None])
+        tmp = os.path.join(TMP, "export-spots.zip")
+        with open(tmp, "wb") as f:
+            f.write(r.content)
+        db = dbm.connect()
+        pid2 = db.execute("INSERT INTO profiles(name, created) VALUES('Spots loaded (fictional)', 1)").lastrowid
+        export.import_archive(db, pid2, tmp)
+        back = [e["photos"][0].get("spot") for e in journal.listing(db, pid2)]
+        self.assertEqual(back[0], back[1])
+        self.assertEqual((back[0]["name"], back[2]), ("Left forearm mole", None))
+        self.assertEqual(list(journal_photos.spots(db, pid2).values()), ["Left forearm mole"])
+        db.close()
 
     def test_photos_left_behind_go_at_start_up(self):   # #591
         """A photo sent for an entry never saved is gone a day later even if no other is sent: the app starts by sweeping
