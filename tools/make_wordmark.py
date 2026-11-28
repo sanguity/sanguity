@@ -64,12 +64,12 @@ def outline(f, gid, x, baseline, size):
 
 
 def mark_parts(name):
-    """The mark's drop, highlight, line and end dot, as elements, from its SVG."""
-    tree = ET.parse(os.path.join(LOGO, name))
-    paths = tree.getroot().findall(f"{{{SVG_NS}}}path")
-    drop, highlight, line = paths[0], paths[1], paths[2]
-    dot = tree.getroot().find(f"{{{SVG_NS}}}circle")
-    return drop, highlight, line, dot
+    """The mark's drop (the filled path), line (the stroked path) and end dot (the circle), from its SVG."""
+    root = ET.parse(os.path.join(LOGO, name)).getroot()
+    paths = root.findall(f"{{{SVG_NS}}}path")
+    drop = next(e for e in paths if e.get("fill") not in (None, "none"))
+    line = next(e for e in paths if e.get("stroke") and e.get("stroke-opacity") is None)
+    return drop, line, root.find(f"{{{SVG_NS}}}circle")
 
 
 def el(e, **change):
@@ -78,8 +78,8 @@ def el(e, **change):
 
 
 def drop_group(mark, with_line, x, y, scale):
-    drop, highlight, line, _ = mark_parts(mark)
-    inner = el(drop) + el(highlight) + (el(line, stroke_width="4.4") if with_line else "")
+    drop, line, _ = mark_parts(mark)
+    inner = el(drop) + (el(line, stroke_width="4.4") if with_line else "")
     return f'<g transform="translate({x:.2f} {y:.2f}) scale({scale})">{inner}</g>'
 
 
@@ -115,8 +115,8 @@ def lockup(f, data):
     for gid, x in glyphs:
         d, box = outline(f, gid, x0 + x, base, size)
         paths.append(d); boxes.append(box)
-    drop, highlight, line, dot = mark_parts("sanguity-mark.svg")
-    mark = el(drop) + el(highlight) + el(line) + (el(dot) if dot is not None else "")
+    drop, line, dot = mark_parts("sanguity-mark.svg")
+    mark = el(drop) + el(line) + (el(dot) if dot is not None else "")
     right = max(b[2] for b in boxes if b) + 2
     return svg((0, 0, right, 64), mark + f'\n  <path fill="{INK}" d="{" ".join(paths)}"/>')
 
