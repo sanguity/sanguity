@@ -1489,10 +1489,9 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .jshot-frame .jshot-top{position:absolute;inset:0;clip-path:inset(0 calc(100% - var(--at, 50%)) 0 0)}
 .jshot-line{position:absolute;top:0;bottom:0;left:calc(var(--at, 50%) - 1px);width:0;border-left:2px solid var(--surface);outline:1px solid var(--ink)}
 .ec-img{display:block;width:min(100%, 220px);height:auto;border:1px solid}   /* the lock-screen image's preview (emergency.js) */
-/* the card's editor beside its previews (#1162): one column, two from 62rem with the page widened while it's shown */
-main.acct.shr:has(#emergency:not([hidden])){max-width:1240px}
+/* the card's editor beside its previews (#1162), in the sidebar's 1280 px shell (#266): the previews under it below 75rem */
 .ec-wrap{display:grid;gap:var(--sp-4);align-items:start}
-@media (min-width:62rem){.ec-wrap{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}}
+@media (min-width:75rem){.ec-wrap{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}}
 .ec-sec{border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-1) var(--sp-3) var(--sp-2);margin:0 0 var(--sp-3);min-width:0}
 .ec-sec>legend{font-weight:var(--fw-semibold);padding:0 var(--sp-1)}
 .ec-place,.ec-pick,.ec-lines>li,.ec-addrow,.ec-sugs li{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-3)}
