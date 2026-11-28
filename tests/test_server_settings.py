@@ -115,7 +115,8 @@ class RestartSettings(unittest.TestCase):
         self.assertEqual(ss.uvicorn_options()["forwarded_allow_ips"], "172.16.0.0/12, 10.0.0.5")   # uvicorn's, at start
         phone = self.c.get("/api/settings/phone").json()
         self.assertEqual((phone["tz"], phone["slot_grace_days"]), ("America/Chicago", 14))
-        self.assertEqual(self.c.get("/api/settings/host").json()["proxies"], "172.16.0.0/12, 10.0.0.5")
+        rows = {x["name"]: x for x in self.c.get("/api/settings/install/restart").json()["settings"]}   # (#1119: no longer on Host)
+        self.assertEqual((rows["FORWARDED_ALLOW_IPS"]["value"], rows["FORWARDED_ALLOW_IPS"]["from"]), ("172.16.0.0/12, 10.0.0.5", "file"))
         about = {l["name"]: l for g in self.c.get("/api/settings/install/about").json()["limits"] for l in g["limits"]}
         self.assertEqual((about["UPLOAD_MAX_FILE_MB"]["value"], about["UPLOAD_MAX_FILE_MB"]["from"]), (2048, "file"))
         st = self.state()

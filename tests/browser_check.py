@@ -3751,6 +3751,10 @@ def notify_check(check, browser, base, cookies):
         check("…You → Notifications, once a server is set: each profile this person can see with New results and Dose "
               "reminders, a box turned on at once and said", len(rows) >= 2 and all(n == 2 for _, n in rows) and kinds == ["doses"], [rows, kinds])
         was = js("document.getElementById('notifyTopic').textContent")
+        uid = page.evaluate("async () => (await (await fetch('api/me')).json()).user.id")   # (whoever this page is signed in as)
+        db = dbm1130.connect()   # (its topic as it is now: a reset earlier in the run makes it new, #1130)
+        mine = "/" + (notify1130.topic(db, uid, make=False) or "")
+        db.close()
         page.click("#notifyAgain")
         answer_ask(page)
         page.locator("#notifyTopicMsg", has_text="A new topic").wait_for(timeout=10000)
