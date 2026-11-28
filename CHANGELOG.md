@@ -3949,6 +3949,10 @@ Everything on `main` so far; it becomes the first tagged release.
   date over 24 months away is said in years ("in 72 years", not "in 867 months"); a key-lab tile has no sparkline
   under two results; Type records in puts the open form above the kinds' chips on a phone; and on a phone's bar a tab
   with nothing in it (Body and activity with no phone data) gives its place to Labs, unless the tabs' order was set.
+- **Lab name matches in one place** (#1114): Settings → Install → Lab name matches is gone; each profile's card (This
+  person → Labs and ranges → Lab name matches) lists the matches an admin made for every profile under For every
+  profile on this server, an admin's to keep, change or remove there with an Undo, read by everyone else; the palette
+  and old addresses open the card.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 
@@ -3971,10 +3975,10 @@ From an install that keeps records in `data.json` (before #103):
   longer reads it. A `visitWorkouts` rule written before #43 keeps working as the regular expression it was.
 
 From an install that matched lab names at an import's review before #546:
-- Open Admin → Lab name matches once: a match remembered then that today's rule wouldn't make is listed first as
-  "To check" and isn't used until an admin keeps it (#569). Results already saved keep their series. Since #1097 a
-  review's is its profile's, listed first in Settings → This person → Labs and ranges → Lab name matches, for its
-  owners and editors to keep or forget.
+- Open Settings → This person → Labs and ranges → Lab name matches once, as an admin: a match remembered then that
+  today's rule wouldn't make is listed first as "To check" and isn't used until kept (#569): a review's is its
+  profile's (#1097), for its owners and editors to keep or forget; one for every profile is under For every profile
+  on this server (#1114), for an admin. Results already saved keep their series.
 
 From an install with one watch receiver secret (before #46):
 - Nothing to do for the phone that's already set up: `auth/watch_secret` keeps working as the first profile's

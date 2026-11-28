@@ -169,7 +169,8 @@ ROUTES = {
     ("GET", "/api/settings/install/about"): (ADMIN, None),   # General → About (#1004)
     ("GET", "/api/settings/install/demo"): (ADMIN, None), ("POST", "/api/settings/install/demo"): (ADMIN, None),   # General → Demo profile (#1101)
     ("DELETE", "/api/settings/install/demo"): (ADMIN, None),
-    ("GET", "/api/labmaps"): (ADMIN, None), ("PATCH", "/api/labmaps/{mid}"): (ADMIN, None), ("DELETE", "/api/labmaps/{mid}"): (ADMIN, None),
+    ("GET", "/api/labmaps"): (ADMIN, None), ("PATCH", "/api/labmaps/{mid}"): (ADMIN, "viewer"), ("DELETE", "/api/labmaps/{mid}"): (ADMIN, "viewer"),
+    ("POST", "/api/labmaps/undo/{cid}"): (ADMIN, "viewer"),   # (#1114: from a profile's card, ?profile= one the admin sees; PATCH and DELETE with it too)
     ("GET", "/api/connect/sources"): (ADMIN, None), ("POST", "/api/connect/sources"): (ADMIN, None),
     ("PATCH", "/api/connect/sources/{cid}"): (ADMIN, None), ("DELETE", "/api/connect/sources/{cid}"): (ADMIN, None),
     ("POST", "/api/connect/sources/{cid}/test"): (ADMIN, None),

@@ -1,8 +1,7 @@
 /* Sanguity · Settings → Install (#991; the Admin page before, #167): what only admins do, for the whole server, as
    groups of Settings' sidebar (settings-nav.js, which starts this: adminStart): General (#998, its sections their own
    scripts': gen-security.js, #1001), Accounts, Backups (admin-backups.js, #200), Connected-source apps and
-   their sync defaults, the Provider directory (both admin-sources.js), Lab name matches, Outside connections
-   (outside.js) and Install activity (activity.js), with the admins' notices over each. Someone who isn't an admin
+   their sync defaults, the Provider directory (both admin-sources.js), Outside connections (outside.js) and Install activity (activity.js), with the admins' notices over each. Someone who isn't an admin
    isn't shown them (settings-nav.js says why where an address names one), and the server refuses them their routes.
    Admins need a second factor of their own once the server has more than one account: until then each part says
    so. call(), say(), when(), plural() and ME are settings.js's. */
@@ -62,7 +61,7 @@ function syncNotice(rows) {
 function adminGate() {
   $("#adminTf").hidden = false; $("#adminTools").hidden = $("#userDanger").hidden = true; $("#users").hidden = false;
   $("#secNotice").hidden = $("#codeNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
-  for (const id of ["#gen-host", "#gen-security", "#gen-backups", "#gen-phone", "#gen-experimental", "#gen-demo", "#gen-about", "#backups", "#admin", "#sec-sync", "#directory", "#labmaps", "#installLog"]) gateCard($(id));
+  for (const id of ["#gen-host", "#gen-security", "#gen-backups", "#gen-phone", "#gen-experimental", "#gen-demo", "#gen-about", "#backups", "#admin", "#sec-sync", "#directory", "#installLog"]) gateCard($(id));
 }
 function gateCard(card) {
   if (card.querySelector(".adm-gate")) return;
@@ -410,71 +409,6 @@ $("#userNew").onsubmit = async ev => {
   }
 };
 
-/* ---------------------------------------------------------------- lab name matches */
-/* lab names matched during imports (#23): a review's for its profile, an admin's before for every profile (#927, said
-   under From, never which profile); admins change or remove them; never shows results. Those
-   to check (#569: remembered before #546 could fill in a look-alike as sure, and not applied until kept) come first,
-   marked, with Keep and Forget */
-async function loadLabmaps() {
-  const [list, names] = await Promise.all([call("labmaps"), call("lab-names").catch(() => [])]);
-  $("#labmapNames").replaceChildren(...[...new Set([...names, ...list.map(m => m.target).filter(Boolean)])].map(n => el("option", {value: n})));
-  $("#labmaps").hidden = false;
-  if (!list.length) { $("#labmapList").replaceChildren(emptyState("None: each profile's own matches are on its Settings, This person, Labs and ranges.", null, {cls: ""})); return; }   // (#494; #1097)
-  const as = m => m.target ? `charted as “${m.target}”` : "kept as a series of its own";
-  const toCheck = list.filter(m => m.check).length;
-  $("#labmapList").replaceChildren(...toCheck ? [el("p", {class: "howto", text: `${toCheck} ${toCheck === 1 ? "match" : "matches"} to check: ` +
-    "made before Sanguity stopped filling in look-alike names (Vitamin B6 as Vitamin B1), so not used until kept."})] : [], el("table", {class: "tbl lm"},
-    el("thead", {}, el("tr", {}, ...["Reported as", "Goes to", "From", "Added", ""].map(thOf))),
-    el("tbody", {}, ...list.map(m => {
-      const goes = el("td", {class: "lm-target"}, m.target || "its own series", m.check ? el("span", {class: "tag lm-check", text: "To check"}) : null);
-      const edit = () => {
-        const input = el("input", {type: "text", list: "labmapNames", value: m.target || "", maxlength: 120, "aria-label": `Series for ${m.name}`,
-                                   placeholder: "Leave empty to keep it separate"});
-        const ok = el("button", {class: "btn small primary", type: "submit", text: "Save"});
-        const no = el("button", {class: "btn small", type: "button", text: "Cancel", onclick: () => lmAgain(m.id, "button")});
-        goes.replaceChildren(el("form", {class: "lm-edit", onsubmit: async ev => {
-          ev.preventDefault();
-          try { const r = await call("labmaps/" + m.id, "PATCH", {target: input.value.trim() || null}); say("#labmapMsg", `“${r.name}” is now ${as(r)}.`); lmAgain(m.id, "button"); }
-          catch (e) { e.status === 404 ? lmAgain(m.id, "button", e.message) : say("#labmapMsg", e.message, true); }
-        }}, input, ok, no));
-        input.focus();
-      };
-      return el("tr", {"data-labmap": m.id},
-        el("td", {}, el("b", {text: m.name}), el("span", {class: "muted", text: [m.unit, m.loinc && "LOINC " + m.loinc].filter(Boolean).map(x => " · " + x).join("")})),
-        goes,
-        el("td", {}, m.label),   // (#1097: every one here is for every profile; a profile's own are its Settings')
-        el("td", {}, `${when(m.created)} by ${m.created_by}`, m.changed ? el("div", {class: "muted", text: `changed ${when(m.changed)} by ${m.changed_by}`}) : null),
-        el("td", {class: "acts"},
-          m.check ? el("button", {class: "btn small primary", type: "button", text: "Keep", onclick: async () => {
-            // only the match shown (#575: refused, 409, once another admin has changed it)
-            try { const r = await call("labmaps/" + m.id, "PATCH", {target: m.target, keep: true}); say("#labmapMsg", `Kept: “${r.name}” is ${as(r)}.`); lmAgain(m.id, "button"); }
-            catch (e) { e.status === 404 || e.status === 409 ? lmAgain(m.id, "button", e.message) : say("#labmapMsg", e.message, true); }
-          }}) : null,
-          el("button", {class: "btn small", type: "button", text: "Change", onclick: edit}),
-          el("button", {class: "btn small", type: "button", text: m.check ? "Forget" : "Remove", onclick: async () => {
-            if (!await ask({title: `Forget the match for “${m.name}”?`,
-                            message: "The next import that has it will ask again. Results already saved keep their series.",
-                            action: "Forget match", danger: true})) return;
-            try { await call("labmaps/" + m.id, "DELETE"); say("#labmapMsg", `Forgot the match for “${m.name}”.`); lmAgain(m.id, "button:last-child"); }
-            catch (e) { e.status === 404 ? lmAgain(m.id, "button:last-child", e.message) : say("#labmapMsg", e.message, true); }
-          }})));
-    }))));
-}
-
-/* the matches drawn again after a Save, Cancel or Remove (#528: focus fell to the page): focus on the same button of
-   its row (sel: Change, or Remove), else the next row's or the one before's, as Passkeys' (util.js focusNear); one
-   removed elsewhere (gone: what the server said), that said where it was. Its row found by id where it's still there:
-   a match changed moves to the top (newest first), and by its old place focus went to another's Change; one Keep
-   refused (#575: changed elsewhere), said above its row where it is now */
-async function lmAgain(id, sel, gone) {
-  const rows = () => [...$("#labmapList").querySelectorAll("tr[data-labmap]")], find = () => rows().findIndex(r => r.dataset.labmap === String(id));
-  const at = Math.max(0, find());
-  await loadLabmaps();
-  sel = "td.acts " + sel;
-  if (gone) return goneSay(rows(), find() < 0 ? at : find(), gone, sel, $("#labmaps h2"), $("#labmapList"));
-  focusNear(rows(), find() < 0 ? at : find(), sel, $("#labmaps h2"));
-}
-
 /* ---------------------------------------------------------------- install activity (requiring two-factor sign-in: gen-security.js, #1001) */
 /* account events only: who created, disabled or reset which account, and the server's own changes (no records) */
 function loadInstallLog() {
@@ -492,7 +426,7 @@ async function adminStart(first) {
   SgOutside.load();     // outside.js
   if (ME.user.admin_needs_two_factor) { adminGate(); SET_NAV.again(); return; }
   loadInstallLog();
-  await Promise.all([loadUsers(), loadNotice(), loadLabmaps(), loadGenSecurity(), loadRequireTf(), cs && loadSetup(), cs && loadSync(), loadBackups(),
+  await Promise.all([loadUsers(), loadNotice(), loadGenSecurity(), loadRequireTf(), cs && loadSetup(), cs && loadSync(), loadBackups(),
                      loadHost(), loadGenBackups(), loadPhone(), loadGenExperimental(), loadGenDemo(), loadGenAbout(),
                      cs && loadDirectory()]);   // General's parts (#998); #992: the directory's lists, an admin's alone
   SET_NAV.again();
