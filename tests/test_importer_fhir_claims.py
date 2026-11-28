@@ -79,7 +79,7 @@ class BlueButtonExport(Shape, unittest.TestCase):
                 ours_lines = {k for e in claims_of(self.data) if e["k"] == "claim" for l in self.data["details"][e["id"]]["lines"] for k in l}
                 self.assertLessEqual(line_keys & {"date", "desc", "code", "billed", "denied"}, ours_lines)
         for c in self.data["costs"]:
-            self.assertEqual(set(c), COST_KEYS)
+            self.assertEqual(set(c) - {"ded"}, COST_KEYS)   # ded: the deductible part, where the EOB gives one (#1127)
             self.assertIn(c["kind"], ("medical", "pharmacy"))
             self.assertEqual(c["d"], next(e for e in self.data["events"] if e["id"] == c["id"])["t"][:10])
         # one Costs row per claim event, and none for anything else
@@ -101,6 +101,8 @@ class BlueButtonExport(Shape, unittest.TestCase):
         self.assertEqual(c["cat"], "Hospital outpatient (facility)")
         self.assertTrue(d["visit"]["facility"])
         self.assertEqual((c["billed"], c["paid"], c["owe"]), (540.0, 175.0, 65.0))   # owe: deductible + coinsurance
+        self.assertTrue(0 < c["ded"] < 65.0, c)   # (#1127) its deductible part, kept for the plan years
+        self.assertEqual(d["deductible"], c["ded"])
         self.assertEqual(c["status"], "Paid")                    # one line denied, the claim paid
         self.assertEqual(d["lines"][1]["denied"], ["Not medically necessary (fictional)"])
         self.assertNotIn("abn", e)

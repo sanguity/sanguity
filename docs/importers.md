@@ -302,7 +302,8 @@ its `fhir:` keys, so the same records uploaded on their own are found as duplica
 ### `costs`: one row per claim
 
 `{"id", "d" (date), "ins", "billed", "paid", "owe", "status", "kind" ("medical"/"pharmacy"), "cat", "prov", "title"}`,
-where `id` is the claim's event.
+where `id` is the claim's event, and optionally `"ded"`: the part of `owe` that went to the deductible, where the
+source says (Costs' plan years count it toward the deductible, #1127).
 
 
 The claims importers (`claims_uhc.py`, `claims_bcbs.py`, `claims_csv.py`) share `_claims.py`: build.py's amounts,

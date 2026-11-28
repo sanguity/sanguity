@@ -1259,6 +1259,22 @@ SCHEMA = [
     CREATE INDEX journal_spots_profile ON journal_spots(profile_id);
     ALTER TABLE journal_photos ADD COLUMN spot_id INTEGER REFERENCES journal_spots(id) ON DELETE SET NULL;
     """,
+    # version 51 (#1127): a profile's plan years, typed in on the Costs tab (costplan.py): each one's start date,
+    # deductible and out-of-pocket maximum, and the family amounts when given, in body, encrypted; who typed or changed
+    # it and when are plain, as med_entries' are.
+    """
+    CREATE TABLE cost_plans(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,                        -- JSON, encrypted: {start, deductible, oop, familyDeductible?, familyOop?}
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_name TEXT,
+        changed INTEGER);
+    CREATE INDEX cost_plans_profile ON cost_plans(profile_id);
+    """,
 ]
 
 

@@ -30,16 +30,19 @@ to an import, and finds its payment or claim again by key: a payment's own key (
 payments, which have none, "pay:h:" and a hash of its date, payee, amount, account and memo; a claim's event key
 (edits.key_of). A mark whose payment or claim is gone stays until its record comes back.
 
-data["oop"] (only when the profile has payments or marks, so records with neither are served as before):
+data["oop"] (only when the profile has payments, marks, claims or plan years, so records with none are served as
+before):
   payments  [{i (place in outOfPocket.payments), key, src, imp, hsa, hsaFrom, claim (event id), match, dup (i of
              the payment counted instead), receipt (event id), marked}]
   claims    [{id (event id), key, owe, by ([i] matched), paid, counted, hsa, marked}]   claim shares over zero
+  plans     the plan years typed in (costplan.plans, #1127)
+  years     the deductible and out-of-pocket sums per plan year, or calendar year outside them (costplan.years)
 Never stored from an import (records.SERVED): an export's data.json has it, worked out again when loaded.
 """
 import hashlib, json, re
 from datetime import date
 
-from . import crypto, db as dbm, edits, security as sec
+from . import costplan, crypto, db as dbm, edits, security as sec
 
 DUP_DAYS = 3
 MATCH_BEFORE, MATCH_AFTER = 3, 180
@@ -140,7 +143,8 @@ def annotate(db, pid, data, imps=()):
     pays = ((data.get("outOfPocket") or {}).get("payments")) if isinstance(data.get("outOfPocket"), dict) else None
     pays = pays if isinstance(pays, list) else []
     said = marks(db, pid)
-    if not pays and not said:
+    typed = costplan.plans(db, pid)
+    if not pays and not said and not typed and not any(isinstance(c, dict) for c in data.get("costs") or []):
         return data
     imports = data.get("imports") or {}
     events = {e.get("id"): e for e in data.get("events") or [] if isinstance(e, dict)}
@@ -228,5 +232,6 @@ def annotate(db, pid, data, imps=()):
         cl["counted"] = 0.0 if cl["by"] else cl["owe"]
 
     data["oop"] = {"payments": [{k: v for k, v in p.items() if not k.startswith("_")} for p in out_p],
-                   "claims": [{k: v for k, v in c.items() if not k.startswith("_")} for c in claims]}
+                   "claims": [{k: v for k, v in c.items() if not k.startswith("_")} for c in claims],
+                   "plans": typed, "years": costplan.years(data, typed)}
     return data

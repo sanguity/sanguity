@@ -13,7 +13,9 @@ Insurers' patient-access APIs and Medicare Blue Button 2.0 give claims as CARIN 
 Amounts come from the EOB's `total` where it has them, else the sum over its items' `adjudication`, matched by
 the adjudication category's code in any code system (CARIN's C4BBAdjudication and the base FHIR adjudication codes
 share them): billed = submitted; paid = benefit (else paidtoprovider + paidtopatient, else payment.amount); owe =
-memberliability (else copay + deductible + coinsurance). A negative amount (an adjustment) counts as it is.
+memberliability (else copay + deductible + coinsurance). A negative amount (an adjustment) counts as it is. The
+deductible part of that share, where the EOB gives one, is kept too (`ded` on the Costs row, `deductible` on the
+claim): the Costs tab's plan years count it toward the deductible (costplan.py, #1127).
 
 Status: "Denied" when the payer denied the whole claim (a denialreason, or C4BBPayerAdjudicationStatus "denied",
 on the claim or on every line, and nothing paid), "Pending" while it is queued or partly processed, else "Paid"
@@ -233,6 +235,7 @@ def add_claims(eobs, idx, rkey, b, warnings):
         owe = pick("memberliability")
         if owe is None:
             owe = pick(*OWE_PARTS) or 0.0
+        ded = pick("deductible")   # (#1127) the part of the share that went to the deductible, when the EOB says
 
         lines = []
         for it in items:
@@ -252,11 +255,14 @@ def add_claims(eobs, idx, rkey, b, warnings):
             superseded += 1
             original = {"billed": billed, "paid": paid, "owe": owe}
             billed = paid = owe = 0.0
+            ded = None
         network = _support(r, "benefitpaymentstatus") or _support(r, "billingnetworkcontractingstatus")
         detail = {"type": "claim", "insurer": insurer, "kind": "Pharmacy" if pharmacy else "Medical", "provider": prov,
                   "claimId": _claim_id(r), "billed": billed, "paid": paid, "owe": owe, "status": status}
         if plan:
             detail["plan"] = plan
+        if ded is not None:
+            detail["deductible"] = ded
         if network:
             detail["network"] = str(network)
         if header_denied:
@@ -290,7 +296,8 @@ def add_claims(eobs, idx, rkey, b, warnings):
         eid = b.add(iso(date), kind, title, sub, detail, end=iso(end) if end and not pharmacy else None,
                     abn=1 if denied else None, hidden=1 if gone else None, key=rkey(r))
         costs.append({"id": eid, "d": date, "ins": insurer, "billed": billed, "paid": paid, "owe": owe, "status": status,
-                      "kind": "pharmacy" if pharmacy else "medical", "cat": cat, "prov": prov, "title": title})
+                      "kind": "pharmacy" if pharmacy else "medical", "cat": cat, "prov": prov, "title": title,
+                      **({"ded": ded} if ded is not None else {})})
     if skipped:
         warnings.append(f"Skipped {skipped} claim{'s' if skipped != 1 else ''} the insurer marked cancelled or entered in error.")
     if superseded:

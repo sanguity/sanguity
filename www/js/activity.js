@@ -30,7 +30,8 @@ const WHAT = {
   labmap: d => ({add: "matched a lab name to a test", keep: "kept a lab name as its own test", change: "changed a lab name match", check: "kept a lab name match to check",
     remove: "removed a lab name match", undo: "undid a change to a lab name match"}[d.change] || "changed a lab name match") + (d.moved ? `, moving ${d.moved} saved result${d.moved === 1 ? "" : "s"}` : ""),
   undo: d => `undid an import${d.label ? ` (${d.label})` : ""}, removing what it brought`,
-  edit: d => d.action === "cost" ? `marked ${d.of === "claim" ? "a claim's share" : "an out-of-pocket payment"}` + [   // #55
+  edit: d => d.action === "cost" && d.change ? `${{add: "added", change: "changed", remove: "removed"}[d.change] || "changed"} ${d.of === "bill" ? "a bill" : "a plan year"} on Costs` :   // #1127, #1128
+    d.action === "cost" ? `marked ${d.of === "claim" ? "a claim's share" : "an out-of-pocket payment"}` + [   // #55
       "hsa" in d && (d.hsa ? ` as paid with an ${d.hsa}` : d.hsa === "" ? " as paid with neither an HSA nor an FSA" : " to be tagged from what it says"),
       "claim" in d && ({claim: " as paying a claim", none: " as paying no claim"}[d.claim] || " to be matched again"),
       "same" in d && (d.same === false ? " as a payment of its own" : " to be checked for duplicates again")].filter(Boolean).join(",") :
