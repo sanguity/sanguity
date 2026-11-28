@@ -90,7 +90,7 @@ function codeStep(on, methods = {code: true}) {
    its second step (the account's code or passkey), or, for a link started under Settings (OIDC_LINK), back there with
    what happened (OIDC_SAID, account.js) */
 const oidcBtn = document.getElementById("oidc"), oidcBox = document.getElementById("oidcBox");
-const OIDC_SAID = "sgOidcSaid", OIDC_LINK = "sgOidcLink";
+const OIDC_SAID = "sgOidcSaid", OIDC_LINK = "sgOidcLink", OIDC_BACK = "sgOidcBack";
 let oidcOnly = false, oidcP = null;
 function oidcShow(p) {
   if (!p || !p.label) return;
@@ -120,8 +120,8 @@ oidcBtn.addEventListener("click", async () => {
 });
 async function oidcBack(p) {
   try { history.replaceState(null, "", location.pathname); } catch (e) {}
-  const linking = sessionStorage.getItem(OIDC_LINK) === "1";
-  sessionStorage.removeItem(OIDC_LINK);
+  const linking = sessionStorage.getItem(OIDC_LINK) === "1", back = sessionStorage.getItem(OIDC_BACK);
+  sessionStorage.removeItem(OIDC_LINK); sessionStorage.removeItem(OIDC_BACK);
   const busy = el("p", {class: "note", id: "oidcBusy", role: "status", text: "Finishing the sign-in…"});
   f.querySelector(".logo").after(busy);
   let r, j = {};
@@ -133,8 +133,14 @@ async function oidcBack(p) {
   busy.remove();
   const said = j.detail || (r && !r.ok ? "The sign-in couldn't be finished (" + r.status + ")." : "");
   if (linking) {   // back to Sign-in and security, where it was started, with what happened
-    sessionStorage.setItem(OIDC_SAID, JSON.stringify(r && r.ok ? {text: `Linked${j.name ? ` “${j.name}”` : ""}: you can sign in with it now.`} : {text: said, bad: true}));
+    sessionStorage.setItem(OIDC_SAID, JSON.stringify(r && r.ok ? {text: `Linked${j.name ? ` “${j.name}”` : ""}: you can sign in with it now.`, where: "oidc"}
+      : {text: said, bad: true, where: "oidc"}));
     location.replace("settings.html#oidc");
+    return;
+  }
+  if (back && /^settings\.html[?#]?/.test(back)) {   // the fresh check at the provider (admin.js confirmIdentity): back where it was asked
+    sessionStorage.setItem(OIDC_SAID, JSON.stringify(r && r.ok && j.reauth ? {text: "Confirmed it's you: do it again now."} : {text: said, bad: true}));
+    location.replace(back);
     return;
   }
   if (r && r.ok && j.two_factor) {

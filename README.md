@@ -765,18 +765,21 @@ contacted until it's set up.
 2. In Sanguity, give the **issuer** (exactly as the provider shows it), the **client ID** and the **client secret**,
    and press **Test connection**. The secret is kept encrypted and never shown again; or set `OIDC_CLIENT_SECRET` in
    `.env` (or the app's environment), which then wins.
-3. Each person links their identity under **Settings → You → Sign-in and security → Sign-in provider** (after
-   confirming it's them, as for adding a passkey), or an admin links one for an account under **Settings → Install →
+3. Each person links their identity under **Settings → You → Sign-in and security → Sign-in provider** (with their
+   password, as for adding a passkey), or an admin links one for an account under **Settings → Install →
    Accounts**, by its subject (the provider's ID for the person, the `sub` of its ID tokens). No account is made
    automatically: an identity linked to no account is refused.
 
-The provider's sign-in counts as two-factor sign-in when its ID token says so: `amr` naming a multi-factor method
-(`mfa`, `otp`, `hwk` or `sc`), or an `acr` you set under Sign-in provider. Otherwise Sanguity asks for the account's
+The provider's sign-in counts as two-factor sign-in when its ID token says so: `amr` saying `mfa`, or naming two
+different methods (`pwd` and `otp`, say; one alone, like a code sent by email, is one factor), or an `acr` you set under
+Sign-in provider. Otherwise Sanguity asks for the account's
 own code or passkey after it, where the account has one, as after a password.
 
 **Sign in with OIDC only** turns off passwords and passkeys on their own for every account: everyone signs in with the
 provider. It's offered only once your own identity there has signed in, and while it's on the provider's settings
-can't be changed. If the provider stops working, turn it back on the server:
+can't be changed. Where Sanguity would ask for the password (to confirm it's you, to turn on two-factor sign-in, to
+add a passkey), it asks for a code, a passkey or signing in again at the provider instead, and nobody is held at a
+password change. If the provider stops working, turn it back on the server:
 `docker compose exec app python -m server.manage oidc-only off`.
 
 Examples (`health.example.com` is your Sanguity's address):

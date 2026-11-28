@@ -6,7 +6,10 @@
                                           to: signed in (as a password sign-in is), the second step asked for, or, for a
                                           link started below, the identity linked
   GET    /api/me/oidc                     settled: the provider's name, and this account's linked identities
-  POST   /api/me/oidc/start               settled, after the fresh check: {"url"}, to link this account's identity
+  POST   /api/me/oidc/start               settled, {password}: {"url"}, to link this account's identity (the password as
+                                          adding a passkey asks it; with OIDC only, a code's, a passkey's or the provider's
+                                          fresh check instead, main._password)
+  POST   /api/me/reauth/oidc/start        settled: {"url"}, the fresh check at the provider (signed in again there now)
   DELETE /api/me/oidc/{iid}               settled, after the fresh check: unlink one (signs out every other sign-in)
   GET    /api/settings/install/oidc       admin: General → Sign-in provider, its client secret only as where it's from
   PUT    /api/settings/install/oidc       admin, after the fresh check: a change (each logged; the secret by name only)
@@ -23,8 +26,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from . import accounts, activity, config, crypto, db as dbm, oidc, security as sec
-from .main import (_audit, _client_ip, _remember_device, _request_host, _same_site, _secure, _session, _start_session,
-                   admin, fresh, get_db, must_change, second_step, settled)
+from .main import (_audit, _client_ip, _password, _remember_device, _request_host, _same_site, _secure, _session,
+                   _start_session, _verified, admin, fresh, get_db, must_change, second_step, settled)
 
 router = APIRouter()
 
@@ -42,14 +45,21 @@ def _page_origin(request):
     return f"{request.url.scheme}://{_request_host(request)}"
 
 
+def _cookie(request):
+    """(name, path) of the browser cookie: over HTTPS __Host-sanguity_oidc at /, which no other name or plain-HTTP
+    page can set (#1109's review: one planted for /api/login/oidc would bind a sign-in to someone else's), as the
+    session cookie's (config.COOKIE_HOST); over plain HTTP, sanguity_oidc for /api/login/oidc only."""
+    return ("__Host-" + oidc.BROWSER_COOKIE, "/") if _secure(request) else (oidc.BROWSER_COOKIE, oidc.COOKIE_PATH)
+
+
 def _begin(db, request, response, purpose, s=None):
     try:
         url, browser = oidc.start(db, purpose, _page_origin(request), uid=s and s["id"], sid=s and s["sid"],
                                   who=s, ip=_client_ip(request))
     except oidc.OidcError as e:
         raise _refused(e) from None
-    response.set_cookie(oidc.BROWSER_COOKIE, browser, max_age=oidc.STATE_TTL, path=oidc.COOKIE_PATH, httponly=True,
-                        samesite="strict", secure=_secure(request))
+    name, path = _cookie(request)
+    response.set_cookie(name, browser, max_age=oidc.STATE_TTL, path=path, httponly=True, samesite="strict", secure=_secure(request))
     return {"url": url}
 
 
@@ -77,10 +87,10 @@ def login_return(body: Return, request: Request, response: Response, db=Depends(
     if (w := sec.throttle.wait(*keys)):
         _audit("login.throttled", request, step="oidc")
         raise HTTPException(429, f"Too many failed sign-ins. Try again in {w} seconds.", headers={"Retry-After": str(w)})
-    response.delete_cookie(oidc.BROWSER_COOKIE, path=oidc.COOKIE_PATH, httponly=True, samesite="strict", secure=_secure(request))
+    name, path = _cookie(request)
+    response.delete_cookie(name, path=path, httponly=True, samesite="strict", secure=_secure(request))
     try:
-        entry, claims, mfa = oidc.finish(db, (body.state or "")[:200], body.code, request.cookies.get(oidc.BROWSER_COOKIE),
-                                         body.error, ip=ip)
+        entry, claims, mfa = oidc.finish(db, (body.state or "")[:200], body.code, request.cookies.get(name), body.error, ip=ip)
     except oidc.OidcError as e:
         if e.status < 500:   # (a provider that didn't answer isn't the person's wrong try)
             sec.throttle.fail(*keys)
@@ -89,6 +99,8 @@ def login_return(body: Return, request: Request, response: Response, db=Depends(
     issuer, sub, label = entry["issuer"], claims["sub"], oidc.load(db)["label"]
     if entry["purpose"] == "link":
         return _linked(db, request, entry, issuer, sub, claims)
+    if entry["purpose"] == "reauth":
+        return _reauthed(db, request, entry, issuer, sub, claims)
     uid = oidc.account_for(db, issuer, sub)
     u = db.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone() if uid else None
     if not u or u["disabled"]:
@@ -97,7 +109,7 @@ def login_return(body: Return, request: Request, response: Response, db=Depends(
         raise HTTPException(401, "That account can't sign in." if u else
                             f"Your {label} identity isn't linked to an account here. Sign in another way and link it under "
                             "Settings, Sign-in and security, or ask an admin to link it to your account.")
-    oidc.used(db, issuer, sub)
+    oidc.used(db, issuer, sub, oidc.shown_name(claims))
     if not mfa and (step := second_step(db, u, "oidc")):   # the provider didn't say two factors: the account's own, now
         return {**step, "username": u["username"]}
     _remember_device(request, response, db, u["id"])
@@ -105,11 +117,28 @@ def login_return(body: Return, request: Request, response: Response, db=Depends(
     return {"must_change_pw": must_change(db, u), "username": u["username"]}
 
 
-def _linked(db, request, entry, issuer, sub, claims):
-    """The link started under Sign-in and security: for the session that started it, still signed in."""
+def _here(db, request, entry, what):
+    """The session that started a link or a fresh check, still signed in here."""
     s = _session(request, db)
     if not s or s["sid"] != entry["sid"] or s["id"] != entry["uid"]:
-        raise HTTPException(401, "You're signed out of Sanguity here, so the identity wasn't linked. Sign in, then link it again.")
+        raise HTTPException(401, f"You're signed out of Sanguity here, so {what}. Sign in, then try again.")
+    return s
+
+
+def _reauthed(db, request, entry, issuer, sub, claims):
+    """The fresh check at the provider: signed in again there just now (oidc.finish checked auth_time), as an identity
+    linked to this session's account. It stands in for the password while OIDC only is on (main._password)."""
+    s = _here(db, request, entry, "it couldn't confirm it's you")
+    if oidc.account_for(db, issuer, sub) != s["id"]:
+        _audit("reauth.fail", request, s, action="fresh check", step="oidc", reason="another identity")
+        raise HTTPException(403, "That identity at the provider isn't the one linked to your account here.")
+    oidc.used(db, issuer, sub, oidc.shown_name(claims))
+    return {"reauth": True, **_verified(db, s, stepped=True)}
+
+
+def _linked(db, request, entry, issuer, sub, claims):
+    """The link started under Sign-in and security: for the session that started it, still signed in."""
+    s = _here(db, request, entry, "the identity wasn't linked")
     name = oidc.shown_name(claims)
     try:
         with dbm.transaction(db):
@@ -129,13 +158,31 @@ def mine(s=Depends(settled), db=Depends(get_db)):
     return {"provider": oidc.brief(db), "identities": oidc.listing(db, s["id"])}
 
 
+class Proof(BaseModel):
+    password: str = ""
+
+
 @router.post("/api/me/oidc/start")
-def link_start(request: Request, response: Response, s=Depends(settled), db=Depends(get_db)):
-    """Linking adds a way in: after the fresh check, as the most powerful changes are."""
+def link_start(body: Proof, request: Request, response: Response, s=Depends(settled), db=Depends(get_db)):
+    """Linking adds a way in, and its sign-ins may count as two factors: the password, as adding a passkey asks it
+    (#590; #1109's review: a sign-in's fresh check alone let someone at the browser for a few minutes link their own);
+    with OIDC only on, a fresh check with a code, a passkey or the provider instead (main._password)."""
     if not oidc.brief(db):
         raise HTTPException(404, "No sign-in provider is set up on this server.")
-    fresh(request, s, "link a sign-in provider")
+    _password(request, db, s, body.password, "link a sign-in provider")
     return _begin(db, request, response, "link", s)
+
+
+@router.post("/api/me/reauth/oidc/start")
+def reauth_start(request: Request, response: Response, s=Depends(settled), db=Depends(get_db)):
+    """The fresh check at the provider (#1109's review): for an account with an identity linked there, signed in again
+    now (prompt=login, max_age=0). Settled, not user: where two-factor sign-in is required and OIDC only is on, it's how
+    an account with none confirms it's them to set one up."""
+    if not oidc.brief(db):
+        raise HTTPException(404, "No sign-in provider is set up on this server.")
+    if not oidc.current_count(db, s["id"]):
+        raise HTTPException(409, "No identity at the sign-in provider is linked to your account.")
+    return _begin(db, request, response, "reauth", s)
 
 
 def _last_way_in(db, uid, iid):
@@ -278,11 +325,12 @@ def admin_link(uid: int, body: Subject, request: Request, s=Depends(admin), db=D
     fresh(request, s, "link a sign-in provider")
     try:
         with dbm.transaction(db):
-            iid = oidc.link(db, uid, cfg["issuer"], sub)
+            iid = oidc.link(db, uid, cfg["issuer"], sub, by=s["id"])   # (its person told, on Sign-in and security, oidc.listing)
             activity.log(db, "oidc.link", s, detail={"username": target["username"], "name": sub}, ip=_client_ip(request))
     except oidc.OidcError as e:
         raise _refused(e) from None
-    _audit("oidc.link", request, s, warn=False, account=target["username"])
+    # in the security log as the account's event too: a way into it that its person didn't make (#1109's review)
+    _audit("oidc.link", request, target, by=s["username"], subject=sub[:255])
     return {"id": iid}
 
 

@@ -2901,6 +2901,7 @@ def oidc_check(check, browser, base, cookies):
         page.goto(base + "/settings.html?profile=1#oidc")
         page.wait_for_selector("#oidcLinkBtn", timeout=20000)
         fits += looks("Sign-in and security's Sign-in provider", "#oidc")
+        page.fill("#oidc form input[type=password]", PW)   # the password first, as adding a passkey asks it (#1109's review)
         page.focus("#oidcLinkBtn")
         page.keyboard.press("Enter")
         page.wait_for_url("**/settings.html#oidc", timeout=20000)
@@ -2953,6 +2954,23 @@ def oidc_check(check, browser, base, cookies):
         page.click("#signinOnly")
         answer_ask(page)
         page.wait_for_function("document.getElementById('signinOnlyMsg')?.textContent.startsWith('Only')", timeout=15000)
+        # the fresh check with OIDC only on (#1109's review): no password asked; signing in again at the provider instead,
+        # back here with it said
+        page.goto(base + "/settings.html?profile=1#oidc")
+        page.reload()   # (only the hash changed: the page loaded again, to read /api/me as it is now)
+        page.wait_for_selector("#oidcList tbody tr", timeout=20000)
+        js("() => { confirmIdentity(document.getElementById('oidcReauth')).catch(() => {}); }")   # (not waited for: it waits for the person)
+        page.wait_for_selector("#oidcReauth:not([hidden]) button", timeout=15000)
+        asked = js("""[!!document.querySelector('#oidcReauth input[type=password]'), [...document.querySelectorAll('#oidcReauth button')].map(b => b.textContent),
+          document.querySelector('#oidcReauth p').textContent]""")
+        check("…with OIDC only on, the fresh check asks no password: a code, or signing in again at the provider",
+              not asked[0] and "Sign in again with Authentik (fictional)" in asked[1] and "your password" not in asked[2], asked)
+        page.click("#oidcReauth button:text-is('Sign in again with Authentik (fictional)')")
+        page.wait_for_url("**/settings.html?profile=1#oidc", timeout=20000)
+        page.wait_for_function("document.body.textContent.includes(\"Confirmed it's you\")", timeout=15000)
+        check("…signing in again there brings it back where it was asked, said", True)
+        page.goto(base + "/settings.html?profile=1#gen-signin")
+        page.wait_for_selector("#signinOnly", timeout=20000)
         out = browser.new_context(viewport={"width": 320, "height": 800}, bypass_csp=True)
         p3 = out.new_page()
         p3.goto(base + "/login.html")

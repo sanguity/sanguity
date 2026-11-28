@@ -318,7 +318,7 @@ class OIDC(unittest.TestCase):
             r = c.post("/api/login/code", json={"ticket": r.json()["ticket"], "code": self.code("lee")}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertTrue(any('"method":"oidc + code"' in m for m in seen.output), seen.output)
-        for token in ({"amr": ["pwd", "mfa"]}, {"amr": ["hwk"]}, {"acr": "gold"}):
+        for token in ({"amr": ["pwd", "mfa"]}, {"amr": ["pwd", "hwk"]}, {"amr": ["otp", "fpt"]}, {"acr": "gold"}):
             self.idp.token = token
             c, r = self.oidc_sign_in()
             self.assertEqual(r.status_code, 200, r.text)
@@ -327,6 +327,10 @@ class OIDC(unittest.TestCase):
         self.idp.token = {"acr": "silver"}
         c, r = self.oidc_sign_in()
         self.assertTrue(r.json()["two_factor"], "an acr that isn't the one set")
+        for token in ({"amr": ["otp"]}, {"amr": ["hwk"]}, {"amr": ["otp", "otp"]}, {"amr": ["pwd", "made-up"]}):   # one method: one factor
+            self.idp.token = token
+            c, r = self.oidc_sign_in()
+            self.assertTrue(r.json().get("two_factor"), token)
 
     def test_where_two_factor_is_required_the_providers_counts_for_its_session(self):
         self.set_up()
@@ -346,15 +350,15 @@ class OIDC(unittest.TestCase):
         self.assertEqual(c.get("/api/lab-names").status_code, 200)
 
     # ------------------------------------------------------------ linking
-    def test_linking_needs_the_fresh_check_and_unlinking_works(self):
+    def test_linking_needs_the_password_and_unlinking_works(self):
+        """Linking asks the password, as adding a passkey does (#1109's review): a sign-in's own fresh check isn't enough."""
         self.set_up()
-        kim = self.signed_in("kim")
-        db = dbm.connect()
-        db.execute("UPDATE sessions SET verified_at=0 WHERE user_id=?", (self.uid["kim"],))
-        db.close()
-        self.assertEqual(kim.post("/api/me/oidc/start", headers=H).json()["detail"], "reauth_required")
-        self.assertEqual(kim.post("/api/me/reauth", json={"secret": PW["kim"]}, headers=H).status_code, 200)
-        r = kim.post("/api/me/oidc/start", headers=H)
+        kim = self.signed_in("kim")   # (fresh: just signed in)
+        for body in ({}, {"password": "not kim's password at all"}):
+            r = kim.post("/api/me/oidc/start", json=body, headers=H)
+            self.assertEqual(r.status_code, 403, body)
+            self.assertEqual(r.json()["detail"], "Your password is wrong.")
+        r = kim.post("/api/me/oidc/start", json={"password": PW["kim"]}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(q(r.json()["url"])["prompt"], "login")
         back = q(self.idp.authorize(r.json()["url"]))
@@ -368,7 +372,7 @@ class OIDC(unittest.TestCase):
         self.assertEqual(r.json()["username"], "kim")
         # the same identity can't be linked to another account
         lee = self.signed_in("lee")
-        r = lee.post("/api/me/oidc/start", headers=H)
+        r = lee.post("/api/me/oidc/start", json={"password": PW["lee"]}, headers=H)
         back = q(self.idp.authorize(r.json()["url"]))
         r = lee.post("/api/login/oidc/return", json={"code": back["code"], "state": back["state"]}, headers=H)
         self.assertEqual(r.status_code, 409)
@@ -390,7 +394,7 @@ class OIDC(unittest.TestCase):
     def test_a_link_finishes_only_for_the_sign_in_that_started_it(self):
         self.set_up()
         kim = self.signed_in("kim")
-        r = kim.post("/api/me/oidc/start", headers=H)
+        r = kim.post("/api/me/oidc/start", json={"password": PW["kim"]}, headers=H)
         back = q(self.idp.authorize(r.json()["url"]))
         kim.post("/api/logout", headers=H)
         r = kim.post("/api/login/oidc/return", json={"code": back["code"], "state": back["state"]}, headers=H)
@@ -465,7 +469,7 @@ class OIDC(unittest.TestCase):
         self.assertFalse(ada.get("/api/settings/install/oidc").json()["may_go_only"])
         # ada links her own (signing in with the provider as she does), then it may go on
         self.idp.person = {"sub": "ada-subject-1"}
-        r = ada.post("/api/me/oidc/start", headers=H)
+        r = ada.post("/api/me/oidc/start", json={"password": PW["ada"]}, headers=H)
         back = q(self.idp.authorize(r.json()["url"]))
         self.assertEqual(ada.post("/api/login/oidc/return", json={"code": back["code"], "state": back["state"]}, headers=H).status_code, 200)
         self.assertTrue(ada.get("/api/settings/install/oidc").json()["may_go_only"])
@@ -496,7 +500,7 @@ class OIDC(unittest.TestCase):
         the provider and isn't held; an admin's Reset password says passwords are off. OIDC only off, the mark holds again."""
         ada = self.set_up()
         self.idp.person = {"sub": "ada-subject-1"}
-        r = ada.post("/api/me/oidc/start", headers=H)
+        r = ada.post("/api/me/oidc/start", json={"password": PW["ada"]}, headers=H)
         back = q(self.idp.authorize(r.json()["url"]))
         self.assertEqual(ada.post("/api/login/oidc/return", json={"code": back["code"], "state": back["state"]}, headers=H).status_code, 200)
         self.assertEqual(ada.put("/api/settings/install/oidc", json={"only": True}, headers=H).status_code, 200)
@@ -523,6 +527,144 @@ class OIDC(unittest.TestCase):
             db = dbm.connect()
             db.execute("UPDATE users SET must_change_pw=0 WHERE id=?", (self.uid["kim"],))
             db.close()
+
+    # ------------------------------------------------------------ #1109's security review
+    def only_on(self, ada):
+        """ada's own identity linked (her sign-in there works), then Sign in with OIDC only on."""
+        self.idp.person = {"sub": "ada-subject-1"}
+        r = ada.post("/api/me/oidc/start", json={"password": PW["ada"]}, headers=H)
+        back = q(self.idp.authorize(r.json()["url"]))
+        self.assertEqual(ada.post("/api/login/oidc/return", json={"code": back["code"], "state": back["state"]}, headers=H).status_code, 200)
+        self.assertEqual(ada.put("/api/settings/install/oidc", json={"only": True}, headers=H).status_code, 200)
+
+    def test_oidc_only_the_provider_stands_in_for_the_password_and_the_password_confirms_nothing(self):
+        """With OIDC only on, two-factor sign-in required and a provider that doesn't say two factors, an account with no
+        second factor can still set one up: the provider's fresh check (signed in again now) stands in for the password;
+        a sign-in's own freshness doesn't, and the password passes no fresh check."""
+        ada = self.set_up()
+        self.only_on(ada)
+        self.link("kim", "kim-subject-1")
+        db = dbm.connect()
+        dbm.meta_set(db, "require_2fa", "1")
+        db.close()
+        self.idp.person = {"sub": "kim-subject-1"}
+        c, r = self.oidc_sign_in()
+        self.assertTrue(c.get("/api/me").json()["user"]["needs_two_factor"])
+        self.assertEqual(c.post("/api/me/2fa/start", json={"password": ""}, headers=H).json()["detail"], "reauth_required",
+                         "just signed in isn't a fresh check that stands in for the password")
+        self.assertEqual(c.post("/api/me/2fa/start", json={"password": PW["kim"]}, headers=H).json()["detail"], "reauth_required")
+        r = ada.post("/api/me/reauth", json={"secret": PW["ada"]}, headers=H)
+        self.assertEqual(r.status_code, 403)
+        self.assertIn("Passwords are off", r.json()["detail"])
+        # the provider's fresh check: signed in again there now
+        r = c.post("/api/me/reauth/oidc/start", headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual((q(r.json()["url"])["prompt"], q(r.json()["url"])["max_age"]), ("login", "0"))
+        self.idp.token = {"auth_time": int(time.time()) - 3600}   # a provider that didn't ask again: refused
+        r = self.come_back(c, r.json()["url"])
+        self.assertEqual(r.status_code, 401)
+        self.assertIn("didn't ask you to sign in again", r.json()["detail"])
+        self.idp.token = {}
+        self.idp.person = {"sub": "ada-subject-1"}   # someone else's identity: refused
+        r = self.come_back(c, c.post("/api/me/reauth/oidc/start", headers=H).json()["url"])
+        self.assertEqual(r.status_code, 403)
+        self.idp.person = {"sub": "kim-subject-1"}
+        r = self.come_back(c, c.post("/api/me/reauth/oidc/start", headers=H).json()["url"])
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue(r.json()["reauth"])
+        r = c.post("/api/me/2fa/start", json={"password": ""}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIn("secret", r.json())
+        with redirect_stdout(io.StringIO()):
+            manage.run(["oidc-only", "off"])
+        self.assertEqual(c.post("/api/me/2fa/start", json={"password": ""}, headers=H).status_code, 403, "off: the password again")
+
+    def test_over_https_the_browser_cookie_is_a_host_cookie_a_plain_one_isnt_read(self):
+        """(#1109's review) A sanguity_oidc cookie planted for /api/login/oidc (by a sibling name, or plain HTTP) can't bind
+        someone's sign-in: over HTTPS the cookie is __Host-sanguity_oidc at /, Secure, and only it is read."""
+        from server import routes_oidc
+        self.set_up()
+        self.link("kim", "kim-subject-1")
+        with mock.patch.object(routes_oidc, "_secure", lambda request: True):
+            c = client()
+            r = c.post("/api/login/oidc/start", headers=H)
+            cookie = r.headers["set-cookie"]
+            self.assertTrue(cookie.startswith("__Host-sanguity_oidc="), cookie)
+            self.assertIn("Path=/;", cookie)
+            self.assertIn("Secure", cookie)
+            value = cookie.split(";")[0].split("=", 1)[1]
+            back = q(self.idp.authorize(r.json()["url"]))
+            planted = client()
+            planted.cookies.set("sanguity_oidc", value, path="/api/login/oidc")
+            r = planted.post("/api/login/oidc/return", json={"code": back["code"], "state": back["state"]}, headers=H)
+            self.assertEqual(r.status_code, 401)
+            self.assertIn("another browser", r.json()["detail"])
+            c, url = self.start(client())
+            value = c.cookies.get("__Host-sanguity_oidc")
+            back = q(self.idp.authorize(url))
+            ok = client()
+            ok.cookies.set("__Host-sanguity_oidc", value)
+            self.assertEqual(ok.post("/api/login/oidc/return", json={"code": back["code"], "state": back["state"]}, headers=H).status_code, 200)
+
+    def test_starts_are_throttled_per_address_and_a_full_store_drops_the_adders_own_first(self):
+        """(#1109's review) Starting sign-ins from many addresses of one IPv6 /64 counts as one address; past STARTS_MOST
+        it's refused; a full store drops the adding address's own oldest, not someone else's sign-in."""
+        self.assertEqual(oidc.address_group("2001:db8:1:2::1"), oidc.address_group("2001:db8:1:2:ffff::9"))
+        self.assertNotEqual(oidc.address_group("2001:db8:1:2::1"), oidc.address_group("2001:db8:1:3::1"))
+        self.assertEqual(oidc.address_group("::ffff:203.0.113.5"), "203.0.113.5")
+        p = oidc._Pending()
+        p.MAX = 31   # (filled exactly by those below)
+        e = lambda ip: {"expires": time.time() + 60, "ip": ip}
+        p.add("real", e("198.51.100.7"))
+        for i in range(oidc.STARTS_MOST):
+            p.add(f"v6-{i}", e(f"2001:db8:1:2::{i + 1:x}"))
+        with self.assertRaises(oidc.OidcError) as got:
+            p.add("one-more", e("2001:db8:1:2::abcd"))
+        self.assertEqual(got.exception.status, 429)
+        self.assertEqual(sum(1 for v in p._p.values() if v["group"] == oidc.address_group("2001:db8:1:2::1")), p.PER_ADDRESS)
+        for n in range(10):   # the store filled from other places, then a start from one of them
+            p.add(f"x-{n}", e(f"203.0.113.{n}"))
+        self.assertEqual(len(p._p), p.MAX)
+        p.add("x-again", e("203.0.113.3"))
+        self.assertIsNone(p.take("x-3"), "the adder's own went first")
+        self.assertIsNotNone(p.take("real"), "nobody else's sign-in dropped")
+        self.assertIsNotNone(p.take("x-again"))
+        # and the route: the address's throttle
+        self.set_up()
+        oidc.pending.clear()
+        for _ in range(oidc.STARTS_MOST):
+            self.assertEqual(client().post("/api/login/oidc/start", headers=H).status_code, 200)
+        self.assertEqual(client().post("/api/login/oidc/start", headers=H).status_code, 429)
+
+    def test_an_admins_link_is_told_to_its_person_and_shows_the_providers_name_once_used(self):
+        ada = self.set_up()
+        with self.assertLogs("sanguity.security", "INFO") as seen:
+            self.assertEqual(ada.post(f"/api/users/{self.uid['kim']}/oidc", json={"subject": "kim-subject-1"}, headers=H).status_code, 200)
+        self.assertTrue(any('"event":"oidc.link"' in m and '"user":"kim"' in m and '"by":"ada"' in m for m in seen.output), seen.output)
+        kim = self.signed_in("kim")
+        got = kim.get("/api/me/oidc").json()["identities"][0]
+        self.assertEqual((got["linked_by_admin"], got["linked_by"], got["name"], got["last_used"]), (True, "ada", None, None))
+        self.idp.person = {"sub": "kim-subject-1", "email": "kim@idp.example (fictional)"}
+        c, r = self.oidc_sign_in()
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(kim.get("/api/me/oidc").json()["identities"][0]["name"], "kim@idp.example (fictional)")
+        listed = {u["username"]: u["oidc"] for u in ada.get("/api/users").json()}
+        self.assertEqual(listed["kim"][0]["name"], "kim@idp.example (fictional)", "the admin sees whose it turned out to be")
+
+    def test_the_client_secret_is_resealed_by_a_key_rotation(self):
+        from server import config
+        self.set_up()
+        db = dbm.connect()
+        before = dbm.meta_get(db, oidc.SECRET_META)
+        crypto.add_key(config.KEY_FILE)   # (kept: everything is sealed with it below, as the app does as it starts)
+        crypto.keyring.reset()
+        self.assertTrue(crypto.field_needs_resealing(before))
+        atrest.seal_everything(db)
+        after = dbm.meta_get(db, oidc.SECRET_META)
+        self.assertNotEqual(after, before)
+        self.assertFalse(crypto.field_needs_resealing(after))
+        self.assertEqual(oidc.client_secret(db), SECRET)
+        db.close()
 
     def test_restoring_keeps_todays_provider_and_identities(self):   # (the access tables, test_backups has the restore)
         from server import backup

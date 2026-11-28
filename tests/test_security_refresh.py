@@ -73,7 +73,7 @@ ROUTES = {
     ("GET", "/api/login/oidc"): (NONE, None), ("POST", "/api/login/oidc/start"): (NONE, None),
     ("POST", "/api/login/oidc/return"): (NONE, None),
     ("GET", "/api/me/oidc"): (SETTLED, None), ("POST", "/api/me/oidc/start"): (SETTLED, None),
-    ("DELETE", "/api/me/oidc/{iid}"): (SETTLED, None),
+    ("DELETE", "/api/me/oidc/{iid}"): (SETTLED, None), ("POST", "/api/me/reauth/oidc/start"): (SETTLED, None),
     ("GET", "/api/settings/install/oidc"): (ADMIN, None), ("PUT", "/api/settings/install/oidc"): (ADMIN, None),
     ("POST", "/api/settings/install/oidc/test"): (ADMIN, None),
     ("POST", "/api/users/{uid}/oidc"): (ADMIN, None), ("DELETE", "/api/users/{uid}/oidc/{iid}"): (ADMIN, None),

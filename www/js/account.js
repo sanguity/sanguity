@@ -11,6 +11,16 @@ const device = ua => {
   return os ? `${b} on ${os}` : b;
 };
 
+/* (#1109's review) with Sign in with OIDC only on, no password signs in, so none is asked: a change that asks for it
+   asks for the fresh check instead (a code, a passkey or the provider: admin.js fresh, confirmIdentity), in its card */
+const pwOff = () => !!ME.sign_in_provider?.only;
+function reauthIn(card) {
+  let box = card.querySelector(":scope > .reauth");
+  if (!box) { box = el("div", {class: "reauth", hidden: true}); card.querySelector("h2").after(box); }
+  return box;
+}
+const proved = (send, card) => pwOff() ? fresh(send, reauthIn(card)) : send();
+
 /* ---------------------------------------------------------------- password */
 /* each with Show (util.js pwField, #492), hidden again only as it's sent: not over a mismatch. Its reply brought into
    view with Change password, clear of a phone's tabs, focus where it was (#544: under the tabs, or below the screen) */
@@ -119,7 +129,7 @@ async function loadTwoFactor(focus = false) {
     // your password first (#590: a device left signed in could turn on an app of its own and lock you out), with Show
     const pw = el("input", {type: "password", autocomplete: "current-password", placeholder: "Your password", "aria-label": "Your password", required: true});
     body.replaceChildren(el("form", {class: "row", onsubmit: ev => { ev.preventDefault(); pwSent(ev.target); startTwoFactor(pw.value); }},
-      pwField(pw).box, el("button", {class: "btn primary", type: "submit", text: "Turn on"})));
+      pwOff() ? null : pwField(pw).box, el("button", {class: "btn primary", type: "submit", text: "Turn on"})));
     if (focus) tfFocus(pw);
     return;
   }
@@ -141,17 +151,17 @@ async function loadTwoFactor(focus = false) {
                       action: "Turn off", danger: true})) return;
       pwSent(ev.target);
       try {
-        const r = await call("me/2fa/off", "POST", {password: pw.value});
+        const r = await proved(() => call("me/2fa/off", "POST", {password: pw.value}), $("#twofa"));
         if (r.must_change_pw) { location.replace(location.pathname + location.search + "#password"); location.reload(); return; }
         loadTwoFactor(true); loadPasskeys(); loadSessions();
       } catch (e) { say("#tfMsg", e.message, true); } }},
-      pwField(pw).box, el("button", {class: "btn small", type: "submit", text: "Turn off"})));   // with Show (#492)
+      pwOff() ? null : pwField(pw).box, el("button", {class: "btn small", type: "submit", text: "Turn off"})));   // with Show (#492)
   if (focus) tfFocus($("#twofa h2"));
 }
 /* password: the one typed beside Turn on, sent again with the first code (the server checks both, #590) */
 async function startTwoFactor(password) {
   let s;
-  try { s = await call("me/2fa/start", "POST", {password}); } catch (e) { return say("#tfMsg", e.message, true); }
+  try { s = await proved(() => call("me/2fa/start", "POST", {password}), $("#twofa")); } catch (e) { return say("#tfMsg", e.message, true); }
   const code = el("input", {inputmode: "numeric", autocomplete: "one-time-code", placeholder: "123 456", "aria-label": "Code from your authenticator app", required: true});
   tfHint(`Scan this with ${APPS}, then enter the code it shows. If you can't scan, type the key instead.`, true);
   // its QR code drawn here from the otpauth address (qr.js, #495: the server drew a second one), shown, as it's the way
@@ -163,7 +173,7 @@ async function startTwoFactor(password) {
       el("div", {class: "copy-val"}, el("span", {class: "copy-val-name", text: "Key"}),
         el("div", {class: "copy-val-row"}, key, copyBtn(s.secret, {what: "the key", sel: key})))),
     el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
-      try { showRecoveryCodes((await call("me/2fa/confirm", "POST", {code: code.value, password})).recovery_codes, true); } catch (e) { say("#tfMsg", e.message, true); } }},
+      try { showRecoveryCodes((await proved(() => call("me/2fa/confirm", "POST", {code: code.value, password}), $("#twofa"))).recovery_codes, true); } catch (e) { say("#tfMsg", e.message, true); } }},
       code, el("button", {class: "btn primary small", type: "submit", text: "Confirm"}),
       el("button", {class: "btn small", type: "button", text: "Cancel", onclick: () => loadTwoFactor(true)})));
   code.focus();
@@ -235,11 +245,11 @@ async function loadPasskeys() {
               const label = el("label", {}, "Your password", pw), feeds = await feedsNow();
               pwField(pw);
               if (!await ask({title: `Remove the passkey “${k.name}”?`, message: ["Remove it from the device too, in its passwords or passkeys settings.",
-                                "Every other device signed in to your account is signed out." + (feeds ? " " + feedsEnd(feeds) : ""), label],
-                              action: "Remove passkey", danger: true, field: pw})) return;
+                                "Every other device signed in to your account is signed out." + (feeds ? " " + feedsEnd(feeds) : ""), pwOff() ? null : label],
+                              action: "Remove passkey", danger: true, field: pwOff() ? null : pw})) return;
               const at = st.passkeys.indexOf(k);
               try {
-                const r = await call("me/passkeys/" + k.id, "DELETE", {password: pw.value});
+                const r = await proved(() => call("me/passkeys/" + k.id, "DELETE", {password: pw.value}), $("#passkeys"));
                 if (r.must_change_pw) { location.replace(location.pathname + location.search + "#password"); location.reload(); return; }
                 await Promise.all([loadPasskeys(), loadSessions()]);
                 if (r.signed_out_elsewhere || r.calendar_feeds)   // and the calendar feeds that went with it (#597)
@@ -256,14 +266,14 @@ async function loadPasskeys() {
   $("#pkBody").replaceChildren(el("form", {class: "row", onsubmit: async ev => { ev.preventDefault();
     pkSay(null); pwSent(ev.target);   // a row's last reply gone too (#524: two at once)
     try {
-      const o = await call("me/passkeys/options", "POST", {password: pw.value});
+      const o = await proved(() => call("me/passkeys/options", "POST", {password: pw.value}), $("#passkeys"));
       let credential;
       try { credential = await passkeyCreate(o.options); } catch (e) { throw new Error(passkeyProblem(e)); }
       const r = await call("me/passkeys", "POST", {state: o.state, credential, name: nm.value});
       if (ME.user.needs_two_factor) { location.replace("./"); return; }
       await loadPasskeys(); pkSay(r.id, `Added “${r.name}”.`, false, true); loadTwoFactor(); adminAgain("#pkRowMsg");
     } catch (e) { say("#pkMsg", e.message, true); } }},
-    nm, pwField(pw).box, el("button", {class: "btn primary small", type: "submit", text: "Add a passkey"})));   // with Show (#492)
+    nm, pwOff() ? null : pwField(pw).box, el("button", {class: "btn primary small", type: "submit", text: "Add a passkey"})));   // with Show (#492)
 }
 /* a passkey's reply (#519: Added and Renamed were under the Add form, out of sight), as Admin's rows' (rowSay): under its
    name until the next one (id null: just that), the row in view; focus: on its Rename, as it's added (the form that had
@@ -304,23 +314,29 @@ async function loadOidc() {
   const label = (st.provider || p).label, mine = st.identities.filter(i => i.current);
   $("#oidcHint").textContent = `Sign in with ${label} too, once your identity there is linked to this account.` +
     ((st.provider || p).only ? ` This server signs in with ${label} only.` : "");
-  const link = el("button", {class: "btn small", type: "button", id: "oidcLinkBtn", text: `Link your ${label} identity`, onclick: async () => {
-    say("#oidcMsg", "");
+  // the password first, as adding a passkey asks it (#1109's review: someone at a signed-in browser for a few minutes
+  // could link an identity of their own); with OIDC only on, the fresh check instead (proved)
+  const pw = el("input", {type: "password", autocomplete: "current-password", placeholder: "Your password", "aria-label": "Your password", required: true});
+  const link = el("form", {class: "row", onsubmit: async ev => {
+    ev.preventDefault(); say("#oidcMsg", ""); pwSent(ev.target);
     try {
-      const r = await fresh(() => call("me/oidc/start", "POST"), $("#oidcReauth"));
+      const r = await proved(() => call("me/oidc/start", "POST", {password: pw.value}), $("#oidc"));
       sessionStorage.setItem(OIDC_LINK, "1");
       location.assign(r.url);
     } catch (e) { say("#oidcMsg", e.message, true); }
-  }});
+  }}, pwOff() ? null : pwField(pw).box, el("button", {class: "btn small", type: "submit", id: "oidcLinkBtn", text: `Link your ${label} identity`}));
   $("#oidcList").replaceChildren(...present(mine.length ? el("table", {class: "tbl pk"},
     el("thead", {}, el("tr", {}, ...["Identity", "Linked", "Last used", ""].map(thOf))),
     el("tbody", {}, ...mine.map(i => el("tr", {"data-oidc": i.id},
-      el("td", {}, i.name || i.subject, i.name ? el("div", {class: "muted", text: `ID ${i.subject}`}) : null),
+      el("td", {}, i.name || i.subject, i.name ? el("div", {class: "muted", text: `ID ${i.subject}`}) : null,
+        // an admin's link (by its subject): said to its person, a warning until it's first used (#1109's review)
+        i.linked_by_admin ? el("div", {class: i.last_used ? "muted" : "warn", text: i.last_used ? `Linked for you by ${i.linked_by || "an admin"}.` :
+          `Linked for you by ${i.linked_by || "an admin"}, and not used yet. If you don't know it, unlink it and tell them.`}) : null),
       el("td", {text: when(i.created)}), el("td", {text: i.last_used ? when(i.last_used) : "never"}),
       el("td", {class: "acts"}, el("button", {class: "btn small", type: "button", text: "Unlink", onclick: () => oidcUnlink(i, label)})))))) :
-    emptyState(`Not linked: link it to sign in with ${label}.`, null, {cls: ""}), mine.length ? null : el("div", {class: "row"}, link)));
+    emptyState(`Not linked: link it to sign in with ${label}.`, null, {cls: ""}), mine.length ? null : link));
   const said = sessionStorage.getItem(OIDC_SAID);   // from the sign-in page, back from the provider
-  if (said) {
+  if (said && JSON.parse(said).where === "oidc") {
     sessionStorage.removeItem(OIDC_SAID);
     const {text, bad} = JSON.parse(said);
     say("#oidcMsg", text, bad);
@@ -367,5 +383,7 @@ async function acctStart(first) {
   for (const g of SG_PAGES.settings.groups) if (g.part === "You" && g.id !== "display") for (const id of g.has) $("#" + id).hidden = false;
   $("#oidc").hidden = true;   // (#1109: shown by loadOidc, where the install has a provider)
   await Promise.all([loads, loadOidc()]);
+  const said = sessionStorage.getItem(OIDC_SAID);   // (#1109) back from the provider's fresh check (login.js): said once
+  if (said) { sessionStorage.removeItem(OIDC_SAID); toast(JSON.parse(said).text); }
   SET_NAV.again();   // the cards have their content now, so a section link lands where it should
 }
