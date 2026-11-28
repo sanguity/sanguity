@@ -7694,7 +7694,7 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 900})
             check("…no Costs table scrolls sideways at 375, 601, 640 or 680 px, both views, its charts as tables and More figures open, in light and dark: "
                   "the claims stacked where they don't fit their box (#465), the others under 560, each cell named by its column; the page fits, axe finds nothing (#443)",
-                  not sides443 and not axe443 and n443 == {"costTable:Date", "view-costs:Drug", "view-costs:Month", "paidTable:Date", "oopTax:Year", "paidRun:Month"} and stacked443 == 3,
+                  not sides443 and not axe443 and n443 == {"costTable:Date", "view-costs:Drug", "view-costs:Month", "paidTable:Date", "oopTax:Year", "paidRun:Month", "planCard:Date"} and stacked443 == 3,   # (the plan years' calendar, #1127)
                   [sides443[:6], axe443[:4], sorted(n443), stacked443])
             # #443: Show 200 more (here, with the claims shown 20 at a time) leaves focus on the first claim it adds, not <body>
             js("costState.limit = 20; renderCosts()")

@@ -114,7 +114,6 @@ function drawCosts() {
   [tile("Discounts & not covered", usd(Math.max(0, billed - paid - owe)), "network discounts, write-offs, denials"),
     tile("Claims", rows.length.toLocaleString("en-US"), `${rows.filter(r => r.kind === "pharmacy").length} pharmacy fills`),
     tile("Denied", denied.toLocaleString("en-US"), denied ? `${rows.filter(r => /PROVIDER_DENIED/i.test(r.status)).length} provider-denied` : "")]);
-  box.append(planCard());   // the deductible and out-of-pocket max, per plan year (#1127)
   // the chart, by month or by year
   const ds = rows.map(r => r.d).sort(), span = ds.length ? (+ds.at(-1).slice(0, 4) - +ds[0].slice(0, 4)) * 12 + (+ds.at(-1).slice(5, 7) - +ds[0].slice(5, 7)) + 1 : 0;
   const by = costState.by || (span > 48 ? "year" : "month");
@@ -134,6 +133,7 @@ function drawCosts() {
     const svg = chartSvg(by === "year" ? "Yearly insurance costs" : "Monthly insurance costs", {id: "costChart"}); mc.append(svg);   // a tab stop as it's made (#652)
     requestAnimationFrame(() => drawCostBars(svg, rows, by));
   }
+  box.append(planCard());   // the deductible and out-of-pocket max, per plan year (#1127): under the chart, which stays on the first screen
   // category + provider breakdowns
   const two = el("div", {class: "ov-cols"});
   const catCard = el("div", {class: "card"}, el("h2", {text: "By type of care"}), el("p", {class: "hint", text: "Grouped from billing codes on each claim. Click a row to list those claims below."}));
