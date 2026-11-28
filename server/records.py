@@ -66,9 +66,10 @@ from .importers import common
 FORMAT = "sanguity-data"            # imports.format of a data.json (build.py, the demo, an export zip)
 ROWS = ("events", "details", "labs", "costs")   # the parts kept as rows; the rest of the object is the meta
 SERVED = ("imports", "edits", "same", "possible", "journal", "medications", "oop", "reminders", "doses",
-          "hiddenMeds", "medEntries", "corrections", "costPlans", "costBills", "hiddenFamily", "familyEntries")   # parts assemble() adds: never stored from an import (an
-                           # export's data.json has them, and its corrections, #589, and its own medications, #1091:
-                           # those go back into their own tables, export.restore)
+          "hiddenMeds", "medEntries", "corrections", "costPlans", "costBills", "hiddenFamily", "familyEntries",
+          "insurance")   # parts assemble() adds: never stored from an import (an
+                           # export's data.json has them, and its corrections, #589, its own medications, #1091,
+                           # and its insurance plans, #1137: those go back into their own tables, export.restore)
 
 
 def _enc(obj):

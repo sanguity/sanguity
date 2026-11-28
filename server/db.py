@@ -1342,6 +1342,24 @@ SCHEMA = [
         sent INTEGER);
     CREATE INDEX notify_sent_due ON notify_sent(state, next_at);
     """,
+    # version 55: insurance cards (#1137; insurance.py). A health plan of a profile: body, encrypted, {name, member,
+    # group, phones}; each side's photo a sealed file in profiles/<id>/insurance/ under a random name (NULL: none) and
+    # its type. Removing the plan removes its photos (insurance.remove, the files once that's committed).
+    """
+    CREATE TABLE insurance_plans(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,                        -- JSON, encrypted: {name, member, group, phones: [{label, number}]}
+        front TEXT, front_type TEXT CHECK(front_type IN ('jpeg', 'png', 'webp')),
+        back TEXT, back_type TEXT CHECK(back_type IN ('jpeg', 'png', 'webp')),
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_name TEXT NOT NULL,                -- the username then
+        created INTEGER NOT NULL,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_name TEXT,
+        changed INTEGER);
+    CREATE INDEX insurance_plans_profile ON insurance_plans(profile_id);
+    """,
 ]
 
 

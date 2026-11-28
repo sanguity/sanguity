@@ -59,7 +59,8 @@ FIELDS = (("documents", "id", "path"), ("activity", "id", "detail"), ("users", "
           ("oidc_identities", "id", "name"),   # (#1109)
           ("journal_spots", "id", "name"),   # (#1139)
           ("cost_plans", "id", "body"), ("cost_bills", "id", "body"),   # (#1127, #1128)
-          ("notify_topics", "user_id", "topic"))   # (#1130) each person's own notification topic
+          ("notify_topics", "user_id", "topic"),   # (#1130) each person's own notification topic
+          ("insurance_plans", "id", "body"))   # (#1137)
 
 
 def anything_encrypted(db):

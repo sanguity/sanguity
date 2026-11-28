@@ -148,6 +148,9 @@ Everything on `main` so far; it becomes the first tagged release.
   Notifications, with a write-only access token and Send a test): each person gets a topic of their own and turns on
   New results and Dose reminders per profile they can see under Settings → Notifications, and each says only
   "Sanguity: new results for Ben" or "Sanguity: a dose is due for Ben", sent once in the background and retried (#1130).
+- Insurance cards (#1137): Settings → This person → Insurance cards keeps each health plan's name, member ID, group
+  number and phone numbers, with a photo of the card's front and back (encrypted, metadata taken out); a share link
+  shows them only when its maker ticks Insurance cards, and they go with the export and backups.
 
 **Releases**
 - Tagged releases with this changelog, and a published multi-arch image, `ghcr.io/sanguity/sanguity`, for
