@@ -5,8 +5,8 @@ The owner's decisions (2026-11-28):
   - linked by each person (Settings → You → Sign-in and security, after the fresh check) or by an admin for an account
     (Install → Accounts, by the identity's subject); no account is made automatically, and an identity linked to no
     account is refused with a plain message;
-  - an OIDC sign-in counts as the second factor when the ID token says so (amr says "mfa" or names two different
-    methods, or acr is the one the admin set: multi_factor); otherwise the account's own second factor (a code or a passkey) is asked for
+  - an OIDC sign-in counts as the second factor when the ID token says so (amr says "mfa" or names methods of two
+    factors, or acr is the one the admin set: multi_factor); otherwise the account's own second factor (a code or a passkey) is asked for
     after it, as after a password, and where two-factor sign-in is required an account with none sets one up;
   - "Sign in with OIDC only": password sign-in and a passkey on its own refused, the switch itself refused until the
     admin's own identity has signed in with the provider as it's set up now; python -m server.manage oidc-only off
@@ -57,13 +57,15 @@ IAT_MOST = 600         # an ID token issued longer ago than this (beyond SKEW) i
 CACHE_SECONDS = 600    # the discovery document and JWKS are read again after this
 REFETCH_SECONDS = 30   # an unknown key id reads the JWKS again, at most this often
 MAX_BODY = 2**20
-# RFC 8176's authentication methods: an amr naming two different ones (or "mfa") says more than one was used; one alone
-# (a one-time code sent by email is "otp") is one factor
-AMR = {"face", "fpt", "geo", "hwk", "iris", "kba", "mca", "mfa", "otp", "pin", "pop", "pwd", "rba", "retina", "sc", "sms",
-       "swk", "tel", "user", "vbm", "wia"}
+# RFC 8176's authentication methods by the factor each is: an amr naming methods of two factors (or "mfa") says more
+# than one factor was used; methods of one factor (pwd and pin; or an emailed code's otp alone) are one. The rest (user,
+# pop, rba, geo, mca, wia, and any not listed) say nothing about factors and count for none
+FACTORS = {"pwd": "knowledge", "pin": "knowledge", "kba": "knowledge",
+           "hwk": "possession", "swk": "possession", "otp": "possession", "sms": "possession", "tel": "possession", "sc": "possession",
+           "fpt": "inherence", "face": "inherence", "iris": "inherence", "retina": "inherence", "vbm": "inherence"}
 ALGS = {"RS256": "RSA", "ES256": "EC"}
 PURPOSES = ("login", "link", "reauth")   # reauth: the fresh check at the provider (prompt=login, max_age=0), #1109's review
-STARTS_MOST = 30   # sign-ins started from one address (an IPv6 one's /64) in STATE_TTL seconds, at most
+STARTS_MOST = 30   # links and fresh checks at the provider started by one account in STATE_TTL seconds, at most
 FIELDS = ("issuer", "client_id", "label", "scopes", "acr")
 
 
@@ -400,11 +402,12 @@ def verify(token, keys_for, issuer, client_id, nonce, now=None):
 
 
 def multi_factor(claims, acr):
-    """Whether the provider says the person used more than one factor: amr says "mfa", or names two different methods
-    (AMR), or acr is the one the admin set. One method alone, a one-time code or a hardware key, is one factor."""
+    """Whether the provider says the person used more than one factor: amr says "mfa", or names methods of two factors
+    (FACTORS: knowledge, possession, inherence), or acr is the one the admin set. Methods of one factor (a password and
+    a PIN; a one-time code alone; a password with risk-based or location checks) are one."""
     amr = claims.get("amr")
-    said = {a for a in amr if isinstance(a, str) and a in AMR} if isinstance(amr, list) else set()
-    if "mfa" in said or len(said) >= 2:
+    said = [a for a in amr if isinstance(a, str)] if isinstance(amr, list) else []
+    if "mfa" in said or len({FACTORS[a] for a in said if a in FACTORS}) >= 2:
         return True
     return bool(acr) and claims.get("acr") == acr
 
@@ -427,30 +430,36 @@ def address_group(ip):
 
 
 class _Pending:
-    """Sign-ins started and not yet back: state hash -> what it was started with. Used up as it comes back. Starts are
-    throttled per address (address_group): at most STARTS_MOST in STATE_TTL seconds, else refused (429); at most
-    PER_ADDRESS waiting from one, its oldest going past that; at most MAX in all, the adding address's own oldest going
-    first, then the oldest of all."""
-    MAX, PER_ADDRESS = 2000, 20
+    """Sign-ins started and not yet back: state hash -> what it was started with. Used up as it comes back.
+
+    A sign-in's start (nobody signed in yet) is never refused (#1109's recheck: behind a reverse proxy every visitor
+    shares one address, so refusing an address's starts would let anyone keep everyone out): its group is its address
+    (address_group: an IPv6 one's /64), and once MAX are waiting, the adding group's own oldest goes first, then the
+    oldest of all, so a flood drops only its own. A link or a fresh check at the provider (signed in) is the account's:
+    at most STARTS_MOST in STATE_TTL seconds (else 429, which keeps out only that account) and PER_ACCOUNT waiting."""
+    MAX, PER_ACCOUNT = 10000, 20
 
     def __init__(self):
         self._p, self._lock, self._starts = {}, threading.Lock(), {}
 
     def add(self, state, entry):
-        now, group = time.time(), address_group(entry.get("ip"))
+        now = time.time()
+        group = f"account {entry['uid']}" if entry.get("uid") else address_group(entry.get("ip"))
         with self._lock:
-            if len(self._starts) > 10 * self.MAX:
-                self._starts = {g: t for g, t in self._starts.items() if t and t[-1] > now - STATE_TTL}
-            times = [t for t in self._starts.get(group, []) if t > now - STATE_TTL]
-            if len(times) >= STARTS_MOST:
-                raise OidcError("Too many sign-ins were started from here. Try again in a few minutes.", 429)
-            self._starts[group] = times + [now]
+            if entry.get("uid"):
+                self._starts = {g: t for g, t in self._starts.items() if t and t[-1] > now - STATE_TTL} \
+                    if len(self._starts) > self.MAX else self._starts
+                times = [t for t in self._starts.get(group, []) if t > now - STATE_TTL]
+                if len(times) >= STARTS_MOST:
+                    raise OidcError("Too many were started from your account. Try again in a few minutes.", 429)
+                self._starts[group] = times + [now]
             entry = {**entry, "group": group}
             self._p = {k: v for k, v in self._p.items() if v["expires"] > now}
             mine = [k for k, v in self._p.items() if v.get("group") == group]   # (oldest first: the order added)
-            for k in mine[:max(0, len(mine) - self.PER_ADDRESS + 1)]:
-                del self._p[k]
-            mine = [k for k in mine if k in self._p]
+            if entry.get("uid"):
+                for k in mine[:max(0, len(mine) - self.PER_ACCOUNT + 1)]:
+                    del self._p[k]
+                mine = [k for k in mine if k in self._p]
             while len(self._p) >= self.MAX:
                 del self._p[mine.pop(0) if mine else next(iter(self._p))]
             self._p[_hash(state)] = entry
@@ -539,7 +548,9 @@ def finish(db, state, code, browser, error=None, who=None, ip=None):
     conf = discover(db, c)
     token = _exchange(db, c, conf, cfg, code, entry)
     claims = verify(token, lambda force: _jwks(c, conf["jwks_uri"], force), conf["issuer"], cfg["client_id"], entry["nonce"])
-    if entry["purpose"] == "reauth" and not (_number(claims.get("auth_time")) and claims["auth_time"] >= entry["started"] - SKEW):
+    # signed in at the provider after this check was started (whole seconds): no skew back, so a provider that ignored
+    # max_age=0 and prompt=login doesn't pass on a sign-in from minutes before (#1109's recheck)
+    if entry["purpose"] == "reauth" and not (_number(claims.get("auth_time")) and claims["auth_time"] >= int(entry["started"])):
         raise OidcError("The sign-in provider didn't ask you to sign in again, so it can't confirm it's you now. Try again, "
                         "or use a code or a passkey.", 401)
     return entry, claims, multi_factor(claims, cfg["acr"])

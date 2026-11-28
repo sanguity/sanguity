@@ -261,17 +261,19 @@ class OIDC(unittest.TestCase):
         self.assertEqual(r.status_code, 401)
         self.assertIn("didn't sign you in", r.json()["detail"])
 
-    def test_sign_ins_started_from_one_address_are_kept_to_a_few(self):
-        """Starting many from one place drops its own oldest, never another's: nobody else is kept from signing in."""
+    def test_a_full_store_drops_the_flooding_addresss_own_never_anothers(self):
+        """Starting many from one place (behind a reverse proxy, every visitor's) is never refused (#1109's recheck), and
+        once the store is full drops its own oldest, never someone else's sign-in."""
         self.set_up()
         self.link("kim", "kim-subject-1")
-        oidc.pending.add("someone-elses", {"expires": time.time() + 60, "ip": "203.0.113.9"})
-        c, first = self.start()
-        for _ in range(oidc.pending.PER_ADDRESS):
-            c, last = self.start(c)
-        self.assertEqual(self.come_back(c, first).status_code, 401, "its oldest went")
-        self.assertEqual(self.come_back(c, last).status_code, 200)
-        self.assertIsNotNone(oidc.pending.take("someone-elses"))
+        with mock.patch.object(oidc.pending, "MAX", 40):
+            oidc.pending.add("someone-elses", {"expires": time.time() + 60, "ip": "203.0.113.9"})
+            c, first = self.start()
+            for _ in range(oidc.STARTS_MOST + 20):   # past the old per-address refusal, and past MAX
+                c, last = self.start(c)
+            self.assertEqual(self.come_back(c, first).status_code, 401, "its own oldest went")
+            self.assertEqual(self.come_back(c, last).status_code, 200)
+            self.assertIsNotNone(oidc.pending.take("someone-elses"), "nobody else's")
 
     def test_a_replayed_nonce_is_refused(self):
         self.set_up()
@@ -564,6 +566,10 @@ class OIDC(unittest.TestCase):
         r = self.come_back(c, r.json()["url"])
         self.assertEqual(r.status_code, 401)
         self.assertIn("didn't ask you to sign in again", r.json()["detail"])
+        url = c.post("/api/me/reauth/oidc/start", headers=H).json()["url"]
+        self.idp.token = {"auth_time": int(time.time()) - 60}   # (#1109's recheck) a sign-in a minute before the check: refused too
+        r = self.come_back(c, url)
+        self.assertEqual(r.status_code, 401)
         self.idp.token = {}
         self.idp.person = {"sub": "ada-subject-1"}   # someone else's identity: refused
         r = self.come_back(c, c.post("/api/me/reauth/oidc/start", headers=H).json()["url"])
@@ -606,35 +612,51 @@ class OIDC(unittest.TestCase):
             ok.cookies.set("__Host-sanguity_oidc", value)
             self.assertEqual(ok.post("/api/login/oidc/return", json={"code": back["code"], "state": back["state"]}, headers=H).status_code, 200)
 
-    def test_starts_are_throttled_per_address_and_a_full_store_drops_the_adders_own_first(self):
-        """(#1109's review) Starting sign-ins from many addresses of one IPv6 /64 counts as one address; past STARTS_MOST
-        it's refused; a full store drops the adding address's own oldest, not someone else's sign-in."""
+    def test_starts_group_by_address_and_only_an_accounts_own_are_throttled(self):
+        """(#1109's recheck) A sign-in's start, from anyone, is never refused, from however many at one address (behind
+        a reverse proxy, every visitor's); an IPv6 /64 is one address. Links and fresh checks at the provider are an
+        account's own, throttled per account: past STARTS_MOST that account waits, not the address."""
         self.assertEqual(oidc.address_group("2001:db8:1:2::1"), oidc.address_group("2001:db8:1:2:ffff::9"))
         self.assertNotEqual(oidc.address_group("2001:db8:1:2::1"), oidc.address_group("2001:db8:1:3::1"))
         self.assertEqual(oidc.address_group("::ffff:203.0.113.5"), "203.0.113.5")
         p = oidc._Pending()
-        p.MAX = 31   # (filled exactly by those below)
-        e = lambda ip: {"expires": time.time() + 60, "ip": ip}
+        p.MAX = 31
+        e = lambda ip, uid=None: {"expires": time.time() + 60, "ip": ip, "uid": uid}
         p.add("real", e("198.51.100.7"))
-        for i in range(oidc.STARTS_MOST):
+        for i in range(oidc.STARTS_MOST + 5):   # anonymous, one /64: none refused
             p.add(f"v6-{i}", e(f"2001:db8:1:2::{i + 1:x}"))
+        self.assertIsNotNone(p.take("real"), "the flood dropped only its own")
+        self.assertIsNotNone(p.take(f"v6-{oidc.STARTS_MOST + 4}"))
+        p.MAX = 1000   # (room: what follows is the account's own limits)
+        for i in range(oidc.STARTS_MOST):
+            p.add(f"kim-{i}", e("198.51.100.7", uid=2))
         with self.assertRaises(oidc.OidcError) as got:
-            p.add("one-more", e("2001:db8:1:2::abcd"))
+            p.add("kim-again", e("203.0.113.1", uid=2))   # another address: still kim's
         self.assertEqual(got.exception.status, 429)
-        self.assertEqual(sum(1 for v in p._p.values() if v["group"] == oidc.address_group("2001:db8:1:2::1")), p.PER_ADDRESS)
-        for n in range(10):   # the store filled from other places, then a start from one of them
-            p.add(f"x-{n}", e(f"203.0.113.{n}"))
-        self.assertEqual(len(p._p), p.MAX)
-        p.add("x-again", e("203.0.113.3"))
-        self.assertIsNone(p.take("x-3"), "the adder's own went first")
-        self.assertIsNotNone(p.take("real"), "nobody else's sign-in dropped")
-        self.assertIsNotNone(p.take("x-again"))
-        # and the route: the address's throttle
+        p.add("lee", e("198.51.100.7", uid=3))   # the same address, another account: not held up
+        self.assertEqual(sum(1 for v in p._p.values() if v["group"] == "account 2"), p.PER_ACCOUNT)
+        # and the routes: anonymous starts never refused; an account's links and checks its own
         self.set_up()
         oidc.pending.clear()
-        for _ in range(oidc.STARTS_MOST):
+        for _ in range(oidc.STARTS_MOST + 5):
             self.assertEqual(client().post("/api/login/oidc/start", headers=H).status_code, 200)
-        self.assertEqual(client().post("/api/login/oidc/start", headers=H).status_code, 429)
+        self.link("kim", "kim-subject-1")
+        kim = self.signed_in("kim")
+        for _ in range(oidc.STARTS_MOST):
+            self.assertEqual(kim.post("/api/me/reauth/oidc/start", headers=H).status_code, 200)
+        self.assertEqual(kim.post("/api/me/reauth/oidc/start", headers=H).status_code, 429)
+        self.assertEqual(client().post("/api/login/oidc/start", headers=H).status_code, 200, "the address isn't held up")
+
+    def test_only_two_factors_count_as_two(self):
+        """(#1109's recheck) Methods of two factors (knowledge, possession, inherence) count; two of one factor, or one
+        with methods that say nothing of factors (user, pop, rba, geo, mca, wia, unknown), don't."""
+        for amr in (["pwd", "rba"], ["pwd", "geo"], ["pwd", "user"], ["swk", "pop"], ["pwd", "pin"], ["otp", "sms"],
+                    ["pwd", "mca", "wia"], ["otp"], ["fpt", "face"], ["pwd", "made-up"]):
+            self.assertFalse(oidc.multi_factor({"amr": amr}, ""), amr)
+        for amr in (["pwd", "otp"], ["pin", "hwk"], ["swk", "fpt"], ["kba", "sc", "rba"], ["mfa"]):
+            self.assertTrue(oidc.multi_factor({"amr": amr}, ""), amr)
+        self.assertTrue(oidc.multi_factor({"amr": ["pwd"], "acr": "gold"}, "gold"))
+        self.assertFalse(oidc.multi_factor({"amr": ["pwd"], "acr": "gold"}, ""))
 
     def test_an_admins_link_is_told_to_its_person_and_shows_the_providers_name_once_used(self):
         ada = self.set_up()

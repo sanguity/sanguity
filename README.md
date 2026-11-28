@@ -770,8 +770,9 @@ contacted until it's set up.
    Accounts**, by its subject (the provider's ID for the person, the `sub` of its ID tokens). No account is made
    automatically: an identity linked to no account is refused.
 
-The provider's sign-in counts as two-factor sign-in when its ID token says so: `amr` saying `mfa`, or naming two
-different methods (`pwd` and `otp`, say; one alone, like a code sent by email, is one factor), or an `acr` you set under
+The provider's sign-in counts as two-factor sign-in when its ID token says so: `amr` saying `mfa`, or naming
+methods of two factors (a password and a code or key, say: `pwd` and `otp`; a code sent by email alone, or a password with
+a risk check, is one factor), or an `acr` you set under
 Sign-in provider. Otherwise Sanguity asks for the account's
 own code or passkey after it, where the account has one, as after a password.
 
