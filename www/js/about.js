@@ -311,7 +311,7 @@ function aboutEmergency(p, a, edit, notSaved, saveBar, send, undo) {
       const v = id => $("#" + id).value.trim(), c = {name: v("contactName"), relationship: v("contactRel"), phone: v("contactPhone")};
       put([...list, c], `Added ${said(c)} to the emergency contacts.`, "contactName"); }},
       f("contactName", "Name", {required: true, autocomplete: "off"}), f("contactRel", "Relationship (optional)", {maxlength: 40, autocomplete: "off"}),
-      f("contactPhone", "Phone", {type: "tel", required: true, maxlength: 40, autocomplete: "off"}),
+      f("contactPhone", "Phone number", {type: "tel", required: true, maxlength: 40, autocomplete: "off"}),
       el("button", {class: "btn", type: "submit", text: "Add contact"})));
   } else if (edit) ctl.push(el("p", {class: "hint", text: `At most ${a.mostContacts}: remove one to add another.`}));
   out.push(setRow([el("h3", {class: "sub", id: "aboutContactsHd", tabindex: -1, text: "Emergency contacts"}),

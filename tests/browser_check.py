@@ -23925,9 +23925,10 @@ def main():
             page.keyboard.press("Escape")
             check("…(#506) Admin's Accounts first for “remove account”, “add account” and “new account”; a word in “-ies” finds it in “-y” "
                   "(activities, histories, directories, entries); Accounts for making an owner of a profile without one (“make owner”: one of "
-                  "the first, after Sharing's Who has access, #524: an owner's of their own profile); Connected-source apps for testing and removing a source",
+                  "the first, after Sharing's Who has access, #524: an owner's of their own profile); Connected-source apps for testing and removing a source "
+                  "(“histories”: Import history one of the first, with Family history, #1134)",
                   all(shared1109(found506[q], t) if q == "test connection" else found506[q][:1] == [t]
-                      for q, t in want506.items() if q not in ("activities", "entries", "make owner"))
+                      for q, t in want506.items() if q not in ("activities", "entries", "make owner", "histories"))
                   and all(t in found506[q] for q, t in want506.items()), found506)
             # #510: and Share links, People's Who has access and Connected-source apps for what's done or typed there (it
             # found nothing for these), each first
