@@ -37,6 +37,9 @@ services:
     depends_on:
       setup:
         condition: service_completed_successfully
+    env_file:   # (#1158) .env as it is: what it still sets of the server's settings is taken in once, then warned about
+      - path: .env
+        required: false
     environment:
       SANGUITY_DATA: /data
       SANGUITY_KEY_FILE: /run/secrets/sanguity/data_key
@@ -45,42 +48,14 @@ services:
       SANGUITY_WATCH_FILE: /srv/watch/daily.json
       SANGUITY_WATCH_KEYS: /srv/watch-keys/receiver-secrets.json   # each profile's receiver secret, for the receiver (#46)
       SANGUITY_WATCH_STORE: /srv/watch-store   # the receiver's whole folder, read-only: its data goes in backups (#227)
-      # the server's settings (server/config.py's VARS), each as "${NAME:-}": empty unless .env sets it, and
-      # empty is unset. One .env sets is shown in the app as set in .env, and fixed there (#999).
-      # Changed on Settings → Install → General (#1120): empty here, so the page owns them; .env pins one
-      PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:-}
-      WATCH_UPLOAD_URL: ${WATCH_UPLOAD_URL:-}
-      SESSION_DAYS: ${SESSION_DAYS:-}
-      SESSION_HOURS_WITHOUT_2FA: ${SESSION_HOURS_WITHOUT_2FA:-}
-      SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-}
-      PASSWORD_MIN_LENGTH: ${PASSWORD_MIN_LENGTH:-}
-      PASSWORD_MIN_LENGTH_2FA: ${PASSWORD_MIN_LENGTH_2FA:-}
-      TEMP_PASSWORD_DAYS: ${TEMP_PASSWORD_DAYS:-}
-      REAUTH_MINUTES: ${REAUTH_MINUTES:-}
-      ACTIVITY_DAYS: ${ACTIVITY_DAYS:-}
-      CONNECTED_SOURCES: ${CONNECTED_SOURCES:-}   # connected sources at all (#1096): experimental, off by default
-      # the environment's alone, or their default (.env.example)
-      COOKIE_SECURE: ${COOKIE_SECURE:-}
-      HASH_PARALLEL: ${HASH_PARALLEL:-}
-      UPLOAD_MAX_FILE_MB: ${UPLOAD_MAX_FILE_MB:-}
-      UPLOAD_MAX_TOTAL_MB: ${UPLOAD_MAX_TOTAL_MB:-}
-      UPLOAD_MAX_FILES: ${UPLOAD_MAX_FILES:-}
-      UPLOAD_MAX_ZIP_RATIO: ${UPLOAD_MAX_ZIP_RATIO:-}
-      JOURNAL_PHOTO_MAX_MB: ${JOURNAL_PHOTO_MAX_MB:-}   # a photo attached to a journal entry (#161)
-      SYNC_HOURS: ${SYNC_HOURS:-}
-      SYNC_MAX_RESOURCES: ${SYNC_MAX_RESOURCES:-}
-      SYNC_MAX_ATTACHMENT_MB: ${SYNC_MAX_ATTACHMENT_MB:-}
-      CONNECT_TIMEOUT: ${CONNECT_TIMEOUT:-}
-      SHL_MAX_MB: ${SHL_MAX_MB:-}
-      SHL_MAX_FILES: ${SHL_MAX_FILES:-}
-      SHL_TIMEOUT: ${SHL_TIMEOUT:-}
-      RECEIVER_PORT: ${RECEIVER_PORT:-}   # for the upload address on Sources → Phone and watch (#46); empty: 8731
-      RESTORE_KEEP_DAYS: ${RESTORE_KEEP_DAYS:-}   # what a restore replaced is deleted this long after (#595)
-      # the receiver's own (below), passed here too so General → Phone receiver shows them (#998)
-      TZ: ${TZ:-UTC}
-      SLOT_GRACE_DAYS: ${SLOT_GRACE_DAYS:-}
+      # (#1158) the server's settings are the page's, kept in the data folder (Settings → Install), as Sonarr's and
+      # Radarr's: only the container's own are set here. .env is handed to the app as it is (env_file, above), so a
+      # setting still in it is taken in once, on the first start of a version that keeps them there, and a later
+      # change to it is ignored with a warning; the sign-in provider and the notification token may be kept in .env
+      # on purpose (opt-in: see .env.example), and then win
+      RECEIVER_PORT: ${RECEIVER_PORT:-}   # the receiver's published port (below), for the phone upload address; empty: 8731
+      TZ: ${TZ:-UTC}   # the containers' clock
       SANGUITY_SAVED_SETTINGS: ${SANGUITY_SAVED_SETTINGS:-}   # off: the values saved in the app left out (#1006)
-      FORWARDED_ALLOW_IPS: "*"   # the app has no published port; only nginx reaches it, and nginx sets the header
       SANGUITY_DEPLOYMENT: compose   # how it's deployed, named on Settings → General → About (#1004)
     # no ports: only nginx (web) reaches it, over the compose network
     read_only: true
@@ -142,9 +117,7 @@ services:
       DATA: /data
       SECRET_FILE: /run/secrets/sanguity/watch_secret
       SANGUITY_KEY_FILE: /run/secrets/sanguity/data_key
-      TZ_DEFAULT: ${TZ:-UTC}
-      SLOT_GRACE_DAYS: ${SLOT_GRACE_DAYS:-}   # phone data no profile or secret names, deleted this long after (#593)
-      RESTORE_KEEP_DAYS: ${RESTORE_KEEP_DAYS:-}   # what a restore replaced, deleted this long after (#593)
+      TZ: ${TZ:-UTC}   # its clock; its time zone for readings is the app's to give it (#1158)
       PYTHONDONTWRITEBYTECODE: "1"
     ports:
       - "${RECEIVER_PORT:-8731}:8080"

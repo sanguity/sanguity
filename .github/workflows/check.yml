@@ -616,8 +616,10 @@ jobs:
           docker compose down
           cp -a auth "$GITHUB_WORKSPACE/auth"   # its key and receiver secret, where this checkout's compose.yaml looks
 
-      - name: This commit, started on the same folders (the database is migrated as the app starts)
+      - name: This commit, started on the same folders (the database is migrated as the app starts), with settings in .env
         run: |
+          # (#1158) settings an older install kept in .env: taken into the app once on this first start
+          printf 'SESSION_DAYS=20\nSHL_TIMEOUT=30\n' > .env
           docker compose up -d --build
           for i in $(seq 1 90); do curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz && break; sleep 2; done
 
@@ -641,6 +643,20 @@ jobs:
           fi
           python3 tests/docker_smoke.py --receiver http://127.0.0.1:8731
 
+      - name: .env's settings taken in once, then a change to them ignored with a warning (#1158)
+        run: |
+          shown() { docker compose exec -T app python3 -m server.manage config show | tr -d '\r'; }
+          shown | grep -E '^SESSION_DAYS .* 20 +saved in the app$' || { echo "SESSION_DAYS wasn't taken in"; shown; exit 1; }
+          shown | grep -E '^SHL_TIMEOUT +30 +changed on the page' || { echo "SHL_TIMEOUT wasn't taken in"; shown; exit 1; }
+          docker compose logs app | grep -q 'Took these settings from the environment' || { echo "the copy wasn't said"; exit 1; }
+          printf 'SESSION_DAYS=25\nSHL_TIMEOUT=30\n' > .env
+          docker compose up -d
+          for i in $(seq 1 90); do curl -fsS -o /dev/null http://127.0.0.1:8730/api/healthz && break; sleep 2; done
+          shown | grep -E '^SESSION_DAYS .* 20 +saved in the app$' || { echo ".env overwrote the settings"; shown; exit 1; }
+          docker compose logs app | grep -q 'SESSION_DAYS is set in the environment, but the settings file is where it' \
+            || { echo "no warning for the changed .env line"; exit 1; }
+          if docker compose logs app | grep -q 'SHL_TIMEOUT is set in the environment'; then echo "warned about one unchanged"; exit 1; fi
+
       - name: Show the containers and their logs
         if: failure()
         run: |
@@ -651,4 +667,5 @@ jobs:
         if: always()
         run: |
           docker compose down -v
+          rm -f .env
           (cd "$RUNNER_TEMP/previous" 2>/dev/null && docker compose down -v) || true

@@ -4079,6 +4079,12 @@ Everything on `main` so far; it becomes the first tagged release.
   It's kept by the medication, as your other changes to the records' are, so a re-import keeps it; records that later
   give an end date show as stopped the same way. The visit summary and the emergency card list current medications
   only, and the FHIR export says stopped, with the end date and the reason.
+- **Configured like Sonarr and Radarr** (#1158): the settings file is the one source of truth for every server setting,
+  each changed under Settings → Install (the Secure sign-in cookie and the zip ratio now too); `.env` and the templates
+  hold only the container's own variables. An upgrade takes what `.env` still sets into the app once (Install activity
+  and General say which), then ignores a change there with a warning; `python -m server.manage config set NAME VALUE`
+  joins `config reset`. The sign-in provider's fields and the notification token may be kept in the environment on
+  purpose (`NAME` or `NAME_FILE`), and then win, shown locked.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 

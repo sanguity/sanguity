@@ -26,36 +26,9 @@ questions:
     schema:
       type: dict
       attrs:
-        - variable: public_origins
-          label: Public Origins
-          description: 'Only if sign-in says "Request refused (cross-site check)" behind your own reverse proxy:</br>
-
-            the address you open Sanguity at, e.g. https://health.example.com (comma-separated for several).</br>
-
-            Passkeys need an HTTPS address. Otherwise leave it empty and set it on Settings → Install → General → Host:</br>
-
-            a value here pins it there.'
-          schema:
-            type: string
-            default: ''
-        - variable: cookie_secure
-          label: Secure Cookie
-          description: 'Mark the session cookie Secure: auto (when your reverse proxy says the request came over HTTPS), always
-            or never.'
-          schema:
-            type: string
-            default: auto
-            required: true
-            enum:
-              - value: auto
-                description: Auto
-              - value: '1'
-                description: Always
-              - value: '0'
-                description: Never
         - variable: additional_envs
           label: Additional Environment Variables
-          description: Other settings of the app (see .env.example in the repository), e.g. UPLOAD_MAX_FILE_MB. One that Settings → Install → General changes is pinned there while it's set here.
+          description: 'Optional. The server''s settings are changed in the app (Settings → Install) and kept in its data, not here: one given here is taken in once and ignored after. Only the sign-in provider (OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET...) and the notification token (NOTIFY_TOKEN) may be kept here on purpose, and then win (see .env.example in the repository).'
           schema:
             type: list
             default: []
