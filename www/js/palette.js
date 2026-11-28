@@ -191,6 +191,10 @@ const SgPalette = (() => {
       if (RANK[profile().role] >= RANK.editor) out.push({icon: sgIcon("family"), title: "Add a relative", ctx: "Family history",
         words: "family history relative mother father sister brother grandparent conditions", server: !onRecords, go: fam("#add-relative")});
     }
+    // (#1168) the insurance card full screen, where the page has it (ins-desk.js): the records page, offline too, and Settings
+    if (profile() && typeof insDesk === "function" && !document.getElementById("barSearch").hidden)
+      out.push({icon: sgIcon("settings/insurance"), title: "Insurance card at the desk", ctx: "Insurance cards", words: "insurance member id group number front back show plan",
+        server: !(onRecords && OFFLINE.copy), go: () => insDesk(pid())});   // (offline, from the copy kept: offline.js)
     const th = document.getElementById("theme");
     if (th && !th.hidden) out.push({icon: sgIcon("theme"), title: th.textContent.trim(), ctx: "Your menu", words: "theme dark light", go: () => th.click()});
     return out;

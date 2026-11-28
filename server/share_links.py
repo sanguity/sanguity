@@ -66,7 +66,8 @@ SECTIONS = [   # #576: each line names everything its page shows, and _build sen
     ("costs", "Costs and claims", "each claim's date, the service or medicine it was for, the provider, what was billed, "
               "what insurance paid and your share"),   # #581: a pharmacy claim's service is the medicine
     ("insurance", "Insurance cards", "each insurance plan's name, its member ID and group number, the phone numbers on "
-                  "its card, and the photos of the card's front and back, whatever the dates"),   # #1137: never unless ticked
+                  "its card, its type and whether it's primary or secondary, the policyholder, its dates, pharmacy numbers, "
+                  "payer ID and website, and the photos of the card's front and back, whatever the dates"),   # #1137: never unless ticked
     ("about", "About this person", "the birth date, the sex labs base reference ranges on, and each height written down, "
               "with its date (those in the dates chosen)"),   # #194: never unless ticked (the owner's page leaves it unticked)
     *measures.SECTIONS,   # #225: the phone's and watch's measures, immunizations, ECGs, BMI; never unless ticked
@@ -390,9 +391,7 @@ def _build(db, link, today, section):
         c = measures.context(db, pid, data, owners())
         out.update(measures.blocks(c, mw, lambda d: _in(d, scope), most=measures.LINK_MOST))
     if "insurance" in want:   # insurance cards (#1137), only when the owner ticked them: not dated, so every plan
-        out["insurance"] = [{"id": c["id"], "name": c["name"], "member": c["member"], "group": c["group"],
-                             "phones": [{"label": p["label"], "number": p["number"]} for p in c["phones"]],
-                             "front": bool(c["front"]), "back": bool(c["back"])} for c in insurance.listing(db, pid)]
+        out["insurance"] = [insurance.shared(c) for c in insurance.listing(db, pid)]   # (#1168: its card's fields, no links)
     if "about" in want:   # About this person (#194), only when the owner ticked it
         p = person.of(settings.nest(settings.stored(db, "profile", pid)))
         out["about"] = {"birthDate": p["birthDate"], "sex": person.SEXES[p["sex"]] if p["sex"] else "",

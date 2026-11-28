@@ -162,6 +162,7 @@ ROUTES = {
     ("POST", "/api/profiles/{pid}/insurance"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/insurance/{iid}"): (USER, "editor"),   # #1137
     ("DELETE", "/api/profiles/{pid}/insurance/{iid}"): (USER, "editor"), ("PUT", "/api/profiles/{pid}/insurance/{iid}/{side}"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/insurance/{iid}/{side}"): (USER, "editor"),
+    ("POST", "/api/profiles/{pid}/insurance/read"): (USER, "editor"), ("GET", "/api/profiles/{pid}/insurance/suggestions"): (USER, "editor"),   # #1168
     ("PUT", "/api/profiles/{pid}/medications/doses/{did}"): (USER, "editor"),
     ("DELETE", "/api/profiles/{pid}/medications/doses/{did}"): (USER, "editor"),
     ("POST", "/api/profiles/{pid}/medications/own"): (USER, "editor"),        # your own medications and changes (#1091)

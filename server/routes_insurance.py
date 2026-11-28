@@ -8,6 +8,13 @@
                                                           cleaned as a journal photo is); nginx lets this one be large
   GET    /api/profiles/{pid}/insurance/{id}/{side}        that photo, to anyone who can view the profile
   DELETE /api/profiles/{pid}/insurance/{id}/{side}        take it off
+  POST   /api/profiles/{pid}/insurance/read               owners and editors (#1168): the request body a photo of a
+                                                          card (checked as a card's photo is), read by text recognition
+                                                          on this server -> {"state", "found": suggestions}; nothing
+                                                          is kept, nor logged but that a card was read
+  GET    /api/profiles/{pid}/insurance/suggestions        owners and editors (#1168): plans the imported claims suggest,
+                                                          their insurers and the plan years to link to
+                                                          (insurance.from_records); nothing is kept
 
 Owners and editors change them. Each change goes in the profile's activity log as "insurance": what was done, and for
 a photo which side, never the plan's name or numbers (a member ID is never logged anywhere)."""
@@ -16,7 +23,7 @@ from typing import List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from . import activity, db as dbm, insurance, journal_photos as photos
+from . import activity, costplan, db as dbm, insurance, journal_photos as photos, ocr, records
 from .main import DOC_CSP, _client_ip, get_db, need, user
 
 router = APIRouter()
@@ -33,6 +40,20 @@ class Plan(BaseModel):
     member: Optional[str] = Field(None, max_length=500)
     group: Optional[str] = Field(None, max_length=500)
     phones: List[Phone] = Field(default_factory=list, max_length=20)
+    kind: Optional[str] = Field(None, max_length=20)   # (#1168: insurance.check says what each may be)
+    order: Optional[str] = Field(None, max_length=20)
+    holder: Optional[str] = Field(None, max_length=500)
+    relation: Optional[str] = Field(None, max_length=20)
+    start: Optional[str] = Field(None, max_length=20)
+    end: Optional[str] = Field(None, max_length=20)
+    rxbin: Optional[str] = Field(None, max_length=500)
+    rxpcn: Optional[str] = Field(None, max_length=500)
+    rxgroup: Optional[str] = Field(None, max_length=500)
+    payer: Optional[str] = Field(None, max_length=500)
+    website: Optional[str] = Field(None, max_length=1000)
+    years: List[str] = Field(default_factory=list, max_length=40)
+    payers: List[str] = Field(default_factory=list, max_length=40)
+    card: List[str] = Field(default_factory=list, max_length=20)
 
 
 def _checked(body):
@@ -49,7 +70,45 @@ def _log(db, s, pid, request, change, side=None):
 @router.get("/api/profiles/{pid}/insurance")
 def plans(pid: int, s=Depends(user), db=Depends(get_db)):
     role = need(db, s, pid, "viewer")
-    return {"plans": insurance.listing(db, pid), "can_change": role in ("owner", "editor")}
+    return {"plans": insurance.listing(db, pid), "can_change": role in ("owner", "editor"), "can_read": ocr.available()}
+
+
+@router.get("/api/profiles/{pid}/insurance/suggestions")
+def suggestions(pid: int, s=Depends(user), db=Depends(get_db)):
+    """What the records suggest for a plan, never saved by itself (#1168)."""
+    need(db, s, pid, "editor")
+    return insurance.from_records(records.assemble(db, pid) or {}, insurance.listing(db, pid), costplan.plans(db, pid))
+
+
+def _read(db, s, pid, data, ip):
+    clean, _, _ = photos.strip(data)   # a picture as a card's photo is checked, its metadata out, before it's read
+    got = ocr.read_picture(clean)
+    activity.log(db, "insurance", s, pid, {"change": "read"}, ip)
+    return {"state": got["state"], **({"why": got["why"]} if got.get("why") else {}),
+            "found": insurance.from_text(got.get("text")) if got["state"] == "found" else {}}
+
+
+@router.post("/api/profiles/{pid}/insurance/read")
+async def read(pid: int, request: Request, s=Depends(user), db=Depends(get_db)):
+    """A photo of a card read for suggestions (#1168): read on this server and kept nowhere; what it seems to say is
+    the answer, for the page to offer, never saved by itself."""
+    from starlette.concurrency import run_in_threadpool
+    await run_in_threadpool(need, db, s, pid, "editor")
+    if not ocr.available():
+        return {"state": "off", "found": {}}
+    try:
+        if int(request.headers.get("content-length") or 0) > photos.max_bytes():
+            raise photos.too_big()
+        data = bytearray()
+        async for chunk in request.stream():
+            data += chunk
+            if len(data) > photos.max_bytes():
+                raise photos.too_big()
+        if not data:
+            raise photos.PhotoError("That file is empty.")
+        return await run_in_threadpool(_read, db, s, pid, bytes(data), _client_ip(request))
+    except ValueError as x:
+        raise HTTPException(getattr(x, "status", 400), str(x) if hasattr(x, "status") else "Send the photo as the request body.")
 
 
 @router.post("/api/profiles/{pid}/insurance", status_code=201)

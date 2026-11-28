@@ -60,9 +60,10 @@ Profile events (profile_id set), readable by the profile's owners:
                 undone by an owner or editor, with how many saved results were re-filed (labmap.py, #1097; never names)
   notify        {"kind": "results" | "doses", "on"}: someone turned a kind of notification on or off for the profile
                 (notify.py, #1130)
-  insurance     {"change": "add" | "change" | "delete" | "photo" | "photo.delete", "side"?}: an insurance plan added,
-                changed or removed, or a photo of its card's front or back put on or taken off (insurance.py, #1137;
-                never the plan's name, member ID or numbers)
+  insurance     {"change": "add" | "change" | "delete" | "photo" | "photo.delete" | "read", "side"?}: an insurance
+                plan added, changed or removed, a photo of its card's front or back put on or taken off, or a card's
+                photo read by text recognition for suggestions (insurance.py, #1137, #1168; never the plan's name,
+                member ID or numbers, nor what was read)
   link          {"change": "create" | "revoke" | "view", "link", "label"?, ...}: a share link made or revoked by an owner
                 (with its sections, number of labs, dates and hours), or opened by whoever holds it: actor SHARE_LINK,
                 with the viewer's address (share_links.py, #47; never the token)

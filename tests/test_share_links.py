@@ -254,7 +254,10 @@ class ShareLinks(unittest.TestCase):
         "insurance": {"id": ["the photos of the card's front and back"], "name": ["each insurance plan's name"],   # #1137
                       "member": ["its member ID"], "group": ["group number"], "phones": ["the phone numbers on its card"],
                       "phones.label": ["the phone numbers on its card"], "phones.number": ["the phone numbers on its card"],
-                      "front": ["the photos of the card's front and back"], "back": ["the photos of the card's front and back"]},
+                      "front": ["the photos of the card's front and back"], "back": ["the photos of the card's front and back"],
+                      "kind": ["its type"], "order": ["primary or secondary"], "holder": ["the policyholder"],   # (#1168)
+                      "relation": ["the policyholder"], "start": ["its dates"], "end": ["its dates"], "rxbin": ["pharmacy numbers"],
+                      "rxpcn": ["pharmacy numbers"], "rxgroup": ["pharmacy numbers"], "payer": ["payer ID"], "website": ["website"]},
         "about": {"birthDate": ["the birth date"], "sex": ["the sex labs base reference ranges on"], "heights": ["each height"],
                   "heights.date": ["with its date"], "heights.cm": ["each height"], "heights.text": ["each height"]},
         # the measures (measures.py): by each column's heading, its unit and a glucose range's numbers left out

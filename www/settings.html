@@ -70,8 +70,11 @@
       <p>Owners and editors add and change plans; everyone the profile is shared with sees them. They're encrypted like
         the records, and the member ID is never written in the activity log.</p>
       <p>A share link shows them only if its owner ticks Insurance cards. They go with the profile's export. The
-        emergency card prints each plan's name, member ID and group number, without the photos.</p>
-      <p>Where a photo was taken, and the phone it was taken with, are taken out of it before it's kept.</p>
+        emergency card prints each plan's name, member ID and group number, and what else you tick for it, without the
+        photos; a plan that has ended isn't on it.</p>
+      <p>Where a photo was taken, and the phone it was taken with, are taken out of it before it's kept. The card is found
+        in the photo and cropped on this device; only the cropped card is sent. Read the card has the server's text
+        recognition, when it's on, suggest what the card says; nothing it suggests is saved until you use it.</p>
     </div>
     <div id="insuranceBody"></div>
     <span class="msg" id="insuranceMsg" role="status"></span>
@@ -457,7 +460,9 @@
 <script src="js/person.js"></script>
 <script src="js/targets.js"></script>
 <script src="js/lab-matches.js"></script>
+<script src="js/cardcrop.js"></script>
 <script src="js/insurance.js"></script>
+<script src="js/ins-desk.js"></script>
 <script src="js/ranges.js"></script>
 <script src="js/presets.js"></script>
 <script src="js/about.js"></script>

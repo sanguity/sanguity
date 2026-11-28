@@ -968,6 +968,42 @@ main.acct{max-width:860px;margin:0 auto;padding:var(--sp-5)}
 .acct label:not(:where(.seg>label)){display:grid;gap:var(--sp-1);font-size:var(--fs-3);color:var(--ink2);font-weight:var(--fw-medium)}   /* (a pick-one's choice: its own look, components, #550) */
 .acct label.check{display:flex;align-items:center;gap:var(--sp-2);padding-bottom:var(--sp-2)}
 .acct label.ins-pick{display:inline-flex;align-items:center;color:var(--ink)}   /* an insurance card's photo picker (insurance.js), not every .pick: a primary one keeps its white text */
+/* an insurance plan's dialog (#1168, insurance.js), a photo's crop (cardcrop.js) and the card at the desk (ins-desk.js) */
+dialog.sg-ask.ins-dlg{width:min(40rem,calc(100vw - 32px))}
+dialog.sg-ask.cc-dlg{width:min(46rem,calc(100vw - 32px))}
+:is(.ins-dlg,.cc-dlg,.ins-desk) .row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin:var(--sp-2) 0}
+.ins-dlg .ins-set{border:1px solid var(--grid);border-radius:var(--r-md);padding:var(--sp-1) var(--sp-3) var(--sp-2);margin:var(--sp-3) 0;min-width:0}
+.ins-dlg legend{font-weight:var(--fw-semibold);padding:0 var(--sp-1)}
+.ins-dlg .sg-ask-msg label.btn{display:inline-flex;align-items:center;margin:0;color:var(--ink);font-size:var(--fs-2)}
+.ins-dlg .sg-ask-msg label.check{display:flex;align-items:flex-start;gap:var(--sp-2);margin:var(--sp-1) 0;color:var(--ink);font-weight:var(--fw-regular)}
+.ins-dlg .sg-ask-msg label.check>input{width:auto;margin:.2em 0 0;flex:none}
+.ins-dlg select{display:block;width:100%;margin-top:var(--sp-1)}
+.ins-side h3{margin:var(--sp-2) 0 var(--sp-1)}
+.ins-said:empty{display:none}
+.ins-said{color:var(--ink)}
+.ins-pv,.cc-prev{display:block;max-width:min(100%,320px);height:auto;border:1px solid var(--ring);border-radius:var(--r-md)}
+.ins-sug{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-2);margin:var(--sp-1) 0 0;padding:var(--sp-1) var(--sp-2);border-left:3px solid var(--accent);background:var(--raised);overflow-wrap:anywhere}
+.ins-sug .acts{display:flex;gap:var(--sp-1)}
+.sg-ask-msg .ins-used{outline:2px solid var(--accent);outline-offset:1px}
+.cc-wrap{padding:var(--sp-4);background:var(--raised);border-radius:var(--r-md)}
+.cc-stage{display:block;width:100%;height:auto;max-height:50dvh;touch-action:none;overflow:visible}
+.cc-stage polygon{fill:none;stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke}
+.cc-h{cursor:grab;touch-action:none;outline:none}
+.cc-hit{fill:transparent}
+.cc-ring{fill:color-mix(in srgb,var(--surface) 50%,transparent);stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke}
+.cc-h:focus-visible .cc-ring{stroke:var(--ink);stroke-width:4}
+dialog.ins-desk.sg-dlg{inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;border:0;border-radius:0;padding:var(--sp-3) var(--sp-4);display:flex;flex-direction:column;gap:var(--sp-2)}
+dialog.ins-desk:not([open]){display:none}
+.dk-top{display:flex;align-items:center;gap:var(--sp-2)}
+.dk-top h2{flex:1;min-width:0;margin:0;font-size:var(--fs-5);overflow-wrap:anywhere}
+.dk-main{display:flex;flex-direction:column;gap:var(--sp-2)}
+.dk-card{display:block;align-self:center;max-width:100%;padding:0;border:0;background:none;cursor:pointer;touch-action:pan-y}
+.dk-card img{display:block;max-width:100%;max-height:60dvh;height:auto;border:1px solid var(--ring);border-radius:var(--r-lg)}
+.dk-ids{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-5);margin:0}
+.dk-ids dt{color:var(--ink2)}
+.dk-ids dd{margin:0;font-size:clamp(1.75rem,8vw,2.75rem);font-weight:var(--fw-semibold);letter-spacing:.04em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.dk-rx{margin:0;font-size:var(--fs-4)}
+@media (forced-colors:active){ .cc-stage polygon,.cc-ring{stroke:Highlight} .cc-h:focus-visible .cc-ring{stroke:CanvasText} .ins-sug{border:1px solid CanvasText;border-left-width:3px} }
 .acct .ocr-langs>:first-child{margin-top:0}   /* General → Text recognition's first language level with its name (gen-ocr.js, #494) */
 .acct label.btn.small{font-size:var(--fs-2)}
 .acct .row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin:var(--sp-2) 0}   /* 8 px above and below: a row of buttons never sits on the heading or text after it (#309) */
