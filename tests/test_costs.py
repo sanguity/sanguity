@@ -113,7 +113,7 @@ class Costs(unittest.TestCase):
     def test_1_export_and_claims(self):
         d, pays, claims = self.oop()
         c1, c2, c3 = (self.claim_id(d, k) for k in ("uhc:CL-1", "uhc:CL-2", "uhc:CL-3"))
-        self.assertEqual({p["src"] for p in pays.values()}, {"export"})
+        self.assertEqual({p["src"] for p in pays.values()}, {"records"})
         self.assertTrue(all(p["key"].startswith("pay:h:") for p in pays.values()), "export payments get content keys")
         # the $60 from the HSA card paid the office visit: matched by amount, date and a word of the provider's name
         self.assertEqual((pays[1]["claim"], pays[1]["match"], pays[1]["hsa"], pays[1]["hsaFrom"]), (c1, "auto", "HSA", "account"))

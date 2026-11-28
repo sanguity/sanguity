@@ -7930,8 +7930,8 @@ def main():
             box448 = js("""(w => [w.scrollHeight - w.clientHeight, getComputedStyle(w).maxHeight, w.querySelectorAll('tbody tr[data-oop]').length,
                 (e => e && e.closest('tr.oop-open')?.previousElementSibling === document.activeElement.closest('tr'))(document.getElementById('oopEdit')),
                 document.documentElement.scrollWidth])(document.querySelector('#paidTable .tablewrap'))""")
-            # #465: What you paid's hint one line at 390 px, where the amounts came from; the rest (the export's date, what
-            # isn't counted) behind its ⓘ
+            # #465: What you paid's hint one line at 390 px, where the amounts came from; the rest (how each is counted)
+            # behind its ⓘ
             hint465 = js("""(p => [p.textContent, Math.round(p.getBoundingClientRect().height / parseFloat(getComputedStyle(p).lineHeight)),
                 [...p.parentElement.querySelectorAll('.about-words p')].map(x => x.textContent).join(' ')])(document.querySelector('#view-costs .cost-figs > p.hint'))""")
             # #467: …and one line with all three sources, a payment typed in too (the demo has only the other two)
@@ -7994,8 +7994,8 @@ def main():
             check("…What you paid's hint is one line at 390 px, where its amounts came from, the rest behind its ⓘ (#465)",
                   hint465[0].startswith("From ") and hint465[1] == 1 and "counted once" not in hint465[0] and "counted once" in hint465[2] and hint465[2].startswith("From "), hint465)
             check("…and one line at 390 px with all three sources, a payment typed in too, each named in it and in full behind its ⓘ (#467)",
-                  hint467[1] == 1 and all(w in hint467[0] for w in ("typed in", "export", "claims")) and "payments typed in" in hint467[2]
-                  and "a finance export" in hint467[2] and "claims' shares with no payment matched" in hint467[2], hint467)
+                  hint467[1] == 1 and all(w in hint467[0] for w in ("typed in", "imported", "claims")) and "payments typed in" in hint467[2]
+                  and "payments imported with your records" in hint467[2] and "claims' shares with no payment matched" in hint467[2], hint467)
             check("…Enter on a payment's date at 568×320 and 667×375 leaves the date in sight, the editor's top under it, as much of the editor as fits (#473)",
                   len(open473) == 4 and all(v[0] and v[1] >= 0 and v[2] <= v[3] < v[5] and v[6] for v in open473.values())
                   and open473["568×320 row 0"][4] > 320, open473)
@@ -19506,12 +19506,12 @@ def main():
             check("…the command palette finds them: “deductible” Plan years, “add a bill” Bills, “tax report” the Tax-year report, each focused on Costs",
                   all(pal1146.values()), pal1146)
             empty1146 = js("""(() => { const had = [DATA.costs, DATA.outOfPocket, DATA.oop]; DATA.costs = []; DATA.outOfPocket = {payments: []}; DATA.oop = {...DATA.oop, bills: [], payments: [], claims: []};
-                               costState.view = 'claims'; renderCosts(); const b = document.getElementById('billFirst'), out = [!!b && b.previousElementSibling?.textContent, b?.textContent];
+                               costState.view = 'claims'; renderCosts(); const b = document.getElementById('billFirst'), out = [[...document.querySelectorAll('#view-costs .empty-next')].map(n => n.textContent).join(' · '), b?.textContent];
                                b.click(); out.push(document.activeElement.id, !!document.getElementById('billEdit'));
                                document.querySelector('#billEdit button.btn:not(.primary)').click(); out.push(document.activeElement.id);
                                [DATA.costs, DATA.outOfPocket, DATA.oop] = had; billState.first = false; renderCosts(); return out; })()""")
-            check("…the empty Costs page offers Add a bill beside Type in a claim or payment; it opens the bill's form, and Cancel comes back to it",
-                  empty1146 == ["Type in a claim or payment", "Add a bill", "bill-service", True, "billFirst"], empty1146)
+            check("…the empty Costs page offers Add a bill beside the uploads and Type in a claim or a payment (#1163); it opens the bill's form, and Cancel comes back to it",
+                  empty1146 == ["Upload claims files · Upload a payments file · Type in a claim · Type in a payment · Add a bill", "Add a bill", "bill-service", True, "billFirst"], empty1146)
             js("costState.view = 'claims'; renderCosts()")
 
             # ---- readings typed in at home (#224): blood pressure, glucose, temperature and blood oxygen typed on Sources
@@ -33535,7 +33535,8 @@ def main():
                 body: JSON.stringify({{save: true, items: [{{kind: 'visit', date: '2026-10-01', title: 'Fictional check-up', who: 'Dr. Example', where: 'Example Clinic'}}]}})}}).then(r => r.status)""")
             want = {"overview": [["Add lab results", f"sources.html?profile={pid2}#manual"]], "health": [["Connect a phone", f"sources.html?profile={pid2}#phone"]],
                     "timeline": [["Show everything", None]], "labs": [["Add lab results", f"sources.html?profile={pid2}#manual"]],
-                    "costs": [["Type in a claim or payment", f"sources.html?profile={pid2}#payment"], ["Add a bill", None]]}   # (and a provider's bill, #1128)
+                    "costs": [["Upload claims files", f"sources.html?profile={pid2}#upload"], ["Upload a payments file", f"sources.html?profile={pid2}#upload"],   # (#1163: every way in,
+                              ["Type in a claim", f"sources.html?profile={pid2}#claim"], ["Type in a payment", f"sources.html?profile={pid2}#payment"], ["Add a bill", None]]}   # a provider's bill too, #1128)
             got, bad = {}, []
             fp.goto(fbase + f"/?profile={pid2}#overview")
             f_until("typeof booted !== 'undefined' && booted && EV.length > 0")

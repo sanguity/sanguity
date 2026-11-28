@@ -124,7 +124,7 @@ class TaxReport(unittest.TestCase):
         self.assertEqual(rows[0], ["Row", "Date", "Paid to", "For", "Amount", "HSA/FSA", "From", "Receipt file"])
         self.assertEqual([r[1] for r in rows[1:]], ["2026-01-01", "2026-03-31", "2026-04-01", "2026-05-03", "2026-06-10", "2026-12-31"])
         self.assertEqual(rows[3][2], "'=HYPERLINK(\"x\")", "a formula kept as text")
-        self.assertEqual(rows[4][4:], ["45.00", "FSA", "Typed in", "receipts/004-2026-05-03.pdf"])
+        self.assertEqual(rows[4][4:], ["45.00", "FSA", "Typed in by you", "receipts/004-2026-05-03.pdf"])
         self.assertEqual(rows[2][5], "HSA")
         self.assertEqual(rows[5][4], "-25.00", "a refund as it is")
         self.assertEqual(sum(float(r[4]) for r in rows[1:]), 645.5, "the preview's total")
