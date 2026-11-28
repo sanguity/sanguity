@@ -79,7 +79,7 @@ const SgOutside = (() => {
         contacts(v.directory.contacts, "Not read yet: each host is listed once the lists are read.")] : []),
       ...(v.sign_in ? [sub("Sign-in provider"),   // (#1109) the install's, an admin's alone
         el("p", {class: "muted"}, "Contacted when someone signs in or links an identity with it, or an admin tests it, in ",
-          el("a", {href: "#gen-signin", text: "General, Sign-in provider"}), "."),
+          el("a", {href: "#signin-provider", text: "Accounts and sign-in, Sign-in provider"}), "."),
         contacts(v.sign_in.contacts, "Not contacted yet: each host is listed once someone signs in with it.")] : []),
       ...(v.notifications ? [sub("Notification server"),   // (#1130) the install's own, set by an admin
         el("p", {class: "muted"}, `${v.notifications.hosts.join(", ")}: sent the notifications people turn on, in `,

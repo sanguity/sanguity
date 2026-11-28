@@ -65,7 +65,7 @@ $("#pwForm").onsubmit = async ev => {
 };
 
 /* ---------------------------------------------------------------- sessions */
-/* how long a sign-in lasts, as the admins set it (#1001: General → Security, which tells it again on a change), read-only */
+/* how long a sign-in lasts, as the admins set it (#1001: Accounts and sign-in → Sign-in rules, which tells it again on a change), read-only */
 const sessLasts = () => { $("#sessLasts").textContent = signInLasts(ME.session, "You stay signed in on a device until you log out") + " This server's admins set it."; };
 async function loadSessions() {
   const list = await call("sessions");
@@ -204,7 +204,7 @@ function showRecoveryCodes(codes, justTurnedOn) {
 async function adminAgain(m) {
   const had = ME.user.admin_needs_two_factor;
   ME = await call("me");
-  if (had && !ME.user.admin_needs_two_factor) $(m).append(" Install is open to you again: ", el("a", {href: "#accounts", text: "go to Accounts",
+  if (had && !ME.user.admin_needs_two_factor) $(m).append(" Install is open to you again: ", el("a", {href: "#accounts", text: "go to Accounts and sign-in",
     onclick: ev => { ev.preventDefault(); location.replace("#accounts"); location.reload(); }}), ".");
 }
 

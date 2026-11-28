@@ -475,7 +475,7 @@ define("notify.url", "notify", "Notification server", "", notify_url, scope="ins
             "under Settings, Notifications, and subscribes to it again.")
 
 
-# ---------------------------------------------------------------- General → Security (#1001)
+# ---------------------------------------------------------------- Accounts and sign-in → Sign-in rules (#1001)
 # How people sign in, each applying at once where it's used (config.setting, or install_value for those no variable
 # stands for), with the fresh check and logged old and new as every install setting's change (#1006). Each is bounded,
 # and never more lenient than Sanguity's own default (#998): a value outside is refused (400), and the environment's
@@ -505,7 +505,8 @@ def one_of(choices, what):
     return check
 
 
-section("security", "Security", "How people sign in to this server, and for how long. Each change applies at once.")
+section("security", "Sign-in rules", "How people sign in to this server, and for how long. The switch and the choice apply at once; "
+        "the numbers, with Save.")   # (Accounts and sign-in's, General → Security before #1119)
 define("security.sessionDays", "security", "A sign-in lasts, with a second factor (days)", 30,
        whole(1, 30, "A sign-in's length"), scope="install", private=False, kind="number", env="SESSION_DAYS",
        help="From signing in, with an authenticator app or a passkey. Shorter ends the sign-ins older than that; "

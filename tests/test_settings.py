@@ -580,7 +580,7 @@ class Settings(unittest.TestCase):
         self.assertEqual(ada.get("/api/settings/install").json()["sections"][0]["settings"][0]["from"], "default")
 
     def test_saved_settings_off_lets_a_locked_out_install_back_in(self):
-        """#1006: a value saved in the app that ends sign-ins (here 1 day, General → Security's shortest, #1001: Zed's two
+        """#1006: a value saved in the app that ends sign-ins (here 1 day, Sign-in rules's shortest, #1001: Zed's two
         days old) keeps people out; SANGUITY_SAVED_SETTINGS=off leaves saved values out, so they're in again and an admin
         puts it right; server.manage config reset does too, without the page."""
         key = "security.sessionDays"
@@ -623,7 +623,7 @@ class Settings(unittest.TestCase):
             manage.run(["config", "reset", "SESSION_DAYS"])
         self.assertEqual(signed_in(), 200)
 
-    # ---------------------------------------------------------------- General → Security (#1001)
+    # ---------------------------------------------------------------- Sign-in rules (#1001)
 
     def security_put(self, key, value, status=200, confirm=True):
         """confirm: what's asked to be typed is typed (#998's one rule), or nothing is (False)"""
@@ -639,7 +639,7 @@ class Settings(unittest.TestCase):
         self.assertEqual(self.c["ada"].post("/api/settings/install/reset", json={"section": "security"}, headers=H).status_code, 200)
 
     def test_security_settings_are_bounded_never_more_lenient(self):
-        """#1001: each of General → Security's settings takes the values from its least to its most, Sanguity's own
+        """#1001: each of Sign-in rules's settings takes the values from its least to its most, Sanguity's own
         default never exceeded (#998), and refuses one past either (400), saying its bounds; the page is given them. A
         variable set in the environment (PASSWORD_MIN_LENGTH, here) shows locked and refuses a change (409)."""
         ada = self.c["ada"]
@@ -674,7 +674,7 @@ class Settings(unittest.TestCase):
             self.security_reset()
 
     def test_security_settings_apply_at_once(self):
-        """#1001: each of General → Security's settings reaches what it governs at once, without a restart: a sign-in's
+        """#1001: each of Sign-in rules's settings reaches what it governs at once, without a restart: a sign-in's
         lengths and idle sign-out (You → Sign-in and security is told them), who may create profiles (the server
         refuses the rest), the shortest passwords, a one-time password's days, the fresh check's minutes, and the
         sign-in throttle's free tries."""

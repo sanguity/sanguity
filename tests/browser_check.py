@@ -927,7 +927,7 @@ def confirm_its_you(page, done, timeout=10000, box="reauth"):
     """After an Admin action the fresh check may be asked for (server main.fresh; #590 added giving a profile an owner,
     disabling its only owner and handing its profiles over): answer it with the password if it's asked (not within a
     few minutes of the last one), then wait until done (JS, true once the action has finished). box: the card's own
-    place for it (General → Security's, genSecReauth, #1001), else Accounts'."""
+    place for it (Sign-in rules', genSecReauth, #1001), else People's."""
     page.wait_for_function(f"!document.getElementById('{box}').hidden || ({done})", timeout=timeout)
     asked = page.evaluate(f"!document.getElementById('{box}').hidden")
     if asked:
@@ -1094,19 +1094,24 @@ def general_env_check(browser, base, cookies, check, db_path):
     try:
         pg.goto(base + "/settings.html?profile=1#general")
         for sel in ("#gen-host [data-env]", "#gen-phone [data-env]", "#genSecBody [data-env]", "#genExpBody [data-env]", "#genBk [data-env]",
-                    "#gen-signin [data-env]", "#genAbout .kv"):
-            pg.wait_for_selector(sel, timeout=20000)
+                    "#signin-provider [data-env]", "#genAbout .kv"):
+            pg.wait_for_selector(sel, state="attached", timeout=20000)   # (the sign-in parts: Accounts and sign-in's, #1119)
+        fixed_js = """[...document.querySelectorAll(':is(section[id^="gen-"], #signin-rules, #signin-provider) :is(input, textarea, select, button, [role=switch])')]
+            .filter(e => e.checkVisibility() && (e.disabled || e.readOnly || e.getAttribute('aria-disabled') === 'true')).map(e => e.id || e.textContent.trim())"""
         got = pg.evaluate("""(at => ({
-          fixed: [...document.querySelectorAll('section[id^="gen-"] :is(input, textarea, select, button, [role=switch])')]
-            .filter(e => e.checkVisibility() && (e.disabled || e.readOnly || e.getAttribute('aria-disabled') === 'true')).map(e => e.id || e.textContent.trim()),
-          rows: Object.fromEntries([...document.querySelectorAll('section[id^="gen-"] [data-env]')].map(r => [r.dataset.env, {
+          fixed: """ + fixed_js + """,
+          rows: Object.fromEntries([...document.querySelectorAll(':is(section[id^="gen-"], #signin-rules, #signin-provider) [data-env]')].map(r => [r.dataset.env, {
             value: r.querySelector('.set-row-ctl > p').textContent, tag: r.querySelector('.set-row-lbl .tag')?.textContent,
             tagOnName: !!r.querySelector('.set-row-lbl > :first-child .tag'), help: r.querySelector('.set-row-lbl .hint')?.textContent || '',
             where: r.querySelector('.set-row-ctl > p.hint:last-child')?.textContent, controls: r.querySelectorAll('input, textarea, select').length}])),
-          host: document.getElementById('gen-host').textContent, sec: document.getElementById('gen-security').textContent,
+          host: document.getElementById('gen-host').textContent, sec: document.getElementById('signin-rules').textContent,
           passkeys: [...document.querySelectorAll('#gen-host .set-row')].find(r => r.textContent.startsWith('Passkey names'))?.querySelector('.set-row-ctl').textContent,
           limits: [...document.querySelectorAll('#genAbout li')].filter(l => l.querySelector('.tag')).map(l => l.querySelector('.tag').textContent),
           page: document.documentElement.outerHTML}))""", None)
+        # (#1119) Sign-in rules and Sign-in provider, Accounts and sign-in's: no disabled or readonly control there either
+        pg.click("#setNav a[data-group=accounts]")
+        pg.wait_for_selector("#signin-rules [data-env]", state="visible", timeout=10000)
+        got["fixed"] += pg.evaluate(fixed_js)
         at = ctx.request.get(base + "/api/settings/install").json()["settings_at"]
         machine = {st["name"] for st in ctx.request.get(base + "/api/settings/install/restart").json()["settings"]   # (Needs a restart's
                    if not st["can_change"]}   # the machine's own environment sets, as TZ here: #1121)
@@ -1124,22 +1129,28 @@ def general_env_check(browser, base, cookies, check, db_path):
                                                        and rows[k]["tagOnName"] and len(rows[k]["help"]) > 20 and rows[k]["where"] == "Change it where this server's "
                                                        f"settings are, or take it out there to change it here: {at}." for k in rows)
               and env["OIDC_CLIENT_SECRET"] not in got["page"] and env["NOTIFY_TOKEN"] not in got["page"], {k: [r, want.get(k)] for k, r in rows.items()})
-        check("…Host and Security hold no read-only fact of the server's setup (About does); About tags a limit only where the "
+        check("…Host and Sign-in rules hold no read-only fact of the server's setup (About does); About tags a limit only where the "
               "environment set it", not re.search(r"Trusted proxies|Internal port|COOKIE_SECURE|HASH_PARALLEL|Secure session cookie|Password checks at once",
                                                   got["host"] + got["sec"]) and got["limits"] == ["Set in .env: UPLOAD_MAX_FILES"],
               [got["limits"], re.findall(r"Trusted proxies|Internal port|COOKIE_SECURE|HASH_PARALLEL", got["host"] + got["sec"])])
         check("…and Host's Passkey names says each name the passkeys were made at, with its count (never “[object …]”)",
               got["passkeys"] == "records.example.test: 2 passkeys", got["passkeys"])
-        serious, _ = axe_check(pg, "General, set by the environment")
-        check("…no serious axe finding", not serious, serious)
-        pg.set_viewport_size({"width": 320, "height": 800})
-        pg.wait_for_timeout(200)
-        fits = phone_fits(pg, "General, set by the environment, at 320 px")
-        pg.set_viewport_size({"width": 412, "height": 900})
-        pg.evaluate("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = [s]; }", BIG_TEXT_CSS)
-        pg.wait_for_timeout(300)
-        fits += phone_fits(pg, "General, set by the environment, at 200% text")
-        fits += [f"at 200% text the page scrolls sideways by {n} px" for n in [pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")] if n > 0]
+        serious, fits = [], []
+        for grp, name in (("general", "General"), ("accounts", "Accounts and sign-in")):   # (#1119: the sign-in parts there)
+            pg.set_viewport_size({"width": 1400, "height": 900})
+            pg.evaluate("document.adoptedStyleSheets = []")
+            pg.click(f"#setNav a[data-group={grp}]")
+            pg.wait_for_timeout(300)
+            serious += axe_check(pg, f"{name}, set by the environment")[0]
+            pg.set_viewport_size({"width": 320, "height": 800})
+            pg.wait_for_timeout(200)
+            fits += phone_fits(pg, f"{name}, set by the environment, at 320 px")
+            pg.set_viewport_size({"width": 412, "height": 900})
+            pg.evaluate("css => { const s = new CSSStyleSheet(); s.replaceSync(css); document.adoptedStyleSheets = [s]; }", BIG_TEXT_CSS)
+            pg.wait_for_timeout(300)
+            fits += phone_fits(pg, f"{name}, set by the environment, at 200% text")
+            fits += [f"{name} at 200% text scrolls sideways by {n} px" for n in [pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")] if n > 0]
+        check("…no serious axe finding, there and in Accounts and sign-in", not serious, serious)
         check("…and fits at 320 px and at 200% text", not fits, fits)
     except Exception as e:
         check("General with its settings set by the environment (#1119) ran", False, stopped(e))
@@ -1153,6 +1164,54 @@ def general_env_check(browser, base, cookies, check, db_path):
         con.commit()
         con.close()
         ctx.close()
+    return errs
+
+
+def signin_moved_check(browser, base, cookies, check):
+    """(#1119, the owner's decision) Sign-in rules and Sign-in provider are Accounts and sign-in's, after People (General's
+    Security and Sign-in provider before): General no longer holds them, their old addresses open them there, and the
+    palette finds them by their old words, each said as Accounts and sign-in's, Enter opening it. Returns script errors."""
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True)
+    ctx.add_cookies(cookies)
+    pg, errs, got = ctx.new_page(), [], {}
+    pg.on("pageerror", lambda e: errs.append(str(e)))
+    shown = """() => [location.hash, document.querySelector('#setNav a[aria-current=page]')?.dataset.group,
+      [...document.querySelectorAll('main > .card')].filter(c => c.checkVisibility()).map(c => c.id)]"""
+    try:
+        pg.goto(base + "/settings.html?profile=1#general")
+        pg.wait_for_selector("#gen-host .set-row", timeout=20000)
+        got["general"] = pg.evaluate(shown)
+        for old, new in (("gen-security", "signin-rules"), ("gen-signin", "signin-provider")):
+            pg.goto(base + f"/settings.html?profile=1#{old}")
+            pg.wait_for_function(f"location.hash === '#{new}' && document.getElementById('{new}')?.checkVisibility()", timeout=20000)
+            got[old] = pg.evaluate(shown)
+        found = {}
+        for q, want in (("security", "Sign-in rules"), ("session length", "Sign-in rules"), ("who may create profiles", "Sign-in rules"),
+                        ("wrong tries", "Wrong tries before a wait"), ("require 2fa", "Require two-factor sign-in"),
+                        ("oidc", "Sign-in provider"), ("client secret", "Sign-in provider"), ("authentik", "Sign-in provider")):
+            pg.keyboard.press("Escape")
+            pg.keyboard.press("Control+k")
+            pg.wait_for_selector("dialog.palette[open]", timeout=5000)
+            pg.fill("#palQ", q)
+            pg.wait_for_timeout(250)
+            opts = pg.evaluate("[...document.querySelectorAll('dialog.palette [role=option]')].map(o => o.textContent.trim())")
+            found[q] = [any(o.startswith(want) and "Accounts and sign-in" in o for o in opts), [o[:60] for o in opts[:4]]]
+        pg.fill("#palQ", "oidc")
+        pg.wait_for_timeout(250)
+        pg.locator("dialog.palette [role=option]", has_text="Sign-in provider").filter(has_text="Accounts and sign-in").first.click()
+        pg.wait_for_function("document.getElementById('signin-provider')?.checkVisibility()", timeout=10000)
+        got["opened"] = pg.evaluate(shown)
+    except Exception as e:
+        got["stopped"] = stopped(e)
+    finally:
+        ctx.close()
+    cards = ["users", "signin-rules", "signin-provider"]
+    check("Accounts and sign-in (#1119): People, Sign-in rules and Sign-in provider, General no longer holding the sign-in parts; their old "
+          "addresses (#gen-security, #gen-signin) open them there", "stopped" not in got and not errs
+          and not {"signin-rules", "signin-provider"} & set(got["general"][2]) and got["gen-security"][:2] == ["#signin-rules", "accounts"]
+          and [c for c in got["gen-security"][2] if c in cards] == cards and got["gen-signin"][:2] == ["#signin-provider", "accounts"], [got, errs])
+    check("…the palette finds them by their old words, each Accounts and sign-in's, and opens it",
+          "stopped" not in got and all(v[0] for v in found.values()) and got["opened"][1] == "accounts", [found, got.get("opened")])
     return errs
 
 
@@ -2889,7 +2948,7 @@ def time_summary(timings, total, marks, slowest=40):
 
 
 def general_security_check(check, browser, base, cookies):
-    """(#1001) Settings → Install → General → Security, for an admin: every setting drawn with its bounds, Install's
+    """(#1001) Settings → Install → Accounts and sign-in → Sign-in rules, for an admin: every setting drawn with its bounds, Install's
     two-factor switch here (Accounts links to it), the Secure cookie and password checks not (About's, #1119); a value past its
     bound refused by the bar's Save, kept as typed; idle sign-out that would end a sign-in asks first, with how many
     (Cancel saves nothing), then ends it, Enter saving; You → Sign-in and security says the lengths at once; admins
@@ -2901,23 +2960,24 @@ def general_security_check(check, browser, base, cookies):
     ctx.add_cookies([c for c in cookies if c["name"] == "sg_session"])
     page = ctx.new_page()
     js = page.evaluate
-    page.goto(base + "/settings.html?profile=1#gen-security")
+    page.goto(base + "/settings.html?profile=1#signin-rules")
     page.wait_for_selector('#genSecBody [data-key="security.triesAccount"]', timeout=20000)
     fresh_check(page)   # (asked of each change; its own flow is #1006's check)
     drawn = js("""[[...document.querySelectorAll('#genSecBody [data-key]')].map(r => r.dataset.key),
       [...document.querySelectorAll('#genSecBody .set-num')].map(i => [i.id, i.min, i.max]),
-      !!document.querySelector('#gen-security #reqTf'), document.querySelector('#setNav a[aria-current=page]')?.dataset.group,
-      document.getElementById('gen-security').textContent.includes('COOKIE_SECURE') || document.getElementById('gen-security').textContent.includes('HASH_PARALLEL'),
-      document.querySelector('#users a[href="#gen-security"]')?.textContent, !!document.querySelector('#users #reqTf')]""")
+      !!document.querySelector('#signin-rules #reqTf'), document.querySelector('#setNav a[aria-current=page]')?.dataset.group,
+      document.getElementById('signin-rules').textContent.includes('COOKIE_SECURE') || document.getElementById('signin-rules').textContent.includes('HASH_PARALLEL'),
+      [...document.querySelectorAll('main > .card')].filter(c => c.checkVisibility()).map(c => c.id), !!document.querySelector('#users #reqTf')]""")
     keys = ["sessionDays", "sessionHours", "idleMinutes", "profiles", "passwordMin", "passwordMin2fa", "tempPasswordDays",
             "reauthMinutes", "triesHere", "triesAddress", "triesAccount"]
-    check("General → Security (#1001): each setting a row with its bounds, the two-factor switch here and not under Accounts, "
-          "which links here, and no read-only fact: the Secure cookie and password checks are About's (#1119)",
-          drawn[0] == ["security." + k for k in keys] and drawn[2:] == [True, "general", False, "General → Security", False]
+    check("Accounts and sign-in → Sign-in rules (#1001; General → Security before #1119): each setting a row with its bounds, the "
+          "two-factor switch here and not in People's card, the group People, Sign-in rules and Sign-in provider, and no read-only fact: "
+          "the Secure cookie and password checks are About's and Needs a restart's (#1119)",
+          drawn[0] == ["security." + k for k in keys] and drawn[2:] == [True, "accounts", False, ["users", "signin-rules", "signin-provider"], False]
           and ["gs-sessionHours", "1", "12"] in drawn[1] and ["gs-idleMinutes", "0", "1440"] in drawn[1] and ["gs-reauthMinutes", "1", "5"] in drawn[1], drawn)
     # past its bound: the bar's Save says why, and it stays as typed
     page.fill("#gs-triesHere", "6")
-    marked = js("[document.getElementById('gen-security').dataset.dirty, document.querySelector('[data-key=\"security.triesHere\"]').classList.contains('set-changed')]")
+    marked = js("[document.getElementById('signin-rules').dataset.dirty, document.querySelector('[data-key=\"security.triesHere\"]').classList.contains('set-changed')]")
     page.click("#setBar .btn.primary")
     page.wait_for_function("document.querySelector('#setBar .msg').textContent.includes('from 3 to 5')", timeout=10000)
     check("…a value past its bound is marked not saved and counted, and Save says the bounds, leaving it as typed",
@@ -2936,7 +2996,7 @@ def general_security_check(check, browser, base, cookies):
     asked = answer_ask(page, yes=False)
     page.wait_for_function("document.querySelector('#setBar .msg').textContent.includes('no sign-in was ended')", timeout=10000)
     check("…idle sign-out that would end sign-ins asks first, saying how many, and Cancel saves nothing (#1001)",
-          asked[0].startswith("End ") and "unused for longer" in asked[1] and js("document.getElementById('gen-security').dataset.dirty") == "1", asked)
+          asked[0].startswith("End ") and "unused for longer" in asked[1] and js("document.getElementById('signin-rules').dataset.dirty") == "1", asked)
     page.focus("#gs-idleMinutes")
     page.keyboard.press("Enter")   # Enter: the bar's Save
     answer_ask(page, fill=lambda said: re.search(r"Type (\d+) to confirm", said[1]).group(1))   # (the count typed, #998)
@@ -2948,7 +3008,7 @@ def general_security_check(check, browser, base, cookies):
         ended = e.code == 401
     check("…confirmed (Enter, the bar's Save), it's saved, marked set for this server, and the sign-in left unused ends",
           ended and js("document.querySelector('[data-key=\"security.idleMinutes\"] .tag:not(.set-unsaved)')?.textContent") == "set for this server"
-          and not js("document.getElementById('gen-security').dataset.dirty"), ended)
+          and not js("document.getElementById('signin-rules').dataset.dirty"), ended)
     # #1077: Enter in a field, the fresh check asked on the way (this sign-in made not fresh): cancelled, focus back in the
     # field; confirmed, on the card's heading; each in sight (the check's box gone, it was on the page)
     db = dbm1001.connect()
@@ -2964,7 +3024,7 @@ def general_security_check(check, browser, base, cookies):
         if confirm:
             page.fill("#genSecReauth input", PW)
         page.locator("#genSecReauth").get_by_role("button", name="Confirm" if confirm else "Cancel").click()
-        page.wait_for_function("!document.getElementById('gen-security').dataset.dirty" if confirm
+        page.wait_for_function("!document.getElementById('signin-rules').dataset.dirty" if confirm
                                else "document.getElementById('genSecReauth').hidden && document.querySelector('#setBar .msg').textContent.includes('confirm')", timeout=10000)
         page.wait_for_timeout(200)
         foc1077.append(js(FOC1077))
@@ -2975,7 +3035,7 @@ def general_security_check(check, browser, base, cookies):
     check("…and You → Sign-in and security says the lengths, read-only, at once",
           "Leave it unused for 15 minutes" in js("document.getElementById('sessLasts').textContent"), js("document.getElementById('sessLasts').textContent"))
     # who may create profiles: as it's picked; the guide's New profile then tells a non-admin to ask an admin
-    page.click("#setNav a[data-group=general]")
+    page.click("#setNav a[data-group=accounts]")
     page.click("label:has(#gs-profiles-admins)")
     page.wait_for_function("document.getElementById('genSecMsg').textContent === 'Saved: admins only may create profiles.'", timeout=10000)
     picked = [js("document.activeElement.id"), js("fetch('api/settings/install').then(r => r.json()).then(d => d.sections.find(s => s.id === 'security').settings.find(s => s.key === 'security.profiles').value)")]
@@ -3031,7 +3091,7 @@ def general_security_check(check, browser, base, cookies):
           and np_admin == [True, True], [np_member, np_admin])
     page.click("label:has(#gs-profiles-everyone)")
     page.wait_for_function("document.getElementById('genSecMsg').textContent === 'Saved: everyone signed in may create profiles.'", timeout=10000)
-    serious, _ = axe_check(page, "General → Security")
+    serious, _ = axe_check(page, "Sign-in rules")
     page.set_viewport_size({"width": 320, "height": 700})
     page.wait_for_timeout(200)
     wide = js("document.documentElement.scrollWidth")
@@ -3207,7 +3267,7 @@ def connected_sources_switch_check(check, browser, base, cookies):
 
 def oidc_check(check, browser, base, cookies):
     """(#1109) Sign in with OIDC, against the fake provider (tests/fakeoidc.py), as the admin whose cookies are given:
-    General → Sign-in provider drawn, its client secret never on the page, the redirect URI to register, Test
+    Accounts and sign-in → Sign-in provider drawn, its client secret never on the page, the redirect URI to register, Test
     connection, Sign in with OIDC only offered only once the admin's own identity has signed in; You → Sign-in and
     security links it (the provider and back through the sign-in page, said, focus on the card's heading) and unlinks
     it; the sign-in page's button, by keyboard, signs in; with OIDC only, the button alone; an admin links and unlinks
@@ -3261,27 +3321,27 @@ def oidc_check(check, browser, base, cookies):
         return out
 
     try:
-        # ---- General → Sign-in provider
-        page.goto(base + "/settings.html?profile=1#gen-signin")
+        # ---- Accounts and sign-in → Sign-in provider
+        page.goto(base + "/settings.html?profile=1#signin-provider")
         try:
             page.wait_for_selector("#signin-issuer", timeout=20000)
         except Exception:   # (what the page shows instead, said)
-            raise RuntimeError("General → Sign-in provider not drawn: " + json.dumps(js("""[location.hash, ME?.user?.admin_needs_two_factor,
-              document.getElementById('gen-signin')?.hidden, document.getElementById('gen-signin')?.innerText.slice(0, 300),
+            raise RuntimeError("Accounts and sign-in → Sign-in provider not drawn: " + json.dumps(js("""[location.hash, ME?.user?.admin_needs_two_factor,
+              document.getElementById('signin-provider')?.hidden, document.getElementById('signin-provider')?.innerText.slice(0, 300),
               document.querySelector('#setNav a[aria-current=page]')?.dataset.group]""")))
         fresh_check(page)
         got = js("""[document.getElementById('signin-issuer').value, document.getElementById('signin-secret').value,
-          document.getElementById('signin-secret').placeholder, document.querySelector('#gen-signin code').textContent,
+          document.getElementById('signin-secret').placeholder, document.querySelector('#signin-provider code').textContent,
           !document.getElementById('signinOnly') && document.getElementById('signinOnlyH').textContent.includes('Offered once your own identity there has signed in'),
           document.documentElement.outerHTML.includes(%s)]""" % json.dumps(secret))   # (#1119: not offered, said, never a disabled switch)
-        check("General → Sign-in provider (#1109): the provider as set up, the client secret only as saved (never on the page), "
+        check("Accounts and sign-in → Sign-in provider (#1109): the provider as set up, the client secret only as saved (never on the page), "
               "the redirect URI to register, and OIDC only not offered before the admin's own sign-in works",
               got == [idp.issuer, "", "Saved", base + "/login.html", True, False], got)
         page.get_by_role("button", name="Test connection").click()
-        page.wait_for_function("(m => /^Reached it/.test(m.textContent) || m.classList.contains('bad'))(document.querySelector('#gen-signin .row .msg'))", timeout=15000)
-        said = js("document.querySelector('#gen-signin .row .msg').textContent")
+        page.wait_for_function("(m => /^Reached it/.test(m.textContent) || m.classList.contains('bad'))(document.querySelector('#signin-provider .row .msg'))", timeout=15000)
+        said = js("document.querySelector('#signin-provider .row .msg').textContent")
         check("…Test connection reads its discovery document and keys", said.startswith("Reached it") and "2 signing keys" in said, said)
-        fits = looks("General → Sign-in provider", "#gen-signin")
+        fits = looks("Accounts and sign-in → Sign-in provider", "#signin-provider")
         # ---- You → Sign-in and security: link, by keyboard
         page.goto(base + "/settings.html?profile=1#oidc")
         page.wait_for_selector("#oidcLinkBtn", timeout=20000)
@@ -3333,7 +3393,7 @@ def oidc_check(check, browser, base, cookies):
               got == ["c", USER, True, True, ""], got)
         idp.token = {"amr": ["pwd", "mfa"]}
         # ---- OIDC only: offered now; the sign-in page the button alone
-        page.goto(base + "/settings.html?profile=1#gen-signin")
+        page.goto(base + "/settings.html?profile=1#signin-provider")
         page.wait_for_selector("#signinOnly", timeout=20000)
         fresh_check(page)
         page.click("#signinOnly")
@@ -3354,7 +3414,7 @@ def oidc_check(check, browser, base, cookies):
         page.wait_for_url("**/settings.html?profile=1#oidc", timeout=20000)
         page.wait_for_function("document.body.textContent.includes(\"Confirmed it's you\")", timeout=15000)
         check("…signing in again there brings it back where it was asked, said", True)
-        page.goto(base + "/settings.html?profile=1#gen-signin")
+        page.goto(base + "/settings.html?profile=1#signin-provider")
         page.wait_for_selector("#signinOnly", timeout=20000)
         out = browser.new_context(viewport={"width": 320, "height": 800}, bypass_csp=True)
         p3 = out.new_page()
@@ -3906,7 +3966,7 @@ def main():
         check("under the CSP: Install's scripts run on Settings, its sidebar in three parts, This person, You and Install (#266, #991)", groups ==
               ["§This person", "Dashboard", "About this person", "Labs and ranges", "Milestones", "Workouts", "Rename or delete",
                "§You", "Sign-in and security", "This device", "Display",
-               "§Install", "General", "Accounts", "Install activity", "Backups", "Connected-source apps", "Provider directory",
+               "§Install", "General", "Accounts and sign-in", "Install activity", "Backups", "Connected-source apps", "Provider directory",
                "Outside connections"], groups)   # (#1114: Lab name matches, the profile's card alone)
         check("…and your menu offers Settings, opening You, and no Account, Display or Admin (#991)",
               strict.evaluate("document.getElementById('settingsLink').getAttribute('href')") == "settings.html?profile=1#you"   # (#397)
@@ -4010,9 +4070,10 @@ def main():
               and got1000["after"] == [("https://records.example.test", base), False, True] and got1000["back"] == 200, [got1000, apps1000, phones1000])
         check("…its ⓘ says which names are answered once one is set, that a split-DNS or Tailscale name must be listed, and how (#1086)",
               all(w in got1000.get("about", "") for w in (".home.arpa or .internal", "nas.example.com", "ts.net", "add its address here")), got1000.get("about"))
-        # #1049: Host and Security changed together, the bar's Save: Host's typed confirmation opens with focus in it, and
-        # keeps it, its words in the bar; Security's saved after it, said too (its save had taken focus to its heading
-        # and the bar's words with it). Discarded and put back after
+        # #1049: Host and another of General's parts changed together, the bar's Save: Host's typed confirmation opens with
+        # focus in it, and keeps it, its words in the bar; the other's saved after it, said too (Security's save had taken
+        # focus to its heading and the bar's words with it; Security is Accounts and sign-in's since #1119, so Backups and
+        # logging's days of activity kept, whose save takes focus to its field). Discarded and put back after
         env1049 = os.environ.pop("PUBLIC_ORIGINS")
         ctx1049 = browser.new_context(viewport={"width": 1400, "height": 900})
         ctx1049.add_cookies([c for c in strict.context.cookies() if c["name"] == "sg_session"])
@@ -4021,26 +4082,26 @@ def main():
         try:
             p1049.goto(base + "/settings.html?profile=1#general")
             p1049.wait_for_selector("#hostOrigins:not([readonly])", timeout=20000)
-            p1049.wait_for_selector("#gs-triesAccount", timeout=20000)
-            was1049 = p1049.input_value("#gs-triesAccount")
+            p1049.wait_for_selector("#genActDays", timeout=20000)
+            was1049 = p1049.input_value("#genActDays")
             p1049.fill("#hostOrigins", "https://records.example.test\n" + base)
-            p1049.fill("#gs-triesAccount", "20" if was1049 != "20" else "25")
+            p1049.fill("#genActDays", str(int(was1049) + 10))   # (more days: asked nothing)
             p1049.focus("#setBar button:has-text('Save')")
             p1049.keyboard.press("Enter")
-            p1049.locator("#genSecMsg", has_text="Saved").wait_for(timeout=10000)
+            p1049.locator("#genBkMsg", has_text="Saved").wait_for(timeout=10000)
             p1049.wait_for_timeout(300)
             got1049 = p1049.evaluate("""() => ({typing: document.activeElement.closest('#gen-host .dz-body') ? document.activeElement.closest('.dz-body').querySelector('.dz-name')?.textContent : document.activeElement.id || document.activeElement.tagName,
-              bar: document.querySelector('#setBar .msg').textContent, sec: document.getElementById('genSecMsg').textContent,
+              bar: document.querySelector('#setBar .msg').textContent, sec: document.getElementById('genBkMsg').textContent,
               toasts: [...document.querySelectorAll('#sgToasts')].map(t => t.textContent).join(' ')})""")
-            p1049.request.put(base + "/api/settings/install/security.triesAccount", headers={"X-Sanguity": "1", "Origin": base},
-                              data={"value": int(was1049) if was1049 else None})
+            p1049.request.put(base + "/api/settings/install/activity.days", headers={"X-Sanguity": "1", "Origin": base},
+                              data={"value": int(was1049)})
         except Exception as e:
             got1049["stopped"] = stopped(e)
         finally:
             os.environ["PUBLIC_ORIGINS"] = env1049
             ctx1049.close()
-        check("General → Host and Security saved together (#1049): focus stays in Host's typed confirmation, the bar's words name it, and "
-              "Security's saved is said after them", "stopped" not in got1049 and not errs1049
+        check("General → Host and Backups and logging saved together (#1049; Security's before #1119): focus stays in Host's typed "
+              "confirmation, the bar's words name it, and the other's saved is said after them", "stopped" not in got1049 and not errs1049
               and got1049["typing"] == "Type change addresses to confirm" and got1049["bar"].startswith("Not saved yet: confirm the change under Public addresses.")
               and got1049["sec"].startswith("Saved") and "Saved" in got1049["toasts"], [got1049, errs1049])
         # General → Phone receiver (#1003): the upload address saved from the bar (asked first when phones with a secret
@@ -4157,7 +4218,7 @@ def main():
         ctx991s.close()
         check("This person's and You's sections leave a server's own settings to Install (#991), one listed among theirs or in a section "
               "of its own", shown991s[:2] == [False, False] and shown991s[2], shown991s)
-        general_security_check(check, browser, base, strict.context.cookies())   # (#1001) General → Security
+        general_security_check(check, browser, base, strict.context.cookies())   # (#1001) Sign-in rules
         # General's sections (#998), in the page's order
         errs1002 = general_backups_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check,
                                          os.path.join(TMP, "sanguity.db"))
@@ -4167,6 +4228,8 @@ def main():
         errs1119 = general_env_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check,
                                      os.path.join(TMP, "sanguity.db"))   # (#1119) General with its settings set by the environment
         check("…nor with its settings set by the environment (#1119)", not errs1119, errs1119)
+        errs1119m = signin_moved_check(browser, base, [c for c in strict.context.cookies() if c["name"] == "sg_session"], check)   # (#1119) Accounts and sign-in
+        check("…nor in Accounts and sign-in (#1119)", not errs1119m, errs1119m)
         # the Sharing page (#168): its sidebar, each part drawn by its own script
         strict.goto(base + "/sharing.html#summary")   # the visit summary (#48)
         strict.wait_for_selector("#build:not([hidden]) #sections input", timeout=10000)
@@ -4724,7 +4787,7 @@ def main():
                                           ("settings.html?profile=1#security", "#setNav a", "Settings: Sign-in and security", 1400),   # Account's and Admin's (#991)
                                           ("guide.html?profile=1#name", "#step-name:not([hidden])", "Getting started: Whose records", 375),
                                           # (after another page: from Sign-in and security it'd be the same page, only its # changed)
-                                          ("settings.html?profile=1#accounts", "#userList table", "Settings: Accounts", 375)):   # #199 (a named profile opens at its first step not done, #290: this one asked for)
+                                          ("settings.html?profile=1#accounts", "#userList table", "Settings: Accounts and sign-in", 375)):   # #199 (a named profile opens at its first step not done, #290: this one asked for)
             strict.set_viewport_size({"width": width, "height": 800})
             strict.goto(base + "/" + path)
             strict.wait_for_selector(ready, state="attached", timeout=10000)
@@ -23784,9 +23847,9 @@ def main():
                 found495[q] = [t for g, t in js(pal_found) if g == "Pages and settings"][:3]
             page.keyboard.press("Escape")
             check("…(#495) it finds Phone and watch for “iphone”, “apple health” and “health auto export”, and Install's Accounts for removing, "
-                  "deleting or disabling an account; requiring two-factor sign-in General → Security's (#1001: Accounts' before, which links there)",
+                  "deleting or disabling an account; requiring two-factor sign-in Sign-in rules' (#1001, #1119: in Accounts and sign-in)",
                   all("Phone and watch" in found495[q] for q in ("iphone", "apple health", "health auto export"))
-                  and all("Accounts" in found495[q] for q in ("remove account", "delete account", "disable account"))
+                  and all("Accounts and sign-in" in found495[q] for q in ("remove account", "delete account", "disable account"))
                   and found495["require two-factor"][:1] == ["Require two-factor sign-in"], found495)
             # #499: and Accounts for creating one (its words had "new account" only), and Cycle tracking for its danger
             # zone's two ways out (#495 added them with no words)
@@ -23796,11 +23859,11 @@ def main():
                 found499[q] = [t for g, t in js(pal_found) if g == "Pages and settings"][:3]
             page.keyboard.press("Escape")
             check("…(#499) it finds Install's Accounts for “create account”, and Cycle tracking for “delete cycle data” and “turn off cycle”",
-                  "Accounts" in found499["create account"] and all("Cycle tracking" in found499[q] for q in ("delete cycle data", "turn off cycle")), found499)
+                  "Accounts and sign-in" in found499["create account"] and all("Cycle tracking" in found499[q] for q in ("delete cycle data", "turn off cycle")), found499)
             # #502: and what's done on Account and to an account (it found nothing for these): a word typed in the plural
             # finds it in the singular too ("codes" finds "code")
             want502 = {"recovery codes": "Two-factor sign-in", "new recovery codes": "Two-factor sign-in", "turn off two-factor": "Two-factor sign-in",
-                       "turn on two-factor": "Two-factor sign-in", "one-time password": "Accounts", "make admin": "Accounts",
+                       "turn on two-factor": "Two-factor sign-in", "one-time password": "Accounts and sign-in", "make admin": "Accounts and sign-in",
                        "remove passkey": "Passkeys", "add passkey": "Passkeys", "sign out everywhere": "Where you're signed in"}
             found502 = {}
             for q in want502:
@@ -23816,9 +23879,9 @@ def main():
             # #506: Admin's Accounts first for adding or removing an account (Passkeys, Two-factor sign-in came first: their
             # "add remove", "make new", with "account" only their page's name); "-ies" finds "-y"; Make owner's, and a
             # source's Test's and Remove's, words. The first found of all, which Enter opens
-            want506 = {"remove account": "Accounts", "add account": "Accounts", "new account": "Accounts", "activities": "Activity",
+            want506 = {"remove account": "Accounts and sign-in", "add account": "Accounts and sign-in", "new account": "Accounts and sign-in", "activities": "Activity",
                        "histories": "Import history", "directories": "Provider directory", "entries": "Journal entry",
-                       "make owner": "Accounts", "ownerless": "Accounts", "profiles without an owner": "Accounts",
+                       "make owner": "Accounts and sign-in", "ownerless": "Accounts and sign-in", "profiles without an owner": "Accounts and sign-in",
                        "test connection": "Connected-source apps", "remove source": "Connected-source apps"}
             found506 = {}
             for q in want506:
@@ -23850,7 +23913,7 @@ def main():
             # #515: Connected-source apps for deleting a source (Cycle tracking came first: its "delete data", with "source"
             # only its page's name), Accounts for enabling one, and Sources' Portals and health plans for a vendor's or
             # portal's name (only Admin's apps had them)
-            first515 = {"delete source": "Connected-source apps", "enable account": "Accounts"}
+            first515 = {"delete source": "Connected-source apps", "enable account": "Accounts and sign-in"}
             found515 = {}
             for q in [*first515, "mychart", "connect mychart", "connect epic"]:
                 pal(q, "Control+k" if not found515 else None)
@@ -24006,7 +24069,7 @@ def main():
                   all({"Sync now", "What it pulls", "Disconnect", "Sign in again"} <= set(labs528[r]["portals"]) and "Fix it" in labs528[r]["overview"]
                       for r in ("admin", "owner", "editor"))
                   and said524["admin"]["account password"][:1] == ["Password"] and said524["admin"]["require 2fa"][:1] == ["Require two-factor sign-in"]
-                  and said524["admin"]["remove someone"][:1] in (["Who has access"], ["Accounts"]), [labs528, {q: said524["admin"][q] for q in ("account password", "require 2fa", "remove someone")}])
+                  and said524["admin"]["remove someone"][:1] in (["Who has access"], ["Accounts and sign-in"]), [labs528, {q: said524["admin"][q] for q in ("account password", "require 2fa", "remove someone")}])
             # #592: the Disconnect form says a first pull not saved yet is cancelled either way, and only for one: two
             # connections on profile 1, made up here and gone after, one at its first pull, one syncing
             cdb592, now592 = dbm.connect(), dbm.now()
@@ -25219,7 +25282,7 @@ def main():
                            "gone": [], "focus": ["Sign-in and security"] * 2,
                            "parts": {"This person": person991 + (["Rename or delete"] if r in ("admin", "owner") else []),
                                      "You": ["Sign-in and security", "This device", "Display"],
-                                     "Install": ["General", "Accounts", "Install activity", "Backups", "Connected-source apps", "Provider directory",
+                                     "Install": ["General", "Accounts and sign-in", "Install activity", "Backups", "Connected-source apps", "Provider directory",
                                                  "Outside connections"] if r == "admin" else []},   # (#1114: Lab name matches, the profile's card)
                            "install": None if r == "admin" else [403] * 6} for r in ("admin", "owner", "editor", "viewer")}   # (the admin's: refused too here, till they have a second factor, #75)
             check("one Settings page (#991): for an admin, an owner, an editor and a viewer, the profile menu has Sources, Sharing and New profile, your "
@@ -30366,8 +30429,8 @@ def main():
             page.wait_for_function("document.querySelectorAll('#userList tbody tr').length > 0", timeout=10000)
             # #318: the only account, with no second factor of its own: requiring two-factor for everyone isn't asked (the
             # server would refuse it); it says at once to turn on your own first, with the way there, and stays off.
-            # Requiring it with a second factor of your own is asked: the #314 check, below. (General → Security's, #1001)
-            page.click("#setNav a[data-group=general]")
+            # Requiring it with a second factor of your own is asked: the #314 check, below. (Sign-in rules', #1001, #1119: Accounts and sign-in's)
+            page.click("#setNav a[data-group=accounts]")
             page.wait_for_selector("#reqTf", state="visible", timeout=10000)
             page.click("#reqTf")
             page.wait_for_function("document.getElementById('reqTfMsg').textContent.includes('your own account')", timeout=10000)
@@ -30406,7 +30469,7 @@ def main():
             # no longer the only account: admin actions now wait for the admin's own second factor (issue #75)
             check("with a second account, the admin is asked for a second factor",
                   js("!document.getElementById('adminTf').hidden && document.getElementById('adminTools').hidden"))
-            check("…and every other part of Install the server now refuses says so", js("['gen-host', 'gen-security', 'gen-signin', 'gen-backups', 'gen-phone', 'gen-ocr', 'gen-demo', 'gen-about', 'backups', 'admin', 'sec-sync', 'directory', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
+            check("…and every other part of Install the server now refuses says so", js("['gen-host', 'signin-rules', 'signin-provider', 'gen-backups', 'gen-phone', 'gen-ocr', 'gen-demo', 'gen-about', 'backups', 'admin', 'sec-sync', 'directory', 'installLog'].every(id => document.querySelector('#' + id + ' .adm-gate'))"))
             # two-factor sign-in: turn it on from the key shown, confirm with a code, get recovery codes
             from server import twofactor
             import time as _time
@@ -30489,7 +30552,7 @@ def main():
                   "password beside Turn on (#590), Confirm's on the recovery codes, I've saved them's on the card's heading",
                   {k: [v[0], v[2]] for k, v in tf499.items()} == {"Cancel": ["INPUT", True], "Confirm": ["PRE", True], "I've saved them": ["H2", True]}
                   and tf499["Cancel"][1] == "Your password" and tf499["I've saved them"][1] == "Two-factor sign-in", tf499)
-            check("with 2FA on, Sign-in and security says Install is open again, its link to Accounts (#991)", js("document.getElementById('tfMsg').textContent").endswith("Install is open to you again: go to Accounts."))
+            check("with 2FA on, Sign-in and security says Install is open again, its link to Accounts (#991)", js("document.getElementById('tfMsg').textContent").endswith("Install is open to you again: go to Accounts and sign-in."))
             page.click("#tfMsg a")
             page.wait_for_function("!document.getElementById('adminTools').hidden && document.querySelector('#userList').textContent.includes('alex')", timeout=10000)
             check("with 2FA on, the account tools are back", js("document.getElementById('adminTf').hidden && !document.querySelector('.adm-gate')"))
@@ -31176,7 +31239,7 @@ def main():
             required = lambda: js("fetch('api/settings').then(r => r.json()).then(s => s.require_2fa)")  # noqa: E731
             lacking = js("fetch('api/users').then(r => r.json()).then(l => l.filter(u => !u.disabled && !u.two_factor).length)")
             mine_has = js("fetch('api/users').then(r => r.json()).then(l => l.find(u => u.id === ME.user.id).two_factor)")
-            page.click("#setNav a[data-group=general]")   # (General → Security's, #1001)
+            page.click("#setNav a[data-group=accounts]")   # (Accounts and sign-in → Sign-in rules', #1001, #1119)
             page.wait_for_selector("#reqTf", state="visible", timeout=10000)
             page.click("#reqTf")
             page.wait_for_selector("dialog.sg-ask[open]", timeout=10000)

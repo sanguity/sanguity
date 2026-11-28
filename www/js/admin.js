@@ -1,6 +1,7 @@
 /* Sanguity · Settings → Install (#991; the Admin page before, #167): what only admins do, for the whole server, as
    groups of Settings' sidebar (settings-nav.js, which starts this: adminStart): General (#998, its sections their own
-   scripts': gen-security.js, #1001), Accounts, Backups (admin-backups.js, #200), Connected-source apps and
+   scripts), Accounts and sign-in (People; Sign-in rules, gen-security.js, #1001; Sign-in provider, gen-signin.js:
+   General's before #1119), Backups (admin-backups.js, #200), Connected-source apps and
    their sync defaults, the Provider directory (both admin-sources.js), Outside connections (outside.js) and Install activity (activity.js), with the admins' notices over each. Someone who isn't an admin
    isn't shown them (settings-nav.js says why where an address names one), and the server refuses them their routes.
    Admins need a second factor of their own once the server has more than one account: until then each part says
@@ -38,7 +39,7 @@ function codeNotice(rows) {
   box.replaceChildren(el("b", {text: "Sign-in with an authenticator code is stopped for " +
     rows.map(r => r.username + (r.since ? ` (since ${when(r.since)})` : "")).join(", ") + ". "}),
     "Too many wrong codes were entered since the last right one, so someone may know the password. If the person " +
-    "didn't make them, reset their password and their two-factor sign-in under Accounts. A recovery code or a passkey " +
+    "didn't make them, reset their password and their two-factor sign-in under Accounts and sign-in. A recovery code or a passkey " +
     "still signs them in; a recovery code lets codes work again.");
 }
 
@@ -61,7 +62,7 @@ function syncNotice(rows) {
 function adminGate() {
   $("#adminTf").hidden = false; $("#adminTools").hidden = $("#userDanger").hidden = true; $("#users").hidden = false;
   $("#secNotice").hidden = $("#codeNotice").hidden = $("#syncNotice").hidden = $("#backupNotice").hidden = true;
-  for (const id of ["#gen-host", "#gen-security", "#gen-signin", "#gen-backups", "#gen-phone", "#gen-notify", "#gen-restart", "#gen-experimental", "#gen-ocr", "#gen-demo", "#gen-about", "#backups", "#admin", "#sec-sync", "#directory", "#installLog"]) gateCard($(id));
+  for (const id of ["#gen-host", "#signin-rules", "#signin-provider", "#gen-backups", "#gen-phone", "#gen-notify", "#gen-restart", "#gen-experimental", "#gen-ocr", "#gen-demo", "#gen-about", "#backups", "#admin", "#sec-sync", "#directory", "#installLog"]) gateCard($(id));
 }
 function gateCard(card) {
   if (card.querySelector(".adm-gate")) return;
@@ -222,7 +223,7 @@ function userMenu(u) {
           action: "Make admin", danger: true}, `${n} is an admin now.`)},
     {text: "Reset password…", run: () => ME.sign_in_provider?.only   // (#1109: no password signs in; the server says so too)
       ? rowSay(u.id, `Passwords are off while Sign in with ${ME.sign_in_provider.label} only is on: ${n} signs in there. Link their identity ` +
-          "from this menu, or turn OIDC only off first, under General, Sign-in provider.", true)
+          "from this menu, or turn OIDC only off first, under Accounts and sign-in, Sign-in provider.", true)
       : changeUser(u, {reset_password: true}, {title: `Reset ${n}'s password?`, message: [
       "Their password stops working at once, and they're signed out everywhere.",
       "You'll get a one-time password to give them; they choose a new one when they first sign in with it." +
@@ -418,7 +419,7 @@ async function removeAccount(u, typed) {
       const field = el("input", {autocapitalize: "none", spellcheck: "false", autocomplete: "off"});
       if (!await ask({title: `Who takes over from ${u.username}?`,
                       message: [e.message, el("label", {}, "New owner's username", field),
-                                "Leave it empty to remove the account anyway: an admin can give the profile an owner later, under Accounts."],
+                                "Leave it empty to remove the account anyway: an admin can give the profile an owner later, under Accounts and sign-in."],
                       action: "Remove account", danger: true, field})) throw new Error("Not removed.");
       body = {confirm_name: typed, ...(field.value.trim() ? {hand_to: field.value.trim()} : {force: true})};
     }

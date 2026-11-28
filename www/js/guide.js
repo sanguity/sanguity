@@ -8,7 +8,7 @@
    to its review and Save; the other ways and the phone are on the Sources page: its links carry ?guide=<step>, and
    that page shows a way back here (sources-page.js). Someone with no profile yet makes one in the first step (also guide.html?new); someone
    who can only view a profile is told its owners and editors set it up, with no steps of theirs; where only an admin
-   may create a profile (#1001: Settings → Install → General → Security), someone with none is told to ask one.
+   may create a profile (#1001: Settings → Install → Accounts and sign-in → Sign-in rules), someone with none is told to ask one.
 
    Signing in to an empty profile of your own (your only one) opens this page until you finish or skip it: the
    per-person setting "guide" ("", "skipped" or "done", server/settings.py), set here. Your menu's Getting started

@@ -1234,7 +1234,7 @@ def _profile_name(name):
 
 
 def may_create_profiles(s):
-    """(#1001) Whether account s may create a profile: everyone signed in may, unless General → Security says admins only."""
+    """(#1001) Whether account s may create a profile: everyone signed in may, unless Accounts and sign-in → Sign-in rules says admins only."""
     return bool(s["is_admin"]) or settings.install_value("security.profiles") == "everyone"
 
 

@@ -178,7 +178,7 @@
   <section class="card" id="sessions" hidden>
     <h2>Where you're signed in</h2>
     <p class="hint">Sign out any device you don't recognise. Changing your password also signs out every other device.</p>
-    <!-- as this server's admins set it (#1001: General → Security), read-only here (account.js) -->
+    <!-- as this server's admins set it (#1001: Accounts and sign-in → Sign-in rules), read-only here (account.js) -->
     <div class="set-row">
       <div class="set-row-lbl"><p class="set-row-name">How long a sign-in lasts</p></div>
       <div class="set-row-ctl"><p id="sessLasts"></p></div>
@@ -206,26 +206,6 @@
   <!-- General (#998): the server's own settings, each of its sections a card of its own, its id in General's has
        (groups.js), shown to admins with the rest (admin.js); the group's h1 names it, no card of its own repeating it -->
   <section class="card conn adm" id="gen-host" hidden><h2>Host</h2></section>   <!-- the public addresses (admin-host.js, #1000) -->
-  <!-- General → Security (#1001, gen-security.js): how people sign in, and for how long. Requiring two-factor sign-in
-       for everyone (Accounts' before), then the rows drawn from the server's settings, the fresh check in the card -->
-  <section class="card conn adm" id="gen-security" hidden>
-    <h2 id="genSecHd" tabindex="-1">Security</h2>
-    <p class="hint">How people sign in to this server, and for how long. The switch and the choice apply at once; the numbers, with Save.</p>
-    <div id="genSecReauth" class="reauth" hidden></div>
-    <div class="set-row">
-      <div class="set-row-lbl"><p class="set-row-name">Two-factor sign-in</p>
-        <p class="hint">An account without an authenticator app or a passkey can't open any records until it sets one up.</p></div>
-      <div class="set-row-ctl">
-        <label class="check switch"><input type="checkbox" role="switch" id="reqTf" aria-describedby="reqTfMsg"> Require two-factor sign-in for everyone</label>
-        <p class="msg req-tf-msg" id="reqTfMsg" role="status"></p>   <!-- the setting's own replies, beside it (#323) -->
-      </div>
-    </div>
-    <form id="genSecBody" novalidate></form>
-    <span class="msg" id="genSecMsg" role="status"></span>
-  </section>
-  <!-- General → Sign-in provider (#1109, gen-signin.js): one OIDC provider, its button on the sign-in page, and
-       Sign in with OIDC only -->
-  <section class="card conn adm" id="gen-signin" hidden><h2>Sign-in provider</h2></section>
   <!-- General → Backups and logging (#1002, gen-backups.js) -->
   <section class="card conn adm" id="gen-backups" hidden>
     <h2>Backups and logging</h2>
@@ -274,9 +254,9 @@
     <div id="genAbout"></div>
   </section>
 
-  <!-- Accounts (admin.js) -->
+  <!-- Accounts and sign-in (admin.js; #1119): People, then Sign-in rules and Sign-in provider -->
   <section class="card conn adm" id="users" hidden>
-    <h2>Accounts</h2>
+    <h2>People</h2>
     <p class="hint">An account for each person who signs in. Being an admin lets someone manage accounts; it doesn't show
       them anyone's records.</p>
     <div class="about-words" hidden>
@@ -287,11 +267,7 @@
       passkey for your own account, under <a href="#security">Settings → Sign-in and security</a>. Admins need one as soon as the server has more than one account.</p>
     <div id="reauth" class="reauth" hidden></div>
     <div id="adminTools">
-      <!-- requiring two-factor sign-in for everyone: General → Security's (#1001), linked from here -->
-      <div class="set-row">
-        <div class="set-row-lbl"><p class="set-row-name">Two-factor sign-in</p></div>
-        <div class="set-row-ctl"><p>Requiring it for everyone is under <a href="#gen-security">General → Security</a>.</p></div>
-      </div>
+      <!-- (requiring two-factor sign-in for everyone: Sign-in rules', below, #1001, #1119) -->
       <!-- adding someone: a setting row, as Sharing's Share with someone is (#494) -->
       <div class="set-row" id="userNewRow">
         <div class="set-row-lbl"><p class="set-row-name">Create an account</p>
@@ -309,6 +285,27 @@
     <!-- removing an account: the danger zone (admin.js; util.js dangerZone, #287), last, apart from the rest -->
     <div id="userDanger"></div>
   </section>
+  <!-- Accounts and sign-in → Sign-in rules (#1001, gen-security.js; General → Security before, the owner's decision on
+       #1119): how people sign in, and for how long. Requiring two-factor sign-in for everyone, then the rows drawn from
+       the server's settings, the fresh check in the card -->
+  <section class="card conn adm" id="signin-rules" hidden>
+    <h2 id="genSecHd" tabindex="-1">Sign-in rules</h2>
+    <p class="hint">How people sign in to this server, and for how long. The switch and the choice apply at once; the numbers, with Save.</p>
+    <div id="genSecReauth" class="reauth" hidden></div>
+    <div class="set-row">
+      <div class="set-row-lbl"><p class="set-row-name">Two-factor sign-in</p>
+        <p class="hint">An account without an authenticator app or a passkey can't open any records until it sets one up.</p></div>
+      <div class="set-row-ctl">
+        <label class="check switch"><input type="checkbox" role="switch" id="reqTf" aria-describedby="reqTfMsg"> Require two-factor sign-in for everyone</label>
+        <p class="msg req-tf-msg" id="reqTfMsg" role="status"></p>   <!-- the setting's own replies, beside it (#323) -->
+      </div>
+    </div>
+    <form id="genSecBody" novalidate></form>
+    <span class="msg" id="genSecMsg" role="status"></span>
+  </section>
+  <!-- Accounts and sign-in → Sign-in provider (#1109, gen-signin.js; General's before #1119): one OIDC provider, its
+       button on the sign-in page, and Sign in with OIDC only -->
+  <section class="card conn adm" id="signin-provider" hidden><h2>Sign-in provider</h2></section>
 
   <!-- Backups (#200): the newest backup, Back up now, the schedule, and checking a backup (admin-backups.js) -->
   <section class="card bk conn adm" id="backups" hidden>

@@ -67,7 +67,7 @@ let SET_NAV = null;   // the sidebar (sideNav), for account.js's and admin.js's 
   const who = document.getElementById("introHint");
   const NOTICES = ["secNotice", "codeNotice", "syncNotice", "backupNotice"].map(id => document.getElementById(id)), none = document.getElementById("noProfiles");
   // Install's parts with changes to save (the backups kept, the sync defaults' numbers: admin-backups.js, admin-sources.js)
-  const ADM = {"gen-host": [hostSave, hostDiscard], "gen-security": [genSecSave, genSecDiscard], "gen-signin": [signinSave, signinDiscard],
+  const ADM = {"gen-host": [hostSave, hostDiscard], "signin-rules": [genSecSave, genSecDiscard], "signin-provider": [signinSave, signinDiscard],
                "gen-backups": [genBkSave, genBkDiscard],   // General's (#998): the days of activity kept (gen-backups.js)
                "gen-phone": [phoneSave, phoneDiscard], "gen-notify": [notifySave, notifyDiscard], "gen-restart": [genRsSave, genRsDiscard], backups: [bkKeepSave, bkKeepDiscard], "sec-sync": [syncSave, syncDiscard]};
   const nav = SET_NAV = sideNav({id: "setNav", page: "Settings", groups: GROUPS, find: "Find in Settings", none: q => `Nothing in Settings matches “${q}”.`,
