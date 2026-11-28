@@ -191,7 +191,7 @@ function drawCosts() {
       ...money.map(k => el("td", {class: "num", text: usd(r[k])})),
       // its status only when it isn't the usual one (#278): "processed", or "paid" from a FHIR plan
       el("td", {class: isDenied(r) ? "abn" : null, text: (s => /^(processed|paid)?$/.test(s) ? "" : s)((r.status || "").replace(/_/g, " ").toLowerCase())}))))))));
-  if (list.length > costState.limit) tc.append(el("button", {class: "btn", type: "button", style: {marginTop: "8px"}, text: `Show ${Math.min(200, list.length - costState.limit)} more`,
+  if (list.length > costState.limit) tc.append(el("button", {class: "btn mt-2", type: "button", text: `Show ${Math.min(200, list.length - costState.limit)} more`,
     onclick: () => { const n = costState.limit; costState.limit += 200; renderCosts(); $(`#costTable tbody tr:nth-child(${n + 1}) .cell-btn`)?.focus(); }}));   // the first one added (#443)
   box.append(tc);
   claimsFit(tc.querySelector(".tablewrap"));   // stacked now, not a frame late (#467)
@@ -385,7 +385,7 @@ function renderPaid(box, claimRows, periodLabel) {
     // picked, tinted (in forced colours ringed, its bar in the text's colour: .cost-bar, app.css, #456)
     for (const g of groups) host.append(el("div", {class: "ov-row",
       ...pressable(() => pick(g.key)), "aria-pressed": paidState.q === g.key},
-      el("span", {class: "n", style: {fontWeight: 500}, text: g.key}), el("span", {class: "v", text: usd(g.v)}),
+      el("span", {class: "n", text: g.key}), el("span", {class: "v", text: usd(g.v)}),
       el("span", {class: "s cost-bars"},   // the bar the row's width on one scale, its note under it, as the claims' (#483, #485)
         el("span", {class: "cost-bar-run"}, el("span", {class: "cost-bar", style: {width: Math.max(0, g.v / max * 100) + "%", background: INK2}})),
         el("span", {class: "cost-bar-note", text: `${g.n} amount${g.n === 1 ? "" : "s"}`}))));
@@ -429,7 +429,7 @@ function renderPaid(box, claimRows, periodLabel) {
       el("td", {class: "num", style: {whiteSpace: "nowrap", color: r.amount < 0 ? "var(--good-text)" : null},
         text: (r.amount < 0 ? `${usd2(-r.amount)} refund` : usd2(r.amount)) + (r.dup != null ? " · counted once" : "")})),
       r === open ? el("tr", {class: "oop-open"}, el("td", {colspan: 6}, edit)) : null].filter(Boolean)))))));
-  if (list.length > shown) tw.append(el("button", {class: "btn", type: "button", style: {marginTop: "8px"}, text: `Show ${Math.min(200, list.length - shown)} more`,
+  if (list.length > shown) tw.append(el("button", {class: "btn mt-2", type: "button", text: `Show ${Math.min(200, list.length - shown)} more`,
     onclick: () => { paidState.limit = shown + 200; renderCosts(); document.querySelectorAll("#paidTable tbody tr[data-oop] .cell-btn")[shown]?.focus(); }}));   // the first one added
   if (edit && !edit.parentElement) tw.append(edit);   // its row not listed (a row above picked since): under the list
   card.append(tw);
@@ -440,7 +440,12 @@ function renderPaid(box, claimRows, periodLabel) {
    (costplan.py, DATA.oop.years); arithmetic only, the numbers always as text, each bar their picture (aria-hidden),
    on the limit's scale */
 const planState = {edit: null};   // the plan year being typed: "new", its id, or null
-const amountIn = v => { const t = String(v).replace(/[$,\s]/g, ""); return t === "" ? null : /^\d+(\.\d+)?$/.test(t) ? +t : NaN; };
+/* an amount typed in ("$1,250.00"): its number by ranges.js numberRead, the one reader (#874), once the dollar sign,
+   thousands commas and spaces are gone; none for an empty field, NaN for a negative or what isn't a number */
+const amountIn = v => {
+  const t = String(v).replace(/[$,\s]/g, ""), n = t === "" ? null : numberRead(t);
+  return t === "" ? null : n && !/[-+e]/i.test(t) ? n.x : NaN;
+};
 async function costSend(path, method, body, msg, then) {   // a plan year's or a bill's change; its reply's oop put in place
   sayIn(msg, "Saving…");
   try {
@@ -596,8 +601,8 @@ function billCard() {
     if (b.claim != null) lines.push(`Billed ${usd2(b.amount)} · owed per plan ${usd2(b.owe)} · paid so far ${usd2(b.paid)}${b.payments.length ? ` (${b.payments.length} payment${b.payments.length === 1 ? "" : "s"})` : ""}`,
       `Claim of ${c ? fmtD(dayTs(c.t)) : "—"}${c ? `: ${c.title}` : ""}, ${b.match === "auto" ? "matched by provider, date and amount" : "chosen by hand"}.`);
     if (b.due) lines.push(`Due ${fmtD(dayTs(b.due))}.`);
-    const part = el("div", {id: "bill-" + b.id, class: "mt-3"}, el("h3", {class: "sub", text: `${b.provider}, ${fmtD(dayTs(b.service))} · ${usd2(b.amount)}`}),
-      ...lines.map((l, i) => el("p", {class: i ? "hint" : null, style: {margin: "2px 0"}, text: l})));
+    const part = el("div", {id: "bill-" + b.id, class: "mt-3 bill-lines"}, el("h3", {class: "sub", text: `${b.provider}, ${fmtD(dayTs(b.service))} · ${usd2(b.amount)}`}),
+      ...lines.map((l, i) => el("p", {class: i ? "hint" : null, text: l})));
     const btns = el("div", {class: "btns my-2"});
     if (b.file != null && byId.get(b.file)) btns.append(el("button", {class: "btn", type: "button", text: "Open the bill", onclick: () => openEvent(byId.get(b.file))}));
     if (c) btns.append(el("button", {class: "btn", type: "button", text: "Open claim", onclick: () => openEvent(c)}));
@@ -676,7 +681,7 @@ function costLinks(claims) {
   const ks = [claims && "plan", (canEdit() || ((DATA.oop || {}).bills || []).length) && "bill",
     oopRows().some(r => r.type === "pay" && r.dup == null) && "tax"].filter(Boolean);
   if (!ks.length) return null;
-  return el("nav", {"aria-label": "Further down Costs", class: "mb-2"}, el("p", {class: "hint", style: {margin: 0}}, "Further down: ",
+  return el("nav", {"aria-label": "Further down Costs", class: "mb-2"}, el("p", {class: "hint m-0"}, "Further down: ",
     ...ks.flatMap((k, i) => [i ? " · " : null, el("a", {href: "#" + COST_CARDS[k][1], text: COST_CARDS[k][2], onclick: e => { e.preventDefault(); costJump(k); }})]).filter(Boolean)));
 }
 /* ---- the charts (#300), on the chart kit (chartkit.js): its scales, value grid, time axis, crosshair and pinned
@@ -755,7 +760,7 @@ function barList(card, groups, onPick, active) {
     card.append(el("div", {class: "ov-row", ...pressable(() => onPick(g.key)),   // picked, as What you paid's (#456)
       "aria-pressed": active === undefined ? null : active === g.key,   // a type of care picked filters the claims (#202)
       "data-tip": `${g.key}: ${g.n} claims · billed ${usd(g.billed)} · insurance paid ${usd(g.paid)} · your share ${usd(g.owe)}`},
-      el("span", {class: "n", style: {fontWeight: 500}, text: g.key}),
+      el("span", {class: "n", text: g.key}),
       el("span", {class: "v", text: usd(g.paid + g.owe)}),
       // the bars across the row, on one scale for every row, and the note whole under them (#481: beside them, the
       // largest's bar squeezed its note to two lines, and bars sized to what each note left didn't compare)
