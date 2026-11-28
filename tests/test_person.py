@@ -101,7 +101,7 @@ class Rules(unittest.TestCase):
         self.assertEqual((person.text(170.18), person.text(170.18, "ftin"), person.text(182.88, "ftin")), ("170.2 cm", "5 ft 7 in", "6 ft 0 in"))
         cfg = {"person": {"birthDate": "1990-03-01", "sex": "female", "heights": hs}, "ranges": {"overrides": [{"lab": "Ferritin"}]}}
         self.assertEqual(person.sex_for_ranges(cfg), "female")
-        self.assertEqual(person.of({}), {"birthDate": "", "sex": "", "heights": [], "dueDate": ""})
+        self.assertEqual(person.of({}), {"birthDate": "", "sex": "", "heights": [], "dueDate": "", "bloodType": "", "contacts": []})
         self.assertEqual(ranges.config(cfg), {"birthDate": "1990-03-01", "sex": "female", "overrides": [{"lab": "Ferritin"}]},
                          "#44 reads its birth date and sex from About this person")
 

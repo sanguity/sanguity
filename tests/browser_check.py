@@ -647,7 +647,7 @@ def start_app():
 
 
 USER_MENU = {"#logout", "#theme", "#settingsLink", "#guideLink"}   # (#991: Settings, Account, Display and Admin before)
-PROFILE_MENU = {"#sharingLink", "#sourcesLink", "#newProfileLink"}   # #264 (#991: its settings are Settings' This person)
+PROFILE_MENU = {"#sharingLink", "#sourcesLink", "#emergencyLink", "#newProfileLink"}   # #264 (#991: its settings are Settings' This person)
 
 
 def menu_click(pg, item):
@@ -3182,6 +3182,141 @@ def oidc_check(check, browser, base, cookies):
         if not had_totp:
             db.execute("UPDATE users SET totp_secret=NULL, totp_last_step=0 WHERE username=?", (USER,))
         db.close()
+    return errs
+
+
+def emergency_card_check(check, browser, base, cookies):
+    """(#1126) The emergency card, as the owner whose cookies are given, on profile 1: Settings → About this person
+    takes a blood type (the bar's Save) and emergency contacts (added, moved up, in order); Sharing → Emergency card
+    (from the profile menu, and the palette's "emergency card") previews them, and makes the PDF (one page, Letter or
+    A4, its information the title alone) and the lock-screen PNG (upright, this screen's size, the picture alone:
+    no text, time or place chunks), "I carry the printed card" adding the wallet line to it and nothing else; the
+    group at 320 px and 200% text, light and dark, with no serious axe finding. Puts the fields back. Returns script
+    errors."""
+    import struct
+    errs, serious = [], []
+    ctx = browser.new_context(viewport={"width": 1400, "height": 900}, bypass_csp=True, accept_downloads=True)
+    ctx.add_cookies([c for c in cookies if c["name"] == "sg_session"])
+    page = ctx.new_page()
+    page.on("pageerror", lambda e: errs.append(str(e)))
+    js = page.evaluate
+    put = """b => fetch('api/profiles/1/person', {method: 'PUT', headers: {'X-Sanguity': '1', 'Content-Type': 'application/json'},
+      body: JSON.stringify(b)}).then(r => r.status)"""
+    try:
+        # ---- About this person: blood type (unless the records have one) and two contacts, the second moved up
+        page.goto(base + "/settings.html?profile=1#about")
+        page.wait_for_selector("#about[data-profile='1'] #aboutContactsHd", timeout=20000)
+        js(put, {"bloodType": "", "contacts": []})
+        page.reload()
+        page.wait_for_selector("#about[data-profile='1'] #contactAdd", timeout=20000)
+        lab = not js("!!document.getElementById('aboutBlood')")
+        if not lab:
+            page.select_option("#aboutBlood", "O-")
+            page.click("#setBar .btn.primary")
+            page.wait_for_function("document.getElementById('aboutBloodSaid') === null && document.getElementById('aboutBlood').value === 'O-' "
+                                   "&& !document.getElementById('about').hasAttribute('data-dirty')", timeout=10000)
+        for name, rel, phone in (("Sam Example", "Spouse", "+1 555 0100"), ("Dr Lee", "", "555-0199")):
+            page.fill("#contactName", name)
+            page.fill("#contactRel", rel)
+            page.fill("#contactPhone", phone)
+            page.click("#contactAdd button[type=submit]")
+            page.wait_for_function(f"(document.getElementById('aboutContacts')?.innerText || '').includes({json.dumps(name)})", timeout=10000)
+        page.click("#contactUp-1")
+        page.wait_for_function("document.querySelector('#aboutContacts tbody tr td')?.textContent === 'Dr Lee'", timeout=10000)
+        check("Emergency card: About this person takes a blood type and emergency contacts, in order (#1126)",
+              js("[...document.querySelectorAll('#aboutContacts tbody tr')].map(r => r.cells[0].textContent).join('|')") == "Dr Lee|Sam Example (Spouse)"
+              and js("document.activeElement?.id") in ("contactDown-0", "contactUp-1", "aboutContactsHd") and not errs,
+              [js("document.getElementById('aboutBody').innerText.slice(-400)"), js("document.activeElement?.id"), errs])
+
+        # ---- the profile menu's Emergency card, and the palette's
+        menu_click(page, "#emergencyLink")
+        page.wait_for_selector("#emergency[data-profile='1'] #ecPreview", timeout=20000)
+        said = js("document.getElementById('ecPreview').innerText")
+        check("…the profile menu's Emergency card opens Sharing → Emergency card, its preview from the records and those fields (#1126)",
+              "sharing.html" in page.url and page.url.endswith("#emergency") and "Dr Lee: 555-0199" in said
+              and ("O negative (as typed in)" in said or lab) and "Current medications" in said and "Active problems" in said, [page.url, said[:500]])
+        page.keyboard.press("Control+k")
+        page.wait_for_selector("dialog.palette[open]", timeout=5000)
+        page.fill("#palQ", "emergency card")
+        page.wait_for_timeout(300)
+        found = js("[...document.querySelectorAll('#palList [role=option]')].map(o => o.textContent.trim()).slice(0, 3)")
+        page.keyboard.press("Escape")
+        check("…the palette finds it as “emergency card” (#1126)", bool(found) and "Emergency card" in found[0], found)
+
+        # ---- the PDF, on A4 and Letter
+        got = {}
+        for paper in ("a4", "letter"):
+            page.select_option("#ecPaper", paper)
+            with page.expect_download(timeout=20000) as dl:
+                page.click("#ecPdf")
+            got[paper] = open(dl.value.path(), "rb").read()
+            fname = dl.value.suggested_filename
+        info = {k: re.findall(rb"/Info (\d+) 0 R", v) and re.search(rb"\n" + re.findall(rb"/Info (\d+) 0 R", v)[0] + rb" 0 obj\n(.*?)\nendobj", v, re.S).group(1)
+                for k, v in got.items()}
+        check("…the PDF downloads, one page on A4 and on Letter, its information the title alone (#1126)",
+              all(v.startswith(b"%PDF-") and v.count(b"/Type /Page ") == 1 for v in got.values())
+              and b"/MediaBox [0 0 595.28 841.89]" in got["a4"] and b"/MediaBox [0 0 612 792]" in got["letter"]
+              and all(i.startswith(b"<< /Title (Emergency card for ") and b"/Producer" not in i for i in info.values())
+              and fname.startswith("emergency-card-") and fname.endswith(".pdf"), [fname, info])
+
+        # ---- the lock-screen image: the switch adds the wallet line to its preview, and the PNG is the picture alone
+        alt = lambda: js("document.getElementById('ecImg').alt")   # noqa: E731
+        off = alt()
+        page.click("#ecWallet")
+        on = alt()
+        check("…“I carry the printed card” adds the wallet line to the image, off at first, and nothing else (#1126)",
+              "see the card in my wallet" not in off and on == off.replace(". As of ", ". Medications and conditions: see the card in my wallet. As of ")
+              and "Current medications" not in on and "Active problems" not in on and "Dr Lee: 555-0199" in on, [off, on])
+        with page.expect_download(timeout=20000) as dl:
+            page.click("#ecPng")
+        png = open(dl.value.path(), "rb").read()
+        chunks, at = [], 8
+        while at < len(png):
+            n, kind = struct.unpack(">I4s", png[at:at + 8])
+            chunks.append(kind.decode("latin-1"))
+            at += 12 + n
+        w, h = struct.unpack(">II", png[16:24])
+        screen = js("[Math.round(screen.width * devicePixelRatio), Math.round(screen.height * devicePixelRatio)]")
+        check("…the PNG downloads upright at this screen's size, the picture alone (no text, time or place) (#1126)",
+              png.startswith(b"\x89PNG\r\n\x1a\n") and (w, h) == (min(screen), max(screen))
+              and not set(chunks) & {"tEXt", "iTXt", "zTXt", "tIME", "eXIf"} and dl.value.suggested_filename.endswith(".png"), [chunks, (w, h), screen])
+
+        # ---- many allergies and five contacts: never off the bottom, the type no smaller than its least, the
+        # allergies cut short with "and N more allergies", the first contact always there (#1126)
+        many = js("""() => { const c = {profile: 'Robin Example (fictional)', asOf: '2026-11-28', walletNote: 'Medications and conditions: see the card in my wallet',
+            short: [{heading: 'Allergies', lines: Array.from({length: 30}, (_, i) => `Fictional allergen ${i + 1} (hives, swelling of the throat), severe`)},
+                    {heading: 'Blood type', lines: ['O negative']},
+                    {heading: 'Emergency contacts', lines: Array.from({length: 5}, (_, i) => `Contact ${i + 1} Example (sibling): +1 555 010 00${i}`)}]};
+          const cv = ecCanvas(c, true);
+          return {h: cv.height, w: cv.width, end: cv.end, size: cv.size, least: cv.width * EC_MIN, lines: cv.lines}; }""")
+        lines = many["lines"]
+        check("…with 30 allergies and 5 contacts the lock-screen image stays on the screen, the allergies cut short, the first contact kept (#1126)",
+              many["end"] <= many["h"] and many["size"] >= many["least"] - 0.01 and any(re.fullmatch(r"and \d+ more allergies", t) for t in lines)
+              and "Contact 1 Example (sibling): +1 555 010 000" in lines and "O negative" in lines and lines[-2].startswith("Medications and conditions"),
+              {k: v for k, v in many.items() if k != "lines"} | {"lines": lines})
+
+        # ---- the group at 320 px and 200% text, light and dark, with no serious axe finding
+        out = []
+        for w_ in (320, 412):
+            page.set_viewport_size({"width": w_, "height": 900})
+            page.wait_for_timeout(150)
+            out += phone_fits(page, f"Emergency card at {w_} px")
+        js("document.documentElement.style.fontSize = '200%'")
+        page.wait_for_timeout(150)
+        out += phone_fits(page, "Emergency card at 200% text")
+        js("document.documentElement.style.fontSize = ''")
+        page.set_viewport_size({"width": 1400, "height": 900})
+        for scheme in ("light", "dark"):
+            page.emulate_media(color_scheme=scheme)
+            serious.extend(axe_check(page, f"Emergency card, {scheme}")[0])
+        page.emulate_media(color_scheme="light")
+        check("…it fits 320 px and 200% text, with no serious axe finding, light or dark (#1126)", not out and not serious, out + serious)
+    finally:
+        try:
+            js(put, {"bloodType": "", "contacts": []})
+        except Exception:
+            pass
+        ctx.close()
     return errs
 
 
@@ -28387,6 +28522,11 @@ def main():
             # security, the sign-in page's button, OIDC only, an account's identity under Accounts
             errs1109 = oidc_check(check, browser, base, page.context.cookies())
             check("…and no script fails there (#1109)", not errs1109, errs1109)
+
+            # ---- #1126: the emergency card: blood type and contacts under About this person, Sharing → Emergency card's
+            # preview, its PDF and lock-screen PNG, the "I carry the printed card" switch
+            errs1126 = emergency_card_check(check, browser, base, page.context.cookies())
+            check("…and no script fails there (#1126)", not errs1126, errs1126)
 
             # ---- #246: the Timeline list's row is .tl-row, so the pages' rows of buttons (.row) have no divider under them
             # and no pointer, and what's typed into a field isn't its label's semibold; every group of each page

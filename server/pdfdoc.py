@@ -142,8 +142,14 @@ class Page:
     def text_right(self, x, y, s, size=10, bold=False, color=0):
         self.text(x - width(s, size, bold), y, s, size, bold, color)
 
-    def line(self, x1, y1, x2, y2, w=0.5, color=0):
-        self.ops.append(f"{_rgb(color)} RG {w:g} w {x1:.2f} {y1:.2f} m {x2:.2f} {y2:.2f} l S")
+    def line(self, x1, y1, x2, y2, w=0.5, color=0, dash=None):
+        """dash: (on, off) in points, for a dashed line (a cut or fold line, #1126)"""
+        d = f"[{dash[0]:g} {dash[1]:g}] 0 d " if dash else ""
+        self.ops.append(f"{d}{_rgb(color)} RG {w:g} w {x1:.2f} {y1:.2f} m {x2:.2f} {y2:.2f} l S" + (" [] 0 d" if dash else ""))
+
+    def box(self, x, y, w, h, lw=0.5, color=0):
+        """A rectangle's outline."""
+        self.ops.append(f"{_rgb(color)} RG {lw:g} w {x:.2f} {y:.2f} {w:.2f} {h:.2f} re S")
 
     def rect(self, x, y, w, h, fill=0.9):
         self.ops.append(f"{_rgb(fill)} rg {x:.2f} {y:.2f} {w:.2f} {h:.2f} re f")
@@ -168,8 +174,10 @@ class Page:
 
 
 class Document:
-    def __init__(self, title="", author="Sanguity"):
-        self.title, self.author, self.pages = title, author, []
+    """author: the Producer said in the information dictionary; None for none, the title alone (#1126). size: the
+    pages' (width, height) in points, US Letter unless given (the emergency card's A4)."""
+    def __init__(self, title="", author="Sanguity", size=(WIDTH, HEIGHT)):
+        self.title, self.author, self.size, self.pages = title, author, size, []
 
     def page(self):
         p = Page()
@@ -192,11 +200,12 @@ class Document:
         for p in self.pages or [Page()]:
             data = zlib.compress("\n".join(p.ops).encode("ascii"), 9)
             content = add(b"<< /Length %d /Filter /FlateDecode >>\nstream\n" % len(data) + data + b"\nendstream")
-            kids.append(add((f"<< /Type /Page /Parent {pages} 0 R /MediaBox [0 0 {WIDTH} {HEIGHT}] /Contents {content} 0 R "
+            kids.append(add((f"<< /Type /Page /Parent {pages} 0 R /MediaBox [0 0 {self.size[0]:g} {self.size[1]:g}] /Contents {content} 0 R "
                              f"/Resources << /Font << /F1 {reg} 0 R /F2 {bold} 0 R >> >> >>").encode()))
         objs[catalog - 1] = f"<< /Type /Catalog /Pages {pages} 0 R >>".encode()
         objs[pages - 1] = f"<< /Type /Pages /Kids [{' '.join(f'{k} 0 R' for k in kids)}] /Count {len(kids)} >>".encode()
-        info = add(f"<< /Title {_string(self.title)} /Producer {_string(self.author)} >>".encode())
+        producer = "" if self.author is None else f" /Producer {_string(self.author)}"
+        info = add(f"<< /Title {_string(self.title)}{producer} >>".encode())
 
         out, offsets = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"), []
         for n, body in enumerate(objs, start=1):

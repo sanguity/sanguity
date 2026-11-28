@@ -211,6 +211,22 @@
     </div>
   </section>
 
+  <!-- the emergency card (#1126): a file the person carries, never an address (emergency.js, server/emergency.py) -->
+  <section class="card" id="emergency" hidden>
+    <h2 id="ecHd" tabindex="-1">Emergency card</h2>
+    <p class="hint">A card to print and carry, and a short image for your phone's lock screen, made from the records.</p>
+    <div class="about-words" hidden>
+      <p>The card has the allergies with their reactions, current medications, active problems, blood type and
+        emergency contacts, as of the day you make it. The lock-screen image has only the name, allergies, blood type
+        and contacts.</p>
+      <p>It's a file you keep: no one can open it from Sanguity without signing in, and no share link carries it.
+        Make it again when something changes. Blood type and contacts are in Settings, under About this person.</p>
+      <p>It says only what the records and your own entries say; it isn't medical advice.</p>
+    </div>
+    <div id="ecBody"></div>
+    <span class="msg" id="ecMsg" role="status"></span>
+  </section>
+
   <!-- Export everything: owners and editors (sharing.js) -->
   <section class="card" id="export" hidden>
     <h2>Export everything</h2>
@@ -292,6 +308,7 @@
 <script src="js/share-links.js"></script>
 <script src="js/activity.js"></script>
 <script src="js/summary.js"></script>
+<script src="js/emergency.js"></script>
 <script src="js/calendar-feed.js"></script>
 <script src="js/sidebar.js"></script>
 <script src="js/sharing.js"></script>

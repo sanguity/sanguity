@@ -1,7 +1,8 @@
 /* Sanguity · the Sharing page (#168): who can see a profile, and every way its records go out, for the profile picked
    at the top, with the sidebar of groups every account page has (sidebar.js, #266): People (who has access and as
    what, sharing with an account, changing roles, leaving), Share links (share-links.js), Calendar feed
-   (calendar-feed.js), Visit summary (summary.js), Export everything and the profile's Activity (activity.js). About
+   (calendar-feed.js), Visit summary (summary.js), Emergency card (emergency.js, #1126), Export everything and the
+   profile's Activity (activity.js). About
    this person and Targets (#267; about.js), and renaming and deleting the profile (#402; profile-card.js), are on
    Settings now, and their old addresses (sharing.html#about, #profile) send you there (moved.js); New profile is the
    profile menu's (guide.html?new).
@@ -37,7 +38,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
   const nav = sideNav({id: "shrNav", page: "Sharing", groups: GROUPS, find: "Find in Sharing", none: q => `Nothing in Sharing matches “${q}”.`,
     allowed, alias: {profiles: "people"},   // the old Account tab's name (account.html#profiles)
     refuse: g => { if (g.why && P) { sayIn($("#pageMsg"), g.why); return true; } },
-    shown: g => { if (g.id === "activity") drawActivity(); },   // fresh each time it's opened
+    shown: g => { if (g.id === "activity") drawActivity(); if (g.id === "emergency") drawEmergency(P); },   // fresh each time it's opened (the card: #1126, emergency.js)
     bar: {save: (parts, msg, had) => summarySave(msg, had), discard: summaryDiscard, profile: () => P ? String(P.id) : null}});   // the questions draft (#272, summary.js)
   let started = false;
   /* the groups this profile's role allows, the one shown kept if it's one of them (the address's, the first time) */
@@ -60,7 +61,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     const has = ME.profiles.length > 0;
     $("#noProfiles").hidden = has;
     $("#intro").hidden = !has;
-    for (const id of ["people", "export", "links", "activity"]) $("#" + id).hidden = !has;
+    for (const id of ["people", "export", "links", "activity", "emergency"]) $("#" + id).hidden = !has;
     if (!has) {
       P = LINKS_OF = null;
       SgNav.profiles([]);
@@ -102,6 +103,7 @@ const when = t => fmtDT(t * 1000);   // dates.js: this person's time zone and da
     drawPeople(p);
     $("#people").dataset.profile = p.id;   // whose people are drawn (the browser check waits for it)
     if (nav.current()?.id === "activity") drawActivity();
+    if (nav.current()?.id === "emergency") drawEmergency(p);
   }
   /* the profile's activity (owners), drawn when its group is shown, once its people are known (for the filter) */
   function drawActivity() {

@@ -76,7 +76,7 @@ ICONS = [
     # #399: a place of its own for what shared one
     "gauge",                 # Add's Home reading
     "user-plus", "user-pen",  # New profile; Settings: Rename or delete (Sharing's Profile before #402)
-    "key-round",             # the Account page
+    "id-card",               # the emergency card (Sharing, #1126)
     "monitor",               # Display (your menu, Settings)
     "layout-list", "layout-dashboard",  # Sources' Overview, Settings' Dashboard
     "ruler", "dumbbell", "folder",  # Settings: Labs and ranges, Workouts, More

@@ -218,7 +218,8 @@ const SgNav = (() => {
   const radios = el("div", {role: "group", "aria-label": "Switch profile"}), rSep = sep();
   // its settings are Settings' This person, in your menu (#991)
   const pLinks = [link("sources.html", "sources", "Sources", {id: "sourcesLink"}),
-    link("sharing.html", "sharing", "Sharing", {id: "sharingLink"})];
+    link("sharing.html", "sharing", "Sharing", {id: "sharingLink"}),
+    link("sharing.html#emergency", "sharing/emergency", "Emergency card", {id: "emergencyLink", "aria-current": null})];   // #1126
   const npSep = sep(), npLink = link("guide.html?new", "sharing/newProfile", "New profile", {id: "newProfileLink"});
   npSep.hidden = npLink.hidden = true;   // (until /api/me says this person may: sgMayNew)
   prof.list.append(radios, rSep, ...pLinks, npSep, npLink);

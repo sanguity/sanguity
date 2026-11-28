@@ -1797,6 +1797,7 @@ app.include_router(__import__("server.routes_outside", fromlist=["router"]).rout
 app.include_router(__import__("server.routes_calendar", fromlist=["router"]).router)  # calendar feeds (#51)
 app.include_router(__import__("server.routes_journal", fromlist=["router"]).router)   # the journal: notes, symptoms, side effects (#49)
 app.include_router(__import__("server.routes_summary", fromlist=["router"]).router)   # the visit summary PDF (#48)
+app.include_router(__import__("server.routes_emergency", fromlist=["router"]).router)   # the emergency card (#1126)
 app.include_router(__import__("server.routes_share_links", fromlist=["router"]).router)  # share links (#47)
 app.include_router(__import__("server.routes_costs", fromlist=["router"]).router)     # out-of-pocket costs: HSA/FSA, matched to claims (#55)
 app.include_router(__import__("server.routes_backups", fromlist=["router"]).router)   # backups on the Admin page (#200)

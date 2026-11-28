@@ -49,6 +49,9 @@ CVX = "2.16.840.1.113883.12.292"
 # allergy entry templates (#179): reaction, severity, criticality and status observations
 REACTION, SEVERITY, CRITICALITY, ALLERGY_STATUS = ("2.16.840.1.113883.10.20.22.4.9", "2.16.840.1.113883.10.20.22.4.8",
                                                    "2.16.840.1.113883.10.20.22.4.145", "2.16.840.1.113883.10.20.22.4.28")
+# a "no known allergies" statement (negationInd) as its kind of allergy says it (SNOMED CT; #1126)
+NO_KNOWN = {"416098002": "No known drug allergies", "59037007": "No known drug allergies",
+            "414285001": "No known food allergies", "235719002": "No known food allergies"}
 
 VITALS = common.VITALS   # vitals by LOINC: (series name, unit), every importer's (#1102)
 WEIGHT_LOINC = "29463-7"
@@ -549,9 +552,20 @@ def _has_template(el, root):
 
 def _allergies(doc, out):
     for obs, act in _problem_rows(doc, "allergies"):
-        if obs.get("negationInd") == "true":        # "no known allergies"
-            continue
         agent = _f(obs, "h:participant/h:participantRole/h:playingEntity/h:code")
+        if obs.get("negationInd") == "true":
+            # "no known allergies" (#1126): kept, as the FHIR importer keeps one, when it names no substance (one that
+            # does says it isn't an allergy to that substance: neither an allergy nor "none known")
+            if agent is not None and agent.get("code") and not agent.get("nullFlavor"):
+                continue
+            kind = _f(obs, "h:value")
+            said = NO_KNOWN.get(kind.get("code") if kind is not None else "", "No known allergies")
+            p = common.allergy(said, status="Active", date=(_when(obs) or _when(act) or "")[:10] or None, src=doc.src)
+            if (said.lower(), p["date"]) not in out.seen_problems:
+                out.seen_problems.add((said.lower(), p["date"]))
+                p["key"] = out.unique(_idkey(act) or _hkey(p["date"], "allergy", said), p["date"], "allergy", said, said)
+                out.problems.append(p)
+            continue
         name = doc.name(agent) or _txt(_f(obs, "h:participant/h:participantRole/h:playingEntity/h:name"))
         if not name:
             continue
