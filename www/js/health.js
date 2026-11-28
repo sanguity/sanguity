@@ -344,9 +344,10 @@ function renderHealth() {
   const legend = items => { const k = ckLegend(items); k.classList.add("mb-2"); return k; };   // the kit's (chartkit.js): [colour, words, "line" / 1 a dot / "ring"]
 
   /* Chart | Table on each card (#60, head above): its charts, or one table of what they show, a row per day (or week)
-     in the period, newest first. byDay([pts, …]) -> [{t, v: [the point from each on that day, or undefined]}] */
+     in the period, newest first, the weeks the charts draw at its ends among them (hIn, #1155). byDay([pts, …]) ->
+     [{t, v: [the point from each on that day, or undefined]}] */
   const byDay = (...sets) => { const m = new Map();
-    sets.forEach((pts, i) => { for (const p of inR(pts, a, b)) { const k = isoDay(p[0]); if (!m.has(k)) m.set(k, {t: p[0], v: []}); m.get(k).v[i] = p; } });
+    sets.forEach((pts, i) => { for (const p of pts) { if (!hIn(p, a, b)) continue; const k = isoDay(p[0]); if (!m.has(k)) m.set(k, {t: p[0], v: []}); m.get(k).v[i] = p; } });
     return [...m.values()].sort((p, q) => q.t - p.t); };
   const f1 = p => p ? p[1].toFixed(1) : "", f0 = p => p ? Math.round(p[1]).toLocaleString("en-US") : "";
   const weekOf = t => "Week of " + fmtD(t - 3 * DAY);
@@ -459,7 +460,7 @@ function renderHealth() {
     if (state.tables.has("#h-activity")) {   // steps and workouts, by day or by week (the weeks as weekly() makes them)
       const wk = t => { const d = zdate(t); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.getTime() + 3 * DAY; };
       const exBy = new Map(); for (const x of exIn) { const t = long ? wk(x.t) : dayTs(isoDay(x.t)); exBy.set(t, [...(exBy.get(t) || []), x]); }
-      const exPts = [...exBy.keys()].map(t => [t]);
+      const exPts = [...exBy.keys()].map(t => Object.assign([t], {wk: long}));   // (a week's: its row with the steps' week, hIn)
       act.append(...hTable("#h-activity", [long ? "Week" : "Date", long ? "Steps (average a day)" : "Steps", "Workouts"],
         byDay(stBars, exPts).map(({t, v: [p, e]}) => [long ? weekOf(t) : fmtD(t), p && sSide(p) ? [f0(p), sSide(p), TGT_WORDS[sSide(p)]] : f0(p),
           (exBy.get(e ? e[0] : NaN) || []).map(x => x.pt ? `${x.rule} appointment, counted as ${x.min} min` : `${x.name || "Workout"} ${x.min} min`).join("; ")])));
@@ -1100,7 +1101,7 @@ function hZones(box, a, b, {long, legend, head, byDay}) {
   const wk = t => { const d = zdate(t); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.getTime() + 3 * DAY; };
   const weeks = new Map();
   for (const x of withHr) { if (!x.hr.zones) continue; const k = wk(x.t), w = weeks.get(k) || {z: [0, 0, 0, 0, 0, 0], n: 0}; x.hr.zones.forEach((s, i) => { w.z[i] += s; }); w.n++; weeks.set(k, w); }
-  const pts = [...weeks.entries()].sort((p, q) => p[0] - q[0]).map(([t, w]) => [t, ...w.z.slice(1).map(s => s / 60), w]);
+  const pts = [...weeks.entries()].sort((p, q) => p[0] - q[0]).map(([t, w]) => Object.assign([t, ...w.z.slice(1).map(s => s / 60), w], {wk: true}));   // weeks (hIn)
   if (state.tables.has(key)) {
     card.append(...hTable(key, ["Week", ...[1, 2, 3, 4, 5].map(k => `Zone ${k} (min)`), "Below zone 1 (min)", "Workouts with readings"],
       byDay(pts).map(({t, v: [p]}) => ["Week of " + fmtD(t - 3 * DAY), ...p.slice(1, 6).map(m => String(Math.round(m))), String(zMin(p[6].z[0])), String(p[6].n)])));
