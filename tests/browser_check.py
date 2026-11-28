@@ -3964,7 +3964,7 @@ def main():
             strict.wait_for_selector(sel, state="attached", timeout=10000)
         groups = strict.evaluate("[...document.querySelectorAll('#setNav .set-nav-part, #setNav a')].map(x => (x.matches('.set-nav-part') ? '§' : '') + x.textContent)")
         check("under the CSP: Install's scripts run on Settings, its sidebar in three parts, This person, You and Install (#266, #991)", groups ==
-              ["§This person", "Dashboard", "About this person", "Labs and ranges", "Milestones", "Workouts", "Rename or delete",
+              ["§This person", "Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Workouts", "Rename or delete",   # (insurance cards, #1137)
                "§You", "Sign-in and security", "This device", "Display",
                "§Install", "General", "Accounts and sign-in", "Install activity", "Backups", "Connected-source apps", "Provider directory",
                "Outside connections"], groups)   # (#1114: Lab name matches, the profile's card alone)
@@ -4267,7 +4267,7 @@ def main():
         groups = strict.evaluate("[...document.querySelectorAll('#shrNav a')].map(a => a.textContent)")
         check("under the CSP: the Sharing page's scripts run, with a sidebar of its groups, under no label repeating the page's title, and nothing of "
               "the profile itself (About this person, #267, renaming and deleting it, #402, are on Settings; New profile is the profile menu's)", groups ==
-              ["People", "Share links", "Calendar feed", "Visit summary", "Export everything", "Activity"]
+              ["People", "Share links", "Calendar feed", "Visit summary", "Emergency card", "Export everything", "Activity"]   # (the emergency card, #1126)
               and strict.evaluate("!document.querySelector('#shrNav .set-nav-part, #profileCard, #newProfile, #profNew')"), groups)
         check("no Sharing card shows a stray “null”", strict.evaluate(null_cards) == [], strict.evaluate(null_cards))
         # ---- one sidebar (#266): the five pages' sidebars are one component (sidebar.js): a search box, the groups under
@@ -20164,7 +20164,7 @@ def main():
                      " && !!document.querySelector('.set-nav-list a[data-group=outside]')"))
             # ---- the Settings sidebar (settings-nav.js) and the top bar's menus (nav.js)
             check("Settings: a sidebar of groups, one shown at a time (an owner's ending This person with Rename or delete, #402; then You's, #991)",
-                  js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:9] == ["Dashboard", "About this person", "Labs and ranges", "Milestones", "Workouts", "Rename or delete",
+                  js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)")[:10] == ["Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Workouts", "Rename or delete",
                                                                                                        "Sign-in and security", "This device", "Display"]
                   and js(display, "sec-overview") != "none" and js(display, "sec-units") == "none", js("[...document.querySelectorAll('.set-nav-list a')].map(a => a.textContent)"))
             page.fill("#setFind", "time zone")
@@ -20338,12 +20338,13 @@ def main():
             page.keyboard.press("ArrowDown")
             check("…and the arrow keys move through it", js("document.activeElement.textContent") == "Add a medication", js("document.activeElement.textContent"))   # (#1092)
             # #264: in two groups, Today and Records, each way in opening its section of Sources (#166)
-            check("…in two groups: Today (a dose, a medication of your own, #1092, a journal entry, a home reading), then Records, each way in opening its section of Sources (#166), "
-                  "after what's waiting for you (#283)",
+            check("…in two groups: Today (a dose, a medication of your own, #1092, a journal entry, a home reading, a follow-up, #1138), then Records, each way in opening its section of Sources (#166), "
+                  "after what's waiting for you (#283), and a records request (#1133)",
                   js("[...document.querySelectorAll('#addMenuList [role=group]')].map(g => [g.getAttribute('aria-label'), ...[...g.querySelectorAll('[role=menuitem]')].map(a => a.getAttribute('href'))])")
-                  == [["Today", "./?profile=1#log-dose", "./?profile=1#add-medication", "./?profile=1#new-journal-entry", "sources.html?profile=1#home-reading"],   # for the profile shown (#397)
+                  == [["Today", "./?profile=1#log-dose", "./?profile=1#add-medication", "./?profile=1#new-journal-entry", "sources.html?profile=1#home-reading",
+                       "./?profile=1#add-followup"],   # for the profile shown (#397)
                       ["Records", "sources.html?profile=1#waiting", "sources.html?profile=1#upload", "sources.html?profile=1#portals", "sources.html?profile=1#manual",
-                       "sources.html?profile=1#link"]],
+                       "sources.html?profile=1#link", "./?profile=1#records-request"]],
                   js("[...document.querySelectorAll('#addMenuList [role=group]')].map(g => [g.getAttribute('aria-label'), ...[...g.querySelectorAll('[role=menuitem]')].map(a => a.getAttribute('href'))])"))
             page.keyboard.press("Escape")
             # #244: on a phone the bar wraps, and a menu pinned to its button's right edge opened off the screen's left;
@@ -24380,7 +24381,7 @@ def main():
                 pages: [...document.querySelectorAll('#profileMenuList a[role=menuitem]')].map(a => a.textContent), one: document.querySelectorAll('#profile').length === 1
                   && !!document.querySelector('header.topbar #profilePick > select#profile[hidden]') && !document.querySelector('main #profile, main label.set-profile')})"""
             want_bar = {"brand": True, "tabs": ["Overview", "Body and activity", "Medications", "Timeline", "Labs", "Costs"], "menus": ["profileMenuBtn", "addMenuBtn", "userMenuBtn"],
-                        "profiles": both, "pages": ["Sources", "Sharing", "New profile"], "one": True}   # (#991: its settings are Settings' This person)
+                        "profiles": both, "pages": ["Sources", "Sharing", "Emergency card", "New profile"], "one": True}   # (#991: its settings are Settings' This person; #1126)
             bars = {}
             filled = "!!document.querySelector('#profileMenuList [data-pid]')"
             for path, ready in (("/", "typeof booted !== 'undefined' && booted"), ("/sources.html#portals", "!document.getElementById('intro').hidden"),
@@ -24401,10 +24402,10 @@ def main():
                   [first, js("document.activeElement.id")])
             page.click("#profileMenuBtn")
             pid = js("document.getElementById('profile').value")
-            check("…the profile menu: switching profile, then Sources and Sharing, each for the profile shown, and New profile (#991: About this "
+            check("…the profile menu: switching profile, then Sources, Sharing and its Emergency card (#1126), each for the profile shown, and New profile (#991: About this "
                   "person, its Settings and Edit tabs… are Settings' This person, from your menu)",
                   js("[...document.querySelectorAll('#profileMenuList a[role=menuitem]')].map(a => a.getAttribute('href'))")
-                  == [f"{x}.html?profile={pid}" for x in ("sources", "sharing")] + ["guide.html?new"],
+                  == [f"{x}.html?profile={pid}" for x in ("sources", "sharing")] + [f"sharing.html?profile={pid}#emergency", "guide.html?new"],
                   js("[...document.querySelectorAll('#profileMenuList a[role=menuitem]')].map(a => a.getAttribute('href'))"))
             page.keyboard.press("Escape")
             # a tab link from another page opens that tab (#264), on the profile shown there
@@ -25069,12 +25070,13 @@ def main():
             zb.wait_for_selector("#build:not([hidden]) #since option", state="attached", timeout=10000)
             since_opt = zb.evaluate("document.querySelector('#since option').textContent")
             check("…the visit summary writes dates in their format", bool(__import__("re").search(r"\(.*, \d{4}-\d{2}-\d{2}\)", since_opt)), since_opt)
-            # a viewer's Sharing page (#168): who has access, the visit summary and their own calendar feed, and no
-            # owner's controls; an address for an owner's group shows People instead, saying why
+            # a viewer's Sharing page (#168): who has access, the visit summary, their own calendar feed and the emergency
+            # card (#1126: everyone a profile is shared with may make one), and no owner's controls; an address for an
+            # owner's group shows People instead, saying why
             zb.wait_for_selector("#memberList tbody tr", state="attached", timeout=10000)
             groups = zb.evaluate("[...document.querySelectorAll('#shrNav a')].map(a => a.textContent)")
-            check("a viewer's Sharing page: People, Calendar feed and Visit summary only (#402: no Profile group holding only New profile)",
-                  groups == ["People", "Calendar feed", "Visit summary"], groups)
+            check("a viewer's Sharing page: People, Calendar feed, Visit summary and Emergency card only (#402: no Profile group holding only New profile; #1126)",
+                  groups == ["People", "Calendar feed", "Visit summary", "Emergency card"], groups)
             zb.click("#shrNav a[data-group=people]")
             people = zb.inner_text("#people")
             check("…who has access and as what, with Leave for themselves and no role menus, Remove or Share",
@@ -25311,15 +25313,15 @@ def main():
                     sdb.execute("DELETE FROM sessions WHERE user_id=?", (uid991,))
                     sdb.execute("DELETE FROM users WHERE id=?", (uid991,))
                 sdb.execute("DELETE FROM activity WHERE actor IN ('own991', 'edit991', 'once991')")   # (their sign-ins)
-            person991 = ["Dashboard", "About this person", "Labs and ranges", "Milestones", "Workouts"]
-            want991 = {r: {"profile": ["Sources", "Sharing", "New profile"], "you": ["Settings", "Getting started", menus991.get(r, {}).get("you", [""] * 3)[2], "Log out"],
+            person991 = ["Dashboard", "About this person", "Insurance cards", "Labs and ranges", "Milestones", "Workouts"]   # (insurance cards, #1137)
+            want991 = {r: {"profile": ["Sources", "Sharing", "Emergency card", "New profile"],   # (#1126) "you": ["Settings", "Getting started", menus991.get(r, {}).get("you", [""] * 3)[2], "Log out"],
                            "gone": [], "focus": ["Sign-in and security"] * 2,
                            "parts": {"This person": person991 + (["Rename or delete"] if r in ("admin", "owner") else []),
                                      "You": ["Sign-in and security", "This device", "Display"],
                                      "Install": ["General", "Accounts and sign-in", "Install activity", "Backups", "Connected-source apps", "Provider directory",
                                                  "Outside connections"] if r == "admin" else []},   # (#1114: Lab name matches, the profile's card)
                            "install": None if r == "admin" else [403] * 6} for r in ("admin", "owner", "editor", "viewer")}   # (the admin's: refused too here, till they have a second factor, #75)
-            check("one Settings page (#991): for an admin, an owner, an editor and a viewer, the profile menu has Sources, Sharing and New profile, your "
+            check("one Settings page (#991): for an admin, an owner, an editor and a viewer, the profile menu has Sources, Sharing, Emergency card and New profile, your "
                   "menu Settings, Getting started, the theme and Log out (no Account, Display, Admin, About this person or Edit tabs…); Settings "
                   "from the records page opens You with focus on its heading; the sidebar a list per part, named This person, You and Install, "
                   "Install the admin's alone, and Install's routes refused the others (403)",
@@ -25393,7 +25395,8 @@ def main():
             zb.wait_for_selector("#addMenuBtn", timeout=10000)
             own_empty = zb.evaluate(add_offers)
             check("Add follows the profile shown (#401): nothing for one they can only view; on the empty one they edit, all but Log a dose",
-                  viewing == [] and own_empty == ["Add a medication", "Journal entry", "Home reading", "Upload files", "Connect a source (experimental)", "Type records in", "Paste a Health Link (experimental)"],
+                  viewing == [] and own_empty == ["Add a medication", "Journal entry", "Home reading", "Follow-up", "Upload files", "Connect a source (experimental)", "Type records in",
+                                                  "Paste a Health Link (experimental)", "Records request"],   # (#1138, #1133)
                   [viewing, own_empty])
             zb.goto(base + f"/settings.html?profile={pid3}")
             zb.wait_for_selector("#addMenuBtn", timeout=10000)
