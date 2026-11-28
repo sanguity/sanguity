@@ -71,7 +71,7 @@ regression like the one fixed below (seconds instead of a tenth of one) still fa
 | `pan_frame_ms` | A frame of dragging a tab's charts with the period **All** (Body and activity, Labs' charts and its heatmap, the Timeline), from the pointer's move to the frame after it, every chart drawn again (#292, #631, below) | 41 ms (Body and activity, the heatmap) | 150 ms |
 | `phone_pan_frame_ms` | `pan_frame_ms` at 375 px with the CPU four times slower | 117 ms (Body and activity; the heatmap 51 ms since #300, below) | 250 ms |
 | `share_page_px` | A share link's page with every section, of any date, at 1400 px (#491, below) | 9,812 px | 20,000 px |
-| `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as nginx sends them (#253, below) | 281.9 KB | 310 KB |
+| `static_bytes` | The app's stylesheets, fonts and SVG icons in `www/`, as nginx sends them (#253, below) | 281.9 KB | 320 KB |
 
 Measured on a 20-thread desktop (Intel Core Ultra 7 265K), Chromium headless. Each tab's own numbers, and the size
 of each part of the records data, are printed at the end of the test's output; `PERF_REPORT=file.json` also writes
