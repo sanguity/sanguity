@@ -9068,9 +9068,18 @@ def main():
                         want = {"h-bp": 2, "h-temp": 1, "h-oxygen": 1, "h-glucose": 1}
                         if not got["ends"] or any(k not in got or got[k][1] < n for k, n in want.items()) or not all(v[0] for k, v in got.items() if k != "ends"):
                             bad1155.append([when, width, preset, got])
+                        if when == "Saturday" and width == 1400:   # the weeks' tables as their charts (their equivalent): the first week, drawn at the start, a row too
+                            tables1155 = js("""(() => { const ids = ['#h-sleep', '#h-activity'], rows = id => [...document.querySelectorAll(id + ' table tbody tr')];
+                              const want = ids.map(id => +(/: (\\d+) weeks? /.exec(document.querySelector(id + ' svg.ck')?.getAttribute('aria-label') || '') || [])[1]);
+                              ids.forEach(id => state.tables.add(id)); renderHealth();
+                              const got = [rows('#h-sleep').length, rows('#h-activity').filter(r => r.cells[1].textContent.trim()).length];
+                              const oldest = ids.map(id => rows(id).at(-1)?.cells[0].textContent), first = 'Week of ' + fmtD(hMonday(state.from));
+                              state.tables.clear(); renderHealth(); return {want, got, oldest, first}; })()""")
             check("the newest reading drawn (#1155): typed in minutes ago or on the latest Monday on 30 days to All, or on the first day of 6 months starting on "
                   "a Saturday, at 1400 and 412 px, each chart's point its tooltip finds there or at the right edge is in the plot, with a mark on blood "
                   "pressure (both pressures), temperature, oxygen and glucose; the period ends after it", not bad1155 and len(drawn1155) == 18, bad1155[:3] or drawn1155)
+            check("…the weeks' tables (sleep, steps) as their charts: the first week, its Thursday before the period and drawn at its start, a row too",
+                  tables1155["want"] == tables1155["got"] and all(n > 0 for n in tables1155["want"]) and tables1155["oldest"] == [tables1155["first"]] * 2, tables1155)
             js("""(() => { const w = window._was1155; WATCH = JSON.parse(w[4]); storeSpan(); H = null; G = undefined; H = hData();
                 [state.preset, state.from, state.to] = w; if (w[0] !== 'custom') setPeriod(w[0]); switchTab(w[3]); })()""")
             page.set_viewport_size({"width": 1400, "height": 900})
