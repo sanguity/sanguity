@@ -42,7 +42,7 @@ class SettingError(ValueError):
 
 class Setting:
     def __init__(self, key, section, label, default, check, scope="profile", private=True, kind=None, help="",
-                 merge=False, reread=False, screen=True, env=None, confirm=None):
+                 merge=False, reread=False, screen=True, env=None, confirm=None, records=False):
         self.key, self.section, self.label, self.default, self.check = key, section, label, default, check
         # (#998) an install setting whose change is confirmed first: confirm(db, before, after, request, session) ->
         # None when there's nothing to ask, else {"count", "message", "type", "title", "action"}; the change is made
@@ -52,6 +52,7 @@ class Setting:
         self.env = env   # the variable of config.VARS it stands for (#999): the environment's value wins over it
         self.reread = reread   # a stored value is checked again when read: its check gives older values in today's terms
         self.screen = screen   # shown on the Settings screen (False: kept for a page of its own, like the guide's, #199)
+        self.records = records   # the records carry it (#1135: keyDocs): a change moves the profile's records' revision
 
     def clean(self, value):
         return self.check(value)
@@ -901,6 +902,24 @@ define("journal.groups", "journal", "Symptom groups", [], _groups_check, kind="g
             "its own severity.")
 
 
+# ---------------------------------------------------------------- #1135 key documents (server/keydocs.py)
+# Not on the Settings screen: a document's drawer marks it. Sealed: what a document is, and where it's kept, are health
+# information. The records carry the marks (keydocs.annotate), so a change moves their revision.
+from . import keydocs as _keydocs
+
+
+def _keydocs_check(v):
+    try:
+        return _keydocs.check(v)
+    except _keydocs.KeyDocError as e:
+        raise SettingError(str(e)) from None
+
+
+section("keydocs", "Key documents", "Documents marked as key ones: an advance directive, a power of attorney, a POLST.")
+define("keyDocs", "keydocs", "Key documents", {}, _keydocs_check, kind="keydocs", screen=False, records=True,
+       help="Each marked document's kind and where it's kept, by its record (#1135).")
+
+
 # ---------------------------------------------------------------- General → Backups and Logging (#1002)
 section("logging", "Logging", "What the server keeps of who did what.")
 _entries = lambda k: f"{k:,} {'entry' if k == 1 else 'entries'}"   # noqa: E731
@@ -961,6 +980,9 @@ def put(db, key, value, scope=None, pid=None, uid=None, by=None):
                (key, p, u, None if s.private else text, crypto.enc(text) if s.private else None, dbm.now(), by))
     if scope == "install":
         _changed(db)
+    if s.records and p is not None:
+        from . import records as _records
+        _records._bump(db, p)
     return value
 
 
@@ -972,6 +994,9 @@ def clear(db, keys, scope, pid=None, uid=None):
     db.execute(f"DELETE FROM settings WHERE {where} AND key IN (SELECT value FROM json_each(?))", (*args, json.dumps(gone)))
     if scope == "install" and gone:
         _changed(db)
+    if pid is not None and any(SETTINGS[k].records for k in gone if k in SETTINGS):
+        from . import records as _records
+        _records._bump(db, pid)
     return gone
 
 

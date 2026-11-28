@@ -139,7 +139,7 @@ const SgPalette = (() => {
     const own = labDraws(draws, lab, p => zParse(p[0]), isoDay);
     const labDay = e => { const names = [...new Set(own.get(e.id).map(([x]) => x.name))]; return [...(d.details?.[e.id]?.ids || []).map(i => title.get(i)), ...names, ...names.map(n => nick[n])]; };
     const ev = (e, words, t = zParse(e.t)) => ({id: e.id, k: e.k, title: e.title || "", ts: t, hidden: !!e.hidden, _q: words.filter(Boolean).join(" ").toLowerCase()});
-    const events = (d.events || []).map(e => ev(e, [e.title, e.sub, KIND_LABEL[e.k], ...(e.k === "lab" ? labDay(e) : [])], ts.get(e.id)));
+    const events = (d.events || []).map(e => ev(e, [e.title, e.sub, KIND_LABEL[e.k], keyDocWords(e), ...(e.k === "lab" ? labDay(e) : [])], ts.get(e.id)));   // (a key document's kind, #1135)
     const wids = new Set();
     for (const x of w?.exercise || []) { const t = x.name.replace(/_/g, " "); events.push(ev({id: watchId(x, "exercise", wids), k: "exercise", t: x.start, title: t}, [t, "workout exercise"])); }
     for (const x of w?.ecg || []) if (x && x.start && ["ecg", "irregular_rhythm"].includes(x.type)) {

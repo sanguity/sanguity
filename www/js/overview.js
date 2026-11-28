@@ -279,6 +279,10 @@ function ovRecord() {
         p.criticality ? "Criticality: " + p.criticality : "", p.status && p.status !== "Active" ? p.status : ""].filter(Boolean).join(" · ")})));
     left.push(ac);
   }
+  // ---- key documents (#1135): each marked one, a tap from its drawer
+  const keys = EV.filter(e => e.keyDoc && !e.hidden).sort((a, b) => Object.keys(KEYDOC).indexOf(a.keyDoc.kind) - Object.keys(KEYDOC).indexOf(b.keyDoc.kind) || b.ts - a.ts);
+  if (keys.length) left.push(el("div", {class: "card", id: "ovKeyDocs"}, el("h3", {text: `Key documents (${keys.length})`}),
+    ...keys.map(e => eventRow(e, KEYDOC[e.keyDoc.kind] + (e.keyDoc.kept ? ` · kept at ${e.keyDoc.kept}` : "")))));
   const imms = EV.filter(e => e.k === "immunization" && !e.hidden).sort((a, b) => b.ts - a.ts);
   if (imms.length) {
     const ic = el("div", {class: "card", id: "ovImmunizations"}, el("h3", {text: `Immunizations (${imms.length})`}),
