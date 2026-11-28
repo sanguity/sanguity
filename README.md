@@ -206,8 +206,10 @@ and aren't read from the file after that (see `corrections.example.json`).
 ### The server's settings
 
 The settings that tune the server (how long a sign-in lasts, the public address, upload limits... every one is in
-[`.env.example`](.env.example), with its default) are read where they're used, so a change applies at once. Each
-one's value is, in this order:
+[`.env.example`](.env.example), with its default) are read where they're used, so a change applies at once. The
+public addresses, the phone upload address, sign-in lengths and idle sign-out, the shortest passwords and the other
+security limits, how long the activity log keeps entries and connected sources are changed on **Settings → Install →
+General**; `.env` is only to pin one there (#1120). Each one's value is, in this order:
 
 1. **the environment's**, when it's set: a line in `.env`, TrueNAS's Additional Environment Variables, or an Unraid
    variable. The app shows it as set by the environment, naming the variable, and can't change it; take the line out
@@ -215,9 +217,10 @@ one's value is, in this order:
 2. else **the value an admin saved in the app** (Admin);
 3. else **the default**.
 
-The compose files pass each one as `${NAME:-}`, empty unless `.env` sets it, and the TrueNAS, Unraid and CasaOS
-templates pass none unless you fill it in, so an install with no `.env` has none set by the environment. An `.env`
-copied from an older `.env.example` sets them all: comment out the ones you'd rather change in the app.
+The compose files pass each one as `${NAME:-}`, empty (unset) unless `.env` sets it; `.env.example` has each as a
+commented-out example; and the TrueNAS, Unraid and CasaOS templates and the all-in-one container pass none unless you
+fill it in. So a fresh install has none set by the environment, and the page can change every one of those above. An
+`.env` copied from an older `.env.example` may set some: comment out the ones you'd rather change in the app.
 
 Every change to one in the app asks the admin to confirm it's them (the password, a code or a passkey, unless they did
 within the last few minutes), and goes in the install's activity log with who made it and its old and new value.
@@ -439,7 +442,8 @@ first) under **Sources → Portals and health plans**. Each install registers it
 with each vendor ([why](docs/connected-sources-oauth.md)), so an admin sets each source up once, under **Settings → Install →
 Connected-source apps**:
 
-1. Set `PUBLIC_ORIGINS` in `.env` to the address you open Sanguity at; the return address is that plus
+1. Set the public address (**Settings → Install → General → Host**, or `PUBLIC_ORIGINS` in `.env`) to the address you
+   open Sanguity at; the return address is that plus
    `/connect/return`. The setup screen shows it, and warns when it's plain HTTP or only on your own network, which
    vendors are unlikely to accept in production.
 2. Register an app on the vendor's developer site with that return address, and paste its client ID (and secret,
@@ -604,7 +608,7 @@ too. With none set, every name works, as before.
   recovery-code hashes are peppered with a server secret that only the encryption key unlocks, so a copied database
   alone can't be used to guess them. Sign-in throttling,
   and server-side sessions you can see and sign out under **Settings → You → Sign-in and security**. A sign-in lasts 30 days on an account with
-  a second factor and 12 hours on one without (`SESSION_DAYS`, `SESSION_HOURS_WITHOUT_2FA` in `.env`); optionally
+  a second factor and 12 hours on one without (`SESSION_DAYS`, `SESSION_HOURS_WITHOUT_2FA`); optionally
   sign people out after a period of inactivity too (`SESSION_IDLE_MINUTES`). Admins can shorten these, raise the
   shortest password, shorten the fresh check and a one-time password's days, lower the sign-in throttle's free tries,
   and let only admins create profiles, under **Settings → Install → General → Security**: never more lenient than
@@ -622,7 +626,7 @@ too. With none set, every name works, as before.
   or a passkey on their own account to use any admin action under **Settings → Install**; until then the page says to set one
   up. A one-person install (one admin, no other accounts) is exempt. Resetting someone's password, turning off their
   two-factor sign-in or making someone an admin also asks the admin to confirm it's them (password, code or passkey)
-  unless they did so, or signed in, within the last 5 minutes (`REAUTH_MINUTES` in `.env`). The command line
+  unless they did so, or signed in, within the last 5 minutes (`REAUTH_MINUTES`). The command line
   (`server.manage`) needs neither, so it stays the way back in, for example after an admin loses their phone.
 - **Export everything:** owners and editors can download a profile as one zip (records as imported with the
   corrections made to them, the journal and its photos, the medication log and reminders, documents, settings, watch

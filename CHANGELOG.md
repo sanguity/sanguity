@@ -3980,6 +3980,10 @@ Everything on `main` so far; it becomes the first tagged release.
   editors add, change and remove their own entries and hide (never edit) the records', each with an Undo. The visit
   summary has a Family history section, ticked at first; the FHIR export writes FamilyMemberHistory; Export everything
   carries the entries. Facts as recorded, nothing worked out from them.
+- **The page owns the settings it changes** (#1120): no deploy template, compose file, `.env.example`, the all-in-one
+  container or the image sets the public addresses, phone upload address, sign-in lengths and idle sign-out, security
+  limits, activity days or connected sources by default (each a commented example), so a fresh install's Settings →
+  Install → General can change every one; one set in `.env` or an app form still wins and pins it. deploy/check.py checks it.
 ### Removed
 - The old single shared login (`auth/htpasswd`): sign-in is by account.
 
